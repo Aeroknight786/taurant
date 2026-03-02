@@ -12,6 +12,7 @@ const FLASH_KEY = 'flock_flash';
 const appRoot = document.getElementById('app');
 const uiState = {
   timerId: null,
+  nextRenderResetScroll: false,
   staffTab: 'queue',
   staffSeat: {
     otpDigits: ['', '', '', '', '', ''],
@@ -40,6 +41,7 @@ document.addEventListener('click', (event) => {
 });
 
 window.addEventListener('popstate', () => {
+  uiState.nextRenderResetScroll = true;
   renderRoute().catch(handleFatalError);
 });
 
@@ -64,6 +66,7 @@ function navigate(path) {
     renderRoute().catch(handleFatalError);
     return;
   }
+  uiState.nextRenderResetScroll = true;
   history.pushState({}, '', path);
   renderRoute().catch(handleFatalError);
 }
@@ -71,8 +74,14 @@ function navigate(path) {
 function renderPage(html, title = 'Flock') {
   clearTimer();
   document.title = title;
+  const previousScrollY = window.scrollY;
+  const shouldResetScroll = uiState.nextRenderResetScroll;
+  uiState.nextRenderResetScroll = false;
   appRoot.innerHTML = html;
-  window.scrollTo({ top: 0, behavior: 'auto' });
+  window.scrollTo({
+    top: shouldResetScroll ? 0 : previousScrollY,
+    behavior: 'auto',
+  });
 }
 
 function handleFatalError(error) {
