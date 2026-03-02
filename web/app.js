@@ -1874,7 +1874,7 @@ async function runHostedPayment({ title, initiatePath, initiateBody, capturePath
           await apiRequest(capturePath, {
             method: 'POST',
             body: {
-              razorpayOrderId: initiation.razorpayOrderId,
+              razorpayOrderId: response.razorpay_order_id || initiation.razorpayOrderId,
               razorpayPaymentId: response.razorpay_payment_id,
               razorpaySignature: response.razorpay_signature,
             },
