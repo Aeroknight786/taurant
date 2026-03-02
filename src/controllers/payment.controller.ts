@@ -97,6 +97,17 @@ export async function razorpayWebhook(req: Request, res: Response, next: NextFun
         }
         break;
       }
+      case 'order.paid': {
+        const orderEntity = payload.order?.entity;
+        const paymentEntity = payload.payment?.entity;
+        if (orderEntity?.id && paymentEntity?.id) {
+          await PaymentService.capturePaymentFromWebhook({
+            razorpayOrderId: orderEntity.id,
+            razorpayPaymentId: paymentEntity.id,
+          }).catch(() => {}); // may already be captured via client callback
+        }
+        break;
+      }
       case 'payment.failed': {
         const p = payload.payment?.entity;
         if (p?.order_id) {
