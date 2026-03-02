@@ -57,7 +57,7 @@ function clearTimer() {
 function scheduleRefresh(fn, delayMs) {
   clearTimer();
   uiState.timerId = window.setTimeout(() => {
-    fn().catch(handleFatalError);
+    fn().catch(handleBackgroundRefreshError);
   }, delayMs);
 }
 
@@ -106,6 +106,26 @@ function handleFatalError(error) {
   document.getElementById('retry-page')?.addEventListener('click', () => {
     renderRoute().catch(handleFatalError);
   });
+}
+
+function handleBackgroundRefreshError(error) {
+  const message = error instanceof Error ? error.message : 'Background refresh failed';
+  console.warn('Background refresh failed:', message);
+
+  const staleBanners = document.querySelectorAll('[data-transient-error="true"]');
+  staleBanners.forEach((node) => node.remove());
+
+  const shell = appRoot.querySelector('.app-shell');
+  if (shell) {
+    const banner = document.createElement('div');
+    banner.className = 'alert alert-red';
+    banner.dataset.transientError = 'true';
+    banner.style.marginBottom = '18px';
+    banner.innerHTML = `<div>${escapeHtml(message)} Retrying automatically.</div>`;
+    shell.prepend(banner);
+  }
+
+  scheduleRefresh(() => renderRoute(), 5000);
 }
 
 async function renderRoute() {
@@ -1904,15 +1924,41 @@ async function apiRequest(path, options = {}) {
     try {
       payload = JSON.parse(text);
     } catch (_error) {
-      payload = { success: false, error: text };
+      payload = { success: false, error: normaliseApiError(text, response.status) };
     }
   }
 
   if (!response.ok || payload.success === false) {
-    throw new Error(payload.error || `Request failed (${response.status})`);
+    throw new Error(normaliseApiError(payload.error, response.status));
   }
 
   return payload.data;
+}
+
+function normaliseApiError(rawError, status) {
+  const fallback = status >= 500
+    ? 'The service is temporarily unavailable. Please retry in a few seconds.'
+    : `Request failed (${status})`;
+
+  if (!rawError) {
+    return fallback;
+  }
+
+  const errorText = String(rawError).trim();
+  const looksLikeHtml = errorText.startsWith('<!DOCTYPE') || errorText.startsWith('<html');
+
+  if (looksLikeHtml) {
+    if (status === 502 || status === 503 || status === 504) {
+      return 'The hosted app is waking up or temporarily unavailable. Please retry in a few seconds.';
+    }
+    return fallback;
+  }
+
+  if (status === 502 || status === 503 || status === 504) {
+    return 'The hosted app is temporarily unavailable. Please retry in a few seconds.';
+  }
+
+  return errorText;
 }
 
 function escapeHtml(value) {
