@@ -1,0 +1,43 @@
+import 'dotenv/config';
+import app from './app';
+import { env } from './config/env';
+import { logger } from './config/logger';
+import { connectDatabase, disconnectDatabase } from './config/database';
+import { closeRedis, connectRedis } from './config/redis';
+import { startTmsPoller } from './workers/tmsPoller';
+
+async function bootstrap(): Promise<void> {
+  // Connect to infrastructure
+  await connectDatabase();
+  await connectRedis();
+
+  // Start background workers
+  const tmsPoller = startTmsPoller();
+
+  // Start HTTP server
+  const server = app.listen(env.PORT, () => {
+    logger.info(`🐦 Flock API running on port ${env.PORT} [${env.NODE_ENV}]`);
+    logger.info(`   Mocks: payments=${env.USE_MOCK_PAYMENTS} notifications=${env.USE_MOCK_NOTIFICATIONS} gst=${env.USE_MOCK_GST} pos=${env.USE_MOCK_POS}`);
+  });
+
+  // Graceful shutdown
+  const shutdown = async (signal: string): Promise<void> => {
+    logger.info(`${signal} received — shutting down gracefully`);
+    clearInterval(tmsPoller);
+    server.close(async () => {
+      await disconnectDatabase();
+      await closeRedis();
+      logger.info('Flock API shut down cleanly');
+      process.exit(0);
+    });
+    setTimeout(() => { logger.error('Forced shutdown after timeout'); process.exit(1); }, 10_000);
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT',  () => shutdown('SIGINT'));
+}
+
+bootstrap().catch((err) => {
+  console.error('Bootstrap failed:', err);
+  process.exit(1);
+});

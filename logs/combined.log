@@ -1,0 +1,8 @@
+{"level":"warn","message":"REDIS_URL not configured, continuing without cache/pubsub","timestamp":"2026-03-02T10:59:41.398Z"}
+{"level":"info","message":"PostgreSQL connected via Prisma","timestamp":"2026-03-02T10:59:42.691Z"}
+{"level":"info","message":"TMS poller starting (interval: 4000ms)","timestamp":"2026-03-02T10:59:42.691Z"}
+{"level":"info","message":"🐦 Flock API running on port 10000 [production]","timestamp":"2026-03-02T10:59:42.693Z"}
+{"level":"info","message":"   Mocks: payments=true notifications=true gst=true pos=true","timestamp":"2026-03-02T10:59:42.693Z"}
+{"level":"info","message":"SIGINT received — shutting down gracefully","timestamp":"2026-03-02T11:03:00.477Z"}
+{"level":"info","message":"SIGINT received — shutting down gracefully","timestamp":"2026-03-02T11:03:00.480Z"}
+{"level":"info","message":"PostgreSQL disconnected","timestamp":"2026-03-02T11:03:00.486Z"}

@@ -1,0 +1,367 @@
+// Flock — Prisma Schema
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum VenuePlan {
+  STARTER
+  VENUE
+  MULTI_SITE
+}
+
+enum GstLicenceType {
+  LICENSED_BAR
+  RESTAURANT_ONLY
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+  CLEARING
+  RESERVED
+}
+
+enum QueueEntryStatus {
+  WAITING
+  NOTIFIED
+  SEATED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum OrderType {
+  PRE_ORDER
+  TABLE_ORDER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  PROCESSING
+  CAPTURED
+  FAILED
+  REFUNDED
+  PARTIALLY_REFUNDED
+}
+
+enum PaymentType {
+  DEPOSIT
+  FINAL
+}
+
+enum NotificationType {
+  OTP
+  QUEUE_JOINED
+  TABLE_READY
+  TABLE_REASSIGNED
+  ORDER_CONFIRMED
+  INVOICE
+}
+
+enum NotificationChannel {
+  WHATSAPP
+  SMS
+}
+
+enum StaffRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+enum TmsProvider {
+  POSIST
+  PETPOOJA
+  URBANPIPER
+  MANUAL
+}
+
+model Venue {
+  id                  String         @id @default(uuid())
+  name                String
+  slug                String         @unique
+  address             String
+  city                String
+  state               String
+  pincode             String
+  gstin               String?
+  licenceType         GstLicenceType @default(LICENSED_BAR)
+  plan                VenuePlan      @default(STARTER)
+  phone               String
+  email               String         @unique
+  depositPercent      Int            @default(75)
+  tableReadyWindowMin Int            @default(10)
+  maxQueueSize        Int            @default(200)
+  isQueueOpen         Boolean        @default(false)
+  tmsProvider         TmsProvider    @default(MANUAL)
+  tmsApiKey           String?
+  tmsVenueId          String?
+  posPlatform         String?
+  posOutletId         String?
+  monthlyCoversUsed   Int            @default(0)
+  billingCycleStart   DateTime       @default(now())
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
+  staff               Staff[]
+  tables              Table[]
+  menuCategories      MenuCategory[]
+  menuItems           MenuItem[]
+  queueEntries        QueueEntry[]
+  orders              Order[]
+  payments            Payment[]
+  notifications       Notification[]
+  invoices            Invoice[]
+  otpCodes            OtpCode[]
+  @@index([slug])
+  @@index([city])
+}
+
+model Staff {
+  id          String    @id @default(uuid())
+  venueId     String
+  name        String
+  phone       String
+  role        StaffRole @default(STAFF)
+  isActive    Boolean   @default(true)
+  lastLoginAt DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  venue       Venue     @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  otpCodes    OtpCode[]
+  @@unique([venueId, phone])
+  @@index([phone])
+}
+
+model OtpCode {
+  id        String   @id @default(uuid())
+  phone     String
+  code      String
+  purpose   String
+  venueId   String?
+  staffId   String?
+  attempts  Int      @default(0)
+  verified  Boolean  @default(false)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  venue     Venue?   @relation(fields: [venueId], references: [id])
+  staff     Staff?   @relation(fields: [staffId], references: [id])
+  @@index([phone, purpose])
+  @@index([expiresAt])
+}
+
+model Table {
+  id              String      @id @default(uuid())
+  venueId         String
+  label           String
+  capacity        Int
+  section         String?
+  status          TableStatus @default(FREE)
+  occupiedSince   DateTime?
+  estimatedFreeAt DateTime?
+  tmsTableId      String?
+  notes           String?
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+  venue           Venue       @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  queueEntries    QueueEntry[]
+  tableEvents     TableEvent[]
+  @@unique([venueId, label])
+  @@index([venueId, status])
+}
+
+model TableEvent {
+  id          String      @id @default(uuid())
+  tableId     String
+  fromStatus  TableStatus
+  toStatus    TableStatus
+  triggeredBy String?
+  note        String?
+  createdAt   DateTime    @default(now())
+  table       Table       @relation(fields: [tableId], references: [id], onDelete: Cascade)
+  @@index([tableId])
+}
+
+model MenuCategory {
+  id        String     @id @default(uuid())
+  venueId   String
+  name      String
+  sortOrder Int        @default(0)
+  isVisible Boolean    @default(true)
+  venue     Venue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  items     MenuItem[]
+  @@unique([venueId, name])
+}
+
+model MenuItem {
+  id          String   @id @default(uuid())
+  venueId     String
+  categoryId  String
+  name        String
+  description String?
+  priceExGst  Int
+  gstPercent  Float
+  isVeg       Boolean  @default(true)
+  isAlcohol   Boolean  @default(false)
+  isAvailable Boolean  @default(true)
+  imageUrl    String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  venue       Venue        @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  category    MenuCategory @relation(fields: [categoryId], references: [id])
+  orderItems  OrderItem[]
+  @@index([venueId, isAvailable])
+}
+
+model QueueEntry {
+  id               String           @id @default(uuid())
+  venueId          String
+  guestName        String
+  guestPhone       String
+  partySize        Int
+  position         Int
+  otp              String
+  status           QueueEntryStatus @default(WAITING)
+  tableId          String?
+  seatedAt         DateTime?
+  notifiedAt       DateTime?
+  completedAt      DateTime?
+  preOrderTotal    Int              @default(0)
+  depositPaid      Int              @default(0)
+  depositTxnRef    String?
+  estimatedWaitMin Int?
+  joinedAt         DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  venue            Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  table            Table?           @relation(fields: [tableId], references: [id])
+  orders           Order[]
+  notifications    Notification[]
+  @@index([venueId, status])
+  @@index([venueId, position])
+  @@index([otp])
+  @@index([guestPhone])
+}
+
+model Order {
+  id            String      @id @default(uuid())
+  venueId       String
+  queueEntryId  String
+  type          OrderType
+  status        OrderStatus @default(PENDING)
+  subtotalExGst Int         @default(0)
+  cgstAmount    Int         @default(0)
+  sgstAmount    Int         @default(0)
+  totalIncGst   Int         @default(0)
+  posOrderId    String?
+  posPushedAt   DateTime?
+  notes         String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  venue         Venue       @relation(fields: [venueId], references: [id])
+  queueEntry    QueueEntry  @relation(fields: [queueEntryId], references: [id])
+  items         OrderItem[]
+  payments      Payment[]
+  invoice       Invoice?
+  @@index([venueId, status])
+  @@index([queueEntryId])
+}
+
+model OrderItem {
+  id          String   @id @default(uuid())
+  orderId     String
+  menuItemId  String
+  name        String
+  priceExGst  Int
+  gstPercent  Float
+  quantity    Int
+  subtotal    Int
+  gstAmount   Int
+  totalIncGst Int
+  order       Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
+  @@index([orderId])
+}
+
+model Payment {
+  id                String        @id @default(uuid())
+  venueId           String
+  orderId           String
+  type              PaymentType
+  status            PaymentStatus @default(PENDING)
+  amount            Int
+  platformFeeAmount Int           @default(0)
+  razorpayFeeAmount Int           @default(0)
+  netToVenue        Int           @default(0)
+  razorpayOrderId   String?       @unique
+  razorpayPaymentId String?
+  razorpaySignature String?
+  txnRef            String        @unique
+  upiApp            String?
+  failureReason     String?
+  capturedAt        DateTime?
+  refundedAt        DateTime?
+  refundAmount      Int?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  venue             Venue         @relation(fields: [venueId], references: [id])
+  order             Order         @relation(fields: [orderId], references: [id])
+  @@index([venueId])
+  @@index([orderId])
+  @@index([txnRef])
+  @@index([razorpayPaymentId])
+}
+
+model Invoice {
+  id            String   @id @default(uuid())
+  orderId       String   @unique
+  venueId       String
+  invoiceNumber String   @unique
+  irn           String?
+  qrCode        String?
+  subtotal      Int
+  cgst          Int
+  sgst          Int
+  total         Int
+  guestName     String
+  guestPhone    String
+  venueGstin    String?
+  issuedAt      DateTime @default(now())
+  cleartaxRef   String?
+  order         Order    @relation(fields: [orderId], references: [id])
+  venue         Venue    @relation(fields: [venueId], references: [id])
+  @@index([venueId])
+}
+
+model Notification {
+  id           String              @id @default(uuid())
+  venueId      String
+  queueEntryId String?
+  type         NotificationType
+  channel      NotificationChannel
+  to           String
+  templateId   String?
+  payload      Json?
+  status       String              @default("pending")
+  externalRef  String?
+  error        String?
+  sentAt       DateTime?
+  createdAt    DateTime            @default(now())
+  venue        Venue               @relation(fields: [venueId], references: [id])
+  queueEntry   QueueEntry?         @relation(fields: [queueEntryId], references: [id])
+  @@index([venueId])
+  @@index([queueEntryId])
+}

@@ -1,0 +1,10 @@
+import { Router } from 'express';
+import * as Table from '../controllers/table.controller';
+import { requireAuth, requireRole } from '../middleware/auth';
+const router = Router();
+router.get  ('/',                  requireAuth, Table.getTables);
+router.post ('/',                  requireAuth, requireRole('OWNER','MANAGER'), Table.createTable);
+router.get  ('/events/recent',     requireAuth, Table.getRecentTableEvents);
+router.patch('/:tableId/status',   requireAuth, Table.updateTableStatus);
+router.get  ('/:tableId/events',   requireAuth, Table.getTableEvents);
+export default router;

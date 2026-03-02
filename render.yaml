@@ -1,0 +1,77 @@
+services:
+  - type: web
+    name: flock-pilot
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/v1/health
+    autoDeploy: false
+    envVars:
+      - key: NODE_VERSION
+        value: 20
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: API_VERSION
+        value: v1
+      - key: APP_ALLOWED_ORIGINS
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: OTP_EXPIRES_SECONDS
+        value: 300
+      - key: RAZORPAY_KEY_ID
+        sync: false
+      - key: RAZORPAY_KEY_SECRET
+        sync: false
+      - key: RAZORPAY_WEBHOOK_SECRET
+        sync: false
+      - key: RAZORPAY_ACCOUNT_NUMBER
+        sync: false
+      - key: GUPSHUP_API_KEY
+        sync: false
+      - key: GUPSHUP_APP_NAME
+        sync: false
+      - key: GUPSHUP_SOURCE_NUMBER
+        sync: false
+      - key: MSG91_AUTH_KEY
+        sync: false
+      - key: MSG91_SENDER_ID
+        sync: false
+      - key: MSG91_TEMPLATE_ID_OTP
+        sync: false
+      - key: MSG91_TEMPLATE_ID_QUEUE
+        sync: false
+      - key: MSG91_TEMPLATE_ID_TABLE_READY
+        sync: false
+      - key: CLEARTAX_API_KEY
+        sync: false
+      - key: CLEARTAX_BASE_URL
+        value: https://api.cleartax.in/v1
+      - key: URBANPIPER_USERNAME
+        sync: false
+      - key: URBANPIPER_API_KEY
+        sync: false
+      - key: URBANPIPER_BASE_URL
+        value: https://api.urbanpiper.com/v1
+      - key: USE_MOCK_PAYMENTS
+        value: "true"
+      - key: USE_MOCK_NOTIFICATIONS
+        value: "true"
+      - key: USE_MOCK_GST
+        value: "true"
+      - key: USE_MOCK_POS
+        value: "true"
+      - key: TMS_POLL_INTERVAL_MS
+        value: 4000
+      - key: TABLE_READY_WINDOW_MINUTES
+        value: 10
