@@ -350,6 +350,10 @@ async function renderGuestEntry(slug, entryId) {
           queueEntryId: entryId,
         },
         capturePath: '/payments/final/capture',
+        prefill: {
+          name: entry.guestName,
+          contact: entry.guestPhone,
+        },
       });
       setFlash('green', 'Final payment captured.');
       await renderGuestEntry(slug, entryId);
@@ -532,6 +536,10 @@ async function renderPreorder(slug, entryId) {
           orderId: order.id,
         },
         capturePath: '/payments/deposit/capture',
+        prefill: {
+          name: entry.guestName,
+          contact: entry.guestPhone,
+        },
       });
 
       setCart(entryId, {});
@@ -1842,7 +1850,7 @@ function buildCartSummary(categories, cart) {
   };
 }
 
-async function runHostedPayment({ title, initiatePath, initiateBody, capturePath }) {
+async function runHostedPayment({ title, initiatePath, initiateBody, capturePath, prefill }) {
   const initiation = await apiRequest(initiatePath, {
     method: 'POST',
     body: initiateBody,
@@ -1872,6 +1880,10 @@ async function runHostedPayment({ title, initiatePath, initiateBody, capturePath
       name: 'Flock',
       description: title,
       order_id: initiation.razorpayOrderId,
+      prefill: {
+        name: prefill?.name || '',
+        contact: prefill?.contact || '',
+      },
       theme: { color: '#e8a830' },
       handler: async (response) => {
         try {
