@@ -8,7 +8,7 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import router from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { apiLimiter, otpLimiter } from './middleware/rateLimiter';
+import { apiLimiter, otpLimiter, publicVenueReadLimiter } from './middleware/rateLimiter';
 
 const app = express();
 
@@ -45,6 +45,7 @@ app.use(cors({
 
 // ── Rate limiting ─────────────────────────────────────────────────
 if (env.isProd()) {
+  app.use(`/api/${env.API_VERSION}`, publicVenueReadLimiter);
   app.use(`/api/${env.API_VERSION}`, apiLimiter);
   app.use(`/api/${env.API_VERSION}/auth/staff/otp/send`, otpLimiter);
 }
