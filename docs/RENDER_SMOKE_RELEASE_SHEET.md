@@ -80,7 +80,7 @@ The app now skips Redis cleanly and runs in degraded mode.
 
 ### TMS
 
-- `TMS_POLL_INTERVAL_MS=4000`
+- `TMS_POLL_INTERVAL_MS=180000`
 - `TABLE_READY_WINDOW_MINUTES=10`
 
 ## Smoke Validation Checklist

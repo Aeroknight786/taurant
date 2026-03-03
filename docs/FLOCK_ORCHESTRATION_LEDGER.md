@@ -380,3 +380,28 @@ Any future substantive work on Flock should:
 - Current drift after this pass:
   - the new migration is checked in locally but not yet applied to Supabase from this session
   - the current Render deployment has not been refreshed to pick up the new local code yet
+- Implemented the first Phase 5A guest UX pass locally (not yet deployed):
+  - replaced the seated guest’s stacked mobile layout with a tray-based shell:
+    - `Menu`
+    - `Your Bucket`
+    - `Ordered`
+  - added a local `BucketStore` abstraction for seated draft ordering without changing backend contracts
+  - added a fixed bottom guest nav and floating pay CTA for seated guests with outstanding balance
+  - added sticky category pills for guest menu browsing and wired them to category section anchors
+  - moved seated local quantity changes and tray switching off full-route rerenders; they now patch the seated shell in place
+  - reworked the pre-order page to support a mobile sticky summary/action dock while keeping the desktop two-column summary layout
+  - kept the scope UX-only:
+    - no share links
+    - no QR
+    - no multi-user draft sync
+- Applied a follow-up UX/resilience patch locally after browser feedback:
+  - fixed guest category jumps so they no longer rerender the tray immediately after scrolling
+  - increased category-heading contrast and adjusted sticky category-tab positioning for mobile visibility
+  - added editable controls in `Your Bucket`:
+    - quantity up/down
+    - explicit remove
+  - changed guest session handling so transient queue-fetch failures no longer clear the guest token and force session restore
+  - throttled staff stats fetches to 60s and made `/venues/stats/today` failures fail soft in the SPA instead of crashing the dashboard
+  - improved mobile/staff navigation usability:
+    - compact mobile header
+    - horizontally scrollable staff/admin tabs on narrow screens

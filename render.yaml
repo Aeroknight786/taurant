@@ -72,6 +72,6 @@ services:
       - key: USE_MOCK_POS
         value: "true"
       - key: TMS_POLL_INTERVAL_MS
-        value: 4000
+        value: 180000
       - key: TABLE_READY_WINDOW_MINUTES
         value: 10

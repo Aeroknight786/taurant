@@ -794,3 +794,57 @@ Still pending after this local pass:
 
 - apply the new migration to Supabase
 - redeploy Render so the hosted app reflects these changes
+
+## Phase 5A guest UX status
+
+The next guest UX pass is now implemented locally and build-clean, but not yet deployed.
+
+Implemented:
+
+- the seated guest experience now uses a mobile-first tray shell instead of one long stacked scroll:
+  - `Menu`
+  - `Your Bucket`
+  - `Ordered`
+- the seated draft cart has been refactored behind a local `BucketStore` abstraction
+- a fixed bottom guest tray nav now drives seated guest navigation
+- a floating `Pay {balance}` CTA is now rendered for seated guests with an outstanding balance
+- guest menu browsing now includes sticky category pills and category-targeted sections
+- seated local interactions no longer force full guest-route rerenders for:
+  - tray switching
+  - menu quantity changes
+  - bucket edits
+- the pre-order page now has:
+  - a desktop sticky summary card
+  - a mobile sticky summary/action dock
+- the scope remains UX-only:
+  - no backend API changes
+  - no schema changes
+  - no sharing/QR/multi-user behavior added
+
+Validation:
+
+- `node --check web/app.js` succeeded
+- `npm run build` succeeded
+
+Still pending:
+
+- browser validation of the new seated guest shell on mobile-sized viewports
+- deploy the updated frontend to Render
+
+Follow-up local UX/stability fixes after first browser pass:
+
+- category-tab taps in the seated `Menu` tray no longer force an immediate tray rerender after scroll
+- sticky category tabs were adjusted for better mobile visibility below the header
+- category section headings now use higher-contrast text
+- the `Your Bucket` tray now supports:
+  - quantity increment/decrement
+  - explicit item removal
+- transient guest-entry fetch failures no longer clear the guest token by default; only auth-like failures force restore
+- the guest route now shows a retryable “session unavailable” state for temporary server issues
+- staff stats are now cached/throttled in the SPA and `/venues/stats/today` failures no longer tear down the whole dashboard
+- mobile tabs now scroll horizontally instead of wrapping into a hard-to-use multi-row block
+
+Validation:
+
+- `node --check web/app.js` succeeded
+- `npm run build` succeeded after the follow-up patch

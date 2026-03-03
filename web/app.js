@@ -8,6 +8,16 @@ const GUEST_ENTRY_PREFIX = 'flock_guest_entry:';
 const PREORDER_CART_PREFIX = 'flock_cart:';
 const TABLE_CART_PREFIX = 'flock_table_cart:';
 const FLASH_KEY = 'flock_flash';
+const EMPTY_VENUE_STATS = {
+  today: {
+    totalQueueJoins: 0,
+    avgWaitMin: 0,
+    totalPayments: 0,
+    totalRevenuePaise: 0,
+    platformFeePaise: 0,
+  },
+  tables: {},
+};
 
 const appRoot = document.getElementById('app');
 let razorpayLoaderPromise = null;
@@ -19,6 +29,8 @@ const uiState = {
   tableOrderSubmitting: false,
   paymentSubmitting: false,
   guestSessionRestoring: false,
+  guestTray: 'ordered',
+  guestMenuActiveCategory: null,
   staffTab: 'queue',
   staffSeat: {
     otpDigits: ['', '', '', '', '', ''],
@@ -31,6 +43,8 @@ const uiState = {
   },
   staffSeatedBills: {},
   staffLastUpdatedAt: 0,
+  staffStats: null,
+  staffStatsFetchedAt: 0,
   adminTab: 'menu',
   adminMenu: {
     categories: [],
@@ -386,9 +400,34 @@ async function renderGuestEntry(slug, entryId) {
       guestToken: guestSession.guestToken,
     });
   } catch (error) {
-    clearGuestSession(entryId);
-    setFlash('amber', 'Your guest session expired on this device. Restore it with the seating OTP.');
-    await renderGuestEntry(slug, entryId);
+    if (/Unauthorized|expired|invalid/i.test(error.message)) {
+      clearGuestSession(entryId);
+      setFlash('amber', 'Your guest session expired on this device. Restore it with the seating OTP.');
+      await renderGuestEntry(slug, entryId);
+      return;
+    }
+
+    renderPage(renderShell({
+      pill: 'Guest',
+      body: `
+        <div class="section-head">
+          <div class="section-title">Guest session unavailable</div>
+          <div class="section-sub">${escapeHtml(error.message || 'We could not refresh this table session right now.')}</div>
+        </div>
+        <div class="card">
+          <div class="card-sub">Your guest token is still kept on this device. This looks like a temporary server issue, not a lost session.</div>
+          <div class="row">
+            <button class="btn btn-primary" id="retry-guest-route" type="button">Retry</button>
+            <a class="btn btn-secondary" data-nav href="/v/${slug}">Venue</a>
+          </div>
+        </div>
+      `,
+      right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
+    }), `Flock | ${venue.name}`);
+
+    document.getElementById('retry-guest-route')?.addEventListener('click', () => {
+      renderGuestEntry(slug, entryId).catch(handleFatalError);
+    });
     return;
   }
 
@@ -412,19 +451,36 @@ async function renderGuestEntry(slug, entryId) {
         ? 2
         : 1;
 
-  const body = `
-    ${entry.status === 'NOTIFIED' ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>` : ''}
-    ${renderStepBar(activeStep)}
-    ${flash ? renderInlineFlash(flash) : ''}
-    ${renderGuestStateHero(entry, guestSession)}
-    ${renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary })}
-  `;
+  const body = entry.status === 'SEATED'
+    ? `
+      ${renderStepBar(activeStep)}
+      ${flash ? renderInlineFlash(flash) : ''}
+      ${renderSeatedGuestShell({ entry, venue, bill, guestSession })}
+    `
+    : `
+      ${entry.status === 'NOTIFIED' ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>` : ''}
+      ${renderStepBar(activeStep)}
+      ${flash ? renderInlineFlash(flash) : ''}
+      ${renderGuestStateHero(entry, guestSession)}
+      ${renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary })}
+    `;
 
   renderPage(renderShell({
     pill: 'Guest',
     body,
     right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
   }), `Flock | ${venue.name}`);
+
+  if (entry.status === 'SEATED') {
+    if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
+      uiState.guestTray = 'ordered';
+    }
+    if (!getBucketItemCount(tableCartSummary)) {
+      uiState.guestTray = (entry.orders.length || (bill?.summary?.balanceDue || 0) > 0) ? 'ordered' : 'menu';
+    }
+    mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession });
+    return;
+  }
 
   document.getElementById('preorder-cta')?.addEventListener('click', () => {
     navigate(`/v/${slug}/e/${entryId}/preorder`);
@@ -473,15 +529,6 @@ async function renderGuestEntry(slug, entryId) {
     navigate(`/v/${slug}`);
   });
 
-  document.querySelectorAll('[data-table-cart-item]').forEach((button) => {
-    button.addEventListener('click', () => {
-      const menuItemId = button.getAttribute('data-item-id');
-      const delta = Number(button.getAttribute('data-delta'));
-      updateTableCart(entryId, menuItemId, delta);
-      renderGuestEntry(slug, entryId).catch(handleFatalError);
-    });
-  });
-
   document.getElementById('recover-guest-session-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
     if (uiState.guestSessionRestoring) return;
@@ -514,55 +561,6 @@ async function renderGuestEntry(slug, entryId) {
       await renderGuestEntry(slug, entryId);
     } finally {
       uiState.guestSessionRestoring = false;
-    }
-  });
-
-  document.getElementById('submit-table-order')?.addEventListener('click', async () => {
-    if (uiState.tableOrderSubmitting) return;
-
-    const activeGuestSession = getGuestSession(entryId);
-    if (!activeGuestSession?.guestToken) {
-      setFlash('amber', 'Re-enter OTP to continue ordering.');
-      await renderGuestEntry(slug, entryId);
-      return;
-    }
-
-    const button = document.getElementById('submit-table-order');
-    uiState.tableOrderSubmitting = true;
-    if (button) {
-      button.disabled = true;
-      button.textContent = 'Sending order...';
-    }
-
-    try {
-      const order = await apiRequest('/orders/table/guest', {
-        method: 'POST',
-        auth: 'guest',
-        guestToken: activeGuestSession.guestToken,
-        body: {
-          queueEntryId: entryId,
-          items: tableCartSummary.lines.map((line) => ({
-            menuItemId: line.id,
-            quantity: line.quantity,
-          })),
-        },
-      });
-
-      setTableCart(entryId, {});
-      setFlash(
-        order.posSync?.status === 'manual_fallback'
-          ? 'amber'
-          : 'green',
-        order.posSync?.status === 'manual_fallback'
-          ? 'Order recorded. Venue is using manual kitchen sync right now.'
-          : 'Table order sent to the venue.'
-      );
-      await renderGuestEntry(slug, entryId);
-    } catch (error) {
-      setFlash('red', error.message);
-      await renderGuestEntry(slug, entryId);
-    } finally {
-      uiState.tableOrderSubmitting = false;
     }
   });
 
@@ -607,39 +605,60 @@ async function renderPreorder(slug, entryId) {
     pill: 'Pre-order',
     body: `
       ${flash ? renderInlineFlash(flash) : ''}
-      <div class="section-head">
-        <div class="section-title">Pre-order while waiting</div>
-        <div class="section-sub">Menu and interaction patterns are ported directly from the Flock v2 design source.</div>
-      </div>
-      <div class="grid grid-2">
-        <div>
-          ${renderMenuSections(venue.menuCategories || [], cart)}
+      <div class="preorder-page-shell">
+        <div class="section-head">
+          <div class="section-title">Pre-order while waiting</div>
+          <div class="section-sub">Build the deposit-backed round here. The summary stays reachable on mobile while you browse.</div>
         </div>
-        <div class="card">
-          <div class="card-title">Order summary</div>
-          <div class="card-sub">Deposit required: ${venue.depositPercent}% of the GST-inclusive order value.</div>
-          ${cartSummary.lines.length ? cartSummary.lines.map((line) => `
-            <div class="order-line">
-              <div>
-                <div class="order-line-name">${escapeHtml(line.name)}</div>
-                <div class="order-line-qty">${line.quantity} x ${formatMoney(line.unitTotal)}</div>
+        <div class="grid grid-2 preorder-grid">
+          <div class="preorder-menu-shell">
+            ${(venue.menuCategories || []).length ? renderGuestCategoryTabs(venue.menuCategories || [], uiState.guestMenuActiveCategory || venue.menuCategories?.[0]?.id || null) : ''}
+            ${renderMenuSections(venue.menuCategories || [], cart)}
+          </div>
+          <div class="card preorder-summary-card">
+            <div class="card-title">Order summary</div>
+            <div class="card-sub">Deposit required: ${venue.depositPercent}% of the GST-inclusive order value.</div>
+            ${cartSummary.lines.length ? cartSummary.lines.map((line) => `
+              <div class="order-line">
+                <div>
+                  <div class="order-line-name">${escapeHtml(line.name)}</div>
+                  <div class="order-line-qty">${line.quantity} x ${formatMoney(line.unitTotal)}</div>
+                </div>
+                <div class="order-line-price">${formatMoney(line.total)}</div>
               </div>
-              <div class="order-line-price">${formatMoney(line.total)}</div>
+            `).join('') : '<div class="empty-state">Add items to build the pre-order.</div>'}
+            <div class="order-total">
+              <div class="order-total-label">Total incl GST</div>
+              <div class="order-total-val">${formatMoney(cartSummary.total)}</div>
             </div>
-          `).join('') : '<div class="empty-state">Add items to build the pre-order.</div>'}
-          <div class="order-total">
-            <div class="order-total-label">Total incl GST</div>
-            <div class="order-total-val">${formatMoney(cartSummary.total)}</div>
+            <div class="row" style="margin-top:16px;">
+              <a class="btn btn-secondary" data-nav href="/v/${slug}/e/${entryId}">Back</a>
+              <button class="btn btn-primary" data-submit-preorder ${cartSummary.lines.length ? '' : 'disabled'}>${uiState.preorderSubmitting ? 'Preparing payment...' : 'Pay deposit'}</button>
+            </div>
           </div>
-          <div class="row" style="margin-top:16px;">
-            <a class="btn btn-secondary" data-nav href="/v/${slug}/e/${entryId}">Back</a>
-            <button class="btn btn-primary" id="submit-preorder" ${cartSummary.lines.length ? '' : 'disabled'}>Pay deposit</button>
+        </div>
+        <div class="mobile-order-dock">
+          <div class="mobile-order-dock-main">
+            <div class="mobile-order-dock-meta">${cartSummary.lines.reduce((sum, line) => sum + line.quantity, 0)} items · Deposit ${venue.depositPercent}%</div>
+            <div class="mobile-order-dock-total">${formatMoney(cartSummary.total)}</div>
           </div>
+          <button class="btn btn-primary" data-submit-preorder ${cartSummary.lines.length ? '' : 'disabled'}>${uiState.preorderSubmitting ? 'Preparing payment...' : 'Pay deposit'}</button>
         </div>
       </div>
     `,
     right: `<a class="btn btn-secondary btn-sm" data-nav href="/v/${slug}/e/${entryId}">Back</a>`,
   }), `Flock | Pre-order`);
+
+  document.querySelectorAll('[data-category-jump]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const categoryId = button.getAttribute('data-category-jump');
+      uiState.guestMenuActiveCategory = categoryId;
+      const target = document.getElementById(`guest-category-${categoryId}`);
+      target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+  });
+
+  mountGuestCategoryTracking();
 
   document.querySelectorAll('[data-cart-item]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -650,15 +669,14 @@ async function renderPreorder(slug, entryId) {
     });
   });
 
-  document.getElementById('submit-preorder')?.addEventListener('click', async () => {
+  document.querySelectorAll('[data-submit-preorder]').forEach((submitButton) => submitButton.addEventListener('click', async () => {
     if (uiState.preorderSubmitting) return;
 
-    const button = document.getElementById('submit-preorder');
     uiState.preorderSubmitting = true;
-    if (button) {
+    document.querySelectorAll('[data-submit-preorder]').forEach((button) => {
       button.disabled = true;
       button.textContent = 'Preparing payment...';
-    }
+    });
 
     try {
       const order = await apiRequest('/orders/preorder', {
@@ -700,7 +718,7 @@ async function renderPreorder(slug, entryId) {
     } finally {
       uiState.preorderSubmitting = false;
     }
-  });
+  }));
 }
 
 async function renderStaffLogin() {
@@ -885,15 +903,14 @@ async function renderStaffDashboard() {
   let venue;
   let queue;
   let tables;
-  let stats;
+  let stats = uiState.staffStats || EMPTY_VENUE_STATS;
   let recentTableEvents = [];
 
   try {
-    [venue, queue, tables, stats, recentTableEvents] = await Promise.all([
+    [venue, queue, tables, recentTableEvents] = await Promise.all([
       apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
       apiRequest('/queue/live', { auth: true }),
       apiRequest('/tables', { auth: true }),
-      apiRequest('/venues/stats/today', { auth: true }),
       apiRequest('/tables/events/recent', { auth: true }).catch(() => []),
     ]);
   } catch (error) {
@@ -903,6 +920,16 @@ async function renderStaffDashboard() {
       return;
     }
     throw error;
+  }
+
+  if (!uiState.staffStatsFetchedAt || (Date.now() - uiState.staffStatsFetchedAt) >= 60000) {
+    uiState.staffStatsFetchedAt = Date.now();
+    try {
+      stats = await apiRequest('/venues/stats/today', { auth: true });
+      uiState.staffStats = stats;
+    } catch {
+      stats = uiState.staffStats || EMPTY_VENUE_STATS;
+    }
   }
 
   const flash = consumeFlash();
@@ -1662,6 +1689,409 @@ function renderStepBar(activeStep) {
   `;
 }
 
+function getBucketItemCount(summary) {
+  return (summary?.lines || []).reduce((sum, line) => sum + (line.quantity || 0), 0);
+}
+
+function renderGuestBottomNav(activeTray, itemCount) {
+  return `
+    <nav class="guest-bottom-nav" aria-label="Guest ordering trays">
+      ${[
+        ['menu', 'Menu'],
+        ['bucket', 'Your Bucket'],
+        ['ordered', 'Ordered'],
+      ].map(([key, label]) => `
+        <button class="guest-bottom-nav-btn ${activeTray === key ? 'active' : ''}" type="button" data-guest-tray="${key}">
+          <span>${label}</span>
+          ${key === 'bucket' && itemCount > 0 ? `<span class="guest-bottom-badge">${itemCount}</span>` : ''}
+        </button>
+      `).join('')}
+    </nav>
+  `;
+}
+
+function renderFloatingPayButton(balanceDue) {
+  if (!balanceDue || balanceDue <= 0) {
+    return '';
+  }
+
+  return `
+    <div class="floating-pay-wrap">
+      <button class="btn btn-primary btn-full floating-pay-btn" id="floating-final-pay-cta" type="button">
+        Pay ${formatMoney(balanceDue)}
+      </button>
+    </div>
+  `;
+}
+
+function renderGuestCategoryTabs(categories, activeCategoryId) {
+  return `
+    <div class="category-pills" data-category-tabs="guest">
+      ${categories.map((category) => `
+        <button
+          class="category-pill ${activeCategoryId === category.id ? 'active' : ''}"
+          type="button"
+          data-category-jump="${category.id}">
+          ${escapeHtml(category.name)}
+        </button>
+      `).join('')}
+    </div>
+  `;
+}
+
+function renderBucketMenuSections(categories, cart) {
+  return categories.map((category) => `
+    <section id="guest-category-${category.id}" data-guest-category-section="${category.id}">
+      <div class="cat-header">
+        <div class="cat-header-name">${escapeHtml(category.name)}</div>
+        <div class="cat-header-line"></div>
+      </div>
+      <div class="menu-grid">
+        ${category.items.map((item) => {
+          const qty = cart[item.id] || 0;
+          const selected = qty > 0 ? 'selected' : '';
+          return `
+            <div class="menu-item ${selected}">
+              <div class="menu-item-name">${escapeHtml(item.name)}</div>
+              <div class="menu-item-desc">${escapeHtml(item.description || 'No description')}</div>
+              <div class="menu-item-foot">
+                <div class="menu-item-price">${formatMoney(menuItemTotal(item))}</div>
+                <div class="qty-ctrl">
+                  <button class="qty-btn" type="button" data-bucket-item data-item-id="${item.id}" data-delta="-1">-</button>
+                  <span class="qty-num ${qty > 0 ? 'active' : ''}">${qty}</span>
+                  <button class="qty-btn" type="button" data-bucket-item data-item-id="${item.id}" data-delta="1">+</button>
+                </div>
+              </div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    </section>
+  `).join('');
+}
+
+function renderGuestMenuTray({ venue, draftCart }) {
+  const categories = venue.menuCategories || [];
+  const activeCategoryId = uiState.guestMenuActiveCategory || categories[0]?.id || null;
+
+  return `
+    <section class="guest-tray-panel" data-guest-tray-panel="menu">
+      <div class="section-head">
+        <div class="section-title">Menu</div>
+        <div class="section-sub">Browse by category and build your next round. Nothing is sent until you confirm from Your Bucket.</div>
+      </div>
+      ${categories.length ? renderGuestCategoryTabs(categories, activeCategoryId) : ''}
+      ${renderBucketMenuSections(categories, draftCart)}
+    </section>
+  `;
+}
+
+function renderGuestBucketTray({ draftSummary }) {
+  return `
+    <section class="guest-tray-panel" data-guest-tray-panel="bucket">
+      <div class="section-head">
+        <div class="section-title">Your Bucket</div>
+        <div class="section-sub">This draft round is local to this device until you send it to the table.</div>
+      </div>
+      <div class="card">
+        ${draftSummary.lines.length ? draftSummary.lines.map((line) => `
+          <div class="order-line order-line-editable">
+            <div>
+              <div class="order-line-name">${escapeHtml(line.name)}</div>
+              <div class="order-line-qty">${line.quantity} x ${formatMoney(line.unitTotal)}</div>
+            </div>
+            <div class="bucket-line-actions">
+              <div class="qty-ctrl">
+                <button class="qty-btn" type="button" data-bucket-line-item data-item-id="${line.id}" data-delta="-1">-</button>
+                <span class="qty-num ${line.quantity > 0 ? 'active' : ''}">${line.quantity}</span>
+                <button class="qty-btn" type="button" data-bucket-line-item data-item-id="${line.id}" data-delta="1">+</button>
+              </div>
+              <button class="btn btn-ghost btn-sm" type="button" data-bucket-remove="${line.id}">Remove</button>
+              <div class="order-line-price">${formatMoney(line.total)}</div>
+            </div>
+          </div>
+        `).join('') : '<div class="empty-state">Add items from Menu to build your next round.</div>'}
+        <div class="order-total">
+          <div class="order-total-label">Round total</div>
+          <div class="order-total-val">${formatMoney(draftSummary.total)}</div>
+        </div>
+        <button class="btn btn-primary btn-full" id="submit-table-order" style="margin-top:16px;" ${draftSummary.lines.length ? '' : 'disabled'}>
+          ${uiState.tableOrderSubmitting ? 'Sending order...' : 'Send order to table'}
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+function renderGuestOrderedTray({ entry, bill }) {
+  const preOrders = entry.orders.filter((order) => order.type === 'PRE_ORDER');
+  const tableOrders = entry.orders.filter((order) => order.type === 'TABLE_ORDER');
+
+  return `
+    <section class="guest-tray-panel" data-guest-tray-panel="ordered">
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">Ordered so far</div>
+          <div class="card-sub">Locked pre-orders and every submitted table round appear here.</div>
+          ${preOrders.length ? preOrders.map((order) => renderGuestOrderBlock(order, 'Pre-order', 'Locked')).join('') : '<div class="empty-state">No pre-order items were locked before seating.</div>'}
+          ${tableOrders.length ? tableOrders.map((order) => renderGuestOrderBlock(order, 'Table order')).join('') : '<div class="empty-state" style="margin-top:14px;">No add-on table orders yet.</div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Bill</div>
+          <div class="card-sub">Live bill for this table session.</div>
+          ${bill ? `
+            <div class="order-line"><div class="order-line-name">Subtotal</div><div class="order-line-price">${formatMoney(bill.summary.subtotalExGst)}</div></div>
+            <div class="order-line"><div class="order-line-name">CGST</div><div class="order-line-price">${formatMoney(bill.summary.cgst)}</div></div>
+            <div class="order-line"><div class="order-line-name">SGST</div><div class="order-line-price">${formatMoney(bill.summary.sgst)}</div></div>
+            <div class="order-line"><div class="order-line-name">Deposit paid</div><div class="order-line-price">${formatMoney(bill.summary.depositPaid)}</div></div>
+            <div class="order-total">
+              <div class="order-total-label">Balance due</div>
+              <div class="order-total-val">${formatMoney(bill.summary.balanceDue)}</div>
+            </div>
+            ${bill.summary.balanceDue > 0 ? `
+              <button class="btn btn-primary btn-full" id="final-pay-cta" style="margin-top:16px;">${uiState.paymentSubmitting ? 'Preparing payment...' : 'Pay balance'}</button>
+            ` : ''}
+          ` : '<div class="empty-state">Bill data unavailable.</div>'}
+        </div>
+      </div>
+    </section>
+  `;
+}
+
+function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
+  const draftSummary = buildCartSummary(venue.menuCategories || [], BucketStore.getDraft(entry.id));
+  const bucketItemCount = getBucketItemCount(draftSummary);
+  return `
+    <div class="guest-seated-shell">
+      <div class="guest-shell-top card">
+        <div class="guest-shell-eyebrow">Table ${entry.table?.label ? escapeHtml(entry.table.label) : 'assigned'}</div>
+        <div class="guest-shell-title">Now seated</div>
+        <div class="guest-shell-sub">Add to your next round from Menu, review live totals in Ordered, and only pay the remaining balance when ready.</div>
+        ${entry.table?.section ? `<div class="guest-shell-meta">Section: ${escapeHtml(entry.table.section)}</div>` : ''}
+      </div>
+      <div id="guest-tray-host"></div>
+      <div id="guest-floating-pay-host">${renderFloatingPayButton(bill?.summary?.balanceDue || 0)}</div>
+      <div id="guest-bottom-nav-host">${renderGuestBottomNav(uiState.guestTray, bucketItemCount)}</div>
+    </div>
+  `;
+}
+
+function mountGuestCategoryTracking() {
+  const sections = [...document.querySelectorAll('[data-guest-category-section]')];
+  const buttons = [...document.querySelectorAll('[data-category-jump]')];
+  if (!sections.length || !buttons.length || !window.IntersectionObserver) {
+    return;
+  }
+
+  const observer = new IntersectionObserver((entries) => {
+    const visible = entries
+      .filter((entry) => entry.isIntersecting)
+      .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+
+    if (!visible) return;
+    const activeId = visible.target.getAttribute('data-guest-category-section');
+    uiState.guestMenuActiveCategory = activeId;
+    buttons.forEach((button) => {
+      button.classList.toggle('active', button.getAttribute('data-category-jump') === activeId);
+    });
+  }, {
+    root: null,
+    rootMargin: '-120px 0px -55% 0px',
+    threshold: [0.2, 0.45, 0.75],
+  });
+
+  sections.forEach((section) => observer.observe(section));
+}
+
+function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) {
+  const trayHost = document.getElementById('guest-tray-host');
+  const navHost = document.getElementById('guest-bottom-nav-host');
+  const payHost = document.getElementById('guest-floating-pay-host');
+  if (!trayHost || !navHost || !payHost) {
+    return;
+  }
+
+  const renderTrayShell = () => {
+    const draftCart = BucketStore.getDraft(entry.id);
+    const draftSummary = buildCartSummary(venue.menuCategories || [], draftCart);
+    const bucketCount = getBucketItemCount(draftSummary);
+
+    navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount);
+    payHost.innerHTML = renderFloatingPayButton(bill?.summary?.balanceDue || 0);
+
+    if (uiState.guestTray === 'menu') {
+      trayHost.innerHTML = renderGuestMenuTray({ venue, draftCart });
+
+      trayHost.querySelectorAll('[data-bucket-item]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const menuItemId = button.getAttribute('data-item-id');
+          const delta = Number(button.getAttribute('data-delta'));
+          BucketStore.updateItem(entry.id, menuItemId, delta);
+          renderTrayShell();
+        });
+      });
+
+      trayHost.querySelectorAll('[data-category-jump]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const categoryId = button.getAttribute('data-category-jump');
+          uiState.guestMenuActiveCategory = categoryId;
+          trayHost.querySelectorAll('[data-category-jump]').forEach((pill) => {
+            pill.classList.toggle('active', pill.getAttribute('data-category-jump') === categoryId);
+          });
+          const target = document.getElementById(`guest-category-${categoryId}`);
+          target?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        });
+      });
+
+      mountGuestCategoryTracking();
+    } else if (uiState.guestTray === 'bucket') {
+      trayHost.innerHTML = renderGuestBucketTray({ draftSummary });
+
+      trayHost.querySelectorAll('[data-bucket-line-item]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const menuItemId = button.getAttribute('data-item-id');
+          const delta = Number(button.getAttribute('data-delta'));
+          BucketStore.updateItem(entry.id, menuItemId, delta);
+          renderTrayShell();
+        });
+      });
+
+      trayHost.querySelectorAll('[data-bucket-remove]').forEach((button) => {
+        button.addEventListener('click', () => {
+          const menuItemId = button.getAttribute('data-bucket-remove');
+          const currentDraft = BucketStore.getDraft(entry.id);
+          const currentQty = Number(currentDraft[menuItemId] || 0);
+          if (currentQty > 0) {
+            BucketStore.updateItem(entry.id, menuItemId, currentQty * -1);
+          }
+          renderTrayShell();
+        });
+      });
+
+      trayHost.querySelector('#submit-table-order')?.addEventListener('click', async () => {
+        if (uiState.tableOrderSubmitting) return;
+
+        const activeGuestSession = getGuestSession(entry.id);
+        if (!activeGuestSession?.guestToken) {
+          setFlash('amber', 'Re-enter OTP to continue ordering.');
+          await renderGuestEntry(slug, entry.id);
+          return;
+        }
+
+        uiState.tableOrderSubmitting = true;
+        renderTrayShell();
+
+        try {
+          const order = await apiRequest('/orders/table/guest', {
+            method: 'POST',
+            auth: 'guest',
+            guestToken: activeGuestSession.guestToken,
+            body: {
+              queueEntryId: entry.id,
+              items: draftSummary.lines.map((line) => ({
+                menuItemId: line.id,
+                quantity: line.quantity,
+              })),
+            },
+          });
+
+          BucketStore.clearDraft(entry.id);
+          uiState.guestTray = 'ordered';
+          setFlash(
+            order.posSync?.status === 'manual_fallback' ? 'amber' : 'green',
+            order.posSync?.status === 'manual_fallback'
+              ? 'Order recorded. Venue is using manual kitchen sync right now.'
+              : 'Table order sent to the venue.'
+          );
+          await renderGuestEntry(slug, entry.id);
+        } catch (error) {
+          setFlash('red', error.message);
+          await renderGuestEntry(slug, entry.id);
+        } finally {
+          uiState.tableOrderSubmitting = false;
+        }
+      });
+    } else {
+      trayHost.innerHTML = renderGuestOrderedTray({ entry, bill });
+
+      document.getElementById('final-pay-cta')?.addEventListener('click', async () => {
+        if (uiState.paymentSubmitting) return;
+
+        uiState.paymentSubmitting = true;
+        renderTrayShell();
+
+        try {
+          await runHostedPayment({
+            title: 'Flock final bill',
+            initiatePath: '/payments/final/initiate',
+            initiateBody: {
+              venueId: venue.id,
+              queueEntryId: entry.id,
+            },
+            capturePath: '/payments/final/capture',
+            prefill: {
+              name: entry.guestName,
+              contact: entry.guestPhone,
+            },
+            auth: 'guest',
+            guestToken: guestSession.guestToken,
+          });
+          setFlash('green', 'Final payment captured.');
+          await renderGuestEntry(slug, entry.id);
+        } catch (error) {
+          setFlash('red', error.message);
+          await renderGuestEntry(slug, entry.id);
+        } finally {
+          uiState.paymentSubmitting = false;
+        }
+      });
+    }
+
+    navHost.querySelectorAll('[data-guest-tray]').forEach((button) => {
+      button.addEventListener('click', () => {
+        const nextTray = button.getAttribute('data-guest-tray');
+        if (nextTray === uiState.guestTray) return;
+        uiState.guestTray = nextTray;
+        renderTrayShell();
+      });
+    });
+
+    payHost.querySelector('#floating-final-pay-cta')?.addEventListener('click', async () => {
+      if (uiState.paymentSubmitting) return;
+
+      uiState.paymentSubmitting = true;
+      renderTrayShell();
+
+      try {
+        await runHostedPayment({
+          title: 'Flock final bill',
+          initiatePath: '/payments/final/initiate',
+          initiateBody: {
+            venueId: venue.id,
+            queueEntryId: entry.id,
+          },
+          capturePath: '/payments/final/capture',
+          prefill: {
+            name: entry.guestName,
+            contact: entry.guestPhone,
+          },
+          auth: 'guest',
+          guestToken: guestSession.guestToken,
+        });
+        setFlash('green', 'Final payment captured.');
+        await renderGuestEntry(slug, entry.id);
+      } catch (error) {
+        setFlash('red', error.message);
+        await renderGuestEntry(slug, entry.id);
+      } finally {
+        uiState.paymentSubmitting = false;
+      }
+    });
+  };
+
+  renderTrayShell();
+}
+
 function renderGuestStateHero(entry, guestSession) {
   const guestOtp = guestSession?.otp;
 
@@ -1917,7 +2347,7 @@ function renderTableMenuSections(categories, cart, isLocked = false) {
 
 function renderMenuSections(categories, cart) {
   return categories.map((category) => `
-    <section>
+    <section id="guest-category-${category.id}" data-guest-category-section="${category.id}">
       <div class="cat-header">
         <div class="cat-header-name">${escapeHtml(category.name)}</div>
         <div class="cat-header-line"></div>
@@ -2355,6 +2785,21 @@ function updateTableCart(entryId, menuItemId, delta) {
   }
   setTableCart(entryId, cart);
 }
+
+const BucketStore = {
+  getDraft(queueEntryId) {
+    return getTableCart(queueEntryId);
+  },
+  setDraft(queueEntryId, cart) {
+    setTableCart(queueEntryId, cart);
+  },
+  updateItem(queueEntryId, menuItemId, delta) {
+    updateTableCart(queueEntryId, menuItemId, delta);
+  },
+  clearDraft(queueEntryId) {
+    setTableCart(queueEntryId, {});
+  },
+};
 
 function isManagerRole(role) {
   return role === 'OWNER' || role === 'MANAGER';

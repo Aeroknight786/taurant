@@ -28,7 +28,12 @@ app.use(helmet({
       objectSrc: ["'none'"],
       scriptSrc: ["'self'", 'https://checkout.razorpay.com'],
       styleSrc: ["'self'", "'unsafe-inline'", 'https:'],
-      connectSrc: ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com'],
+      connectSrc: [
+        "'self'",
+        'https://api.razorpay.com',
+        'https://checkout.razorpay.com',
+        'https://lumberjack.razorpay.com',
+      ],
       frameSrc: ["'self'", 'https://api.razorpay.com', 'https://checkout.razorpay.com'],
     },
   },
