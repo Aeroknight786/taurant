@@ -7,10 +7,14 @@
 ## Environment tested
 
 - Primary runtime tested: live Render deployment `https://taurant.onrender.com`
-- Verified live deploy at start of session:
+- Initial live deploy at the start of this session:
   - service: `taurant`
   - deploy: `dep-d6jrcmklsarc73cu4nf0`
   - commit lineage: `4af4271`
+- After two same-day manual redeploys, the live frontend behavior was revalidated and matches the `6ddc5c1` hotfix set:
+  - pre-order route now renders correctly
+  - idle QR refetch churn is gone
+  - narrow-mobile share-tray link layout is fixed
 - Local runtime attempt:
   - `PORT=3001 npm run dev`
   - blocked in this shell by Prisma `P1001` because the Supabase pooler host was unreachable
@@ -35,16 +39,21 @@
 - Guest venue landing `/v/the-barrel-room-koramangala`
 - Guest queue join
 - Waiting-state guest route `/v/:slug/e/:entryId`
+- Same-device venue resume prompt (`Continue existing entry`)
+- OTP-based guest session recovery from a fresh browser context
 - Share tray (`Invite others`)
 - Public join route `/v/:slug/session/:joinToken`
 - Second-participant join using a valid live join token
 - Invalid join-token error handling
 - Waiting-state `Pre-order now` path
+- Direct reload of `/v/:slug/e/:entryId/preorder`
+- Pre-order mobile dock behavior after adding items
 - Staff login route `/staff/login`
 - Staff OTP send
 - Staff invalid OTP error handling
 - Admin login route `/admin/login`
 - Admin OTP send
+- Admin invalid OTP error handling
 - Mobile layout checks on Pixel and iPhone
 - Console and network inspection during guest/staff/admin flows
 
@@ -52,10 +61,11 @@
 
 ### Critical
 
-#### 1. Live pre-order route is broken on the current Render build
+#### 1. Historical: live pre-order route regression on the earlier Render build (resolved same day)
 
 - Status:
-  - Confirmed runtime issue on live Render (`4af4271`)
+  - Confirmed runtime issue on the earlier live Render build (`4af4271`)
+  - Resolved on the current live build after the second redeploy; production behavior now matches the `6ddc5c1` hotfix set
 - Reproduction:
   1. Join the queue on `/v/the-barrel-room-koramangala`
   2. From the waiting-state guest screen, trigger `Pre-order now`
@@ -65,6 +75,10 @@
 - Evidence:
   - No console errors were emitted
   - Network showed the `/preorder` document loading successfully, but the page continued polling the waiting-state queue screen
+  - After the second redeploy:
+    - `Pre-order now` opens the actual pre-order UI
+    - hard reload of `/v/:slug/e/:entryId/preorder` stays on the pre-order UI
+    - adding an item updates the mobile summary dock and enables `Pay deposit`
 - Likely cause (inferable):
   - A route/render regression on the live build, or a stale waiting-state refresh path is re-rendering `renderGuestEntry` after navigation and overwriting the pre-order screen
   - Relevant local code path to inspect:
@@ -74,24 +88,26 @@
     - [app.js](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/web/app.js#L667)
     - [app.js](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/web/app.js#L967)
 - Recommended fix:
-  - Fix this before pilot use; pre-order is part of the core guest flow
-  - Ensure route transitions clear all pending waiting-state timers before `history.pushState`
-  - Add an explicit regression check that `/v/:slug/e/:entryId/preorder` renders the pre-order shell after both SPA navigation and full reload
-  - Redeploy the latest local frontend only after this is revalidated against Render
+  - Already fixed and verified live
+  - Keep a regression check for both:
+    - SPA navigation from the waiting-state route
+    - full reload on the exact `/preorder` URL
 
 ### High
 
-#### 1. Waiting-state guest screens are repeatedly refetching the QR image in the background
+#### 1. Historical: waiting-state guest screens were repeatedly refetching the QR image in the background (resolved same day)
 
 - Status:
-  - Confirmed runtime issue on live Render via network inspection
+  - Confirmed runtime issue on the earlier live build via network inspection
+  - Resolved on the current live build after the first redeploy and still passing after the second redeploy
 - Reproduction:
   1. Join the queue and stay on the waiting-state guest route with `Invite others` available
   2. Leave the page idle for 15-30 seconds
   3. Watch network activity
   4. `GET /api/v1/share/qr?...` is requested repeatedly, alongside the normal queue polling
 - Evidence:
-  - Multiple repeated `200` responses for `/api/v1/share/qr` were observed while the share tray was closed
+  - Multiple repeated `200` responses for `/api/v1/share/qr` were observed while the share tray was closed on the earlier build
+  - On the current live build, idle waiting-state inspection no longer shows repeated `/api/v1/share/qr` fetches while the tray is closed
 - Likely cause (inferable):
   - `renderGuestEntry()` calls `preloadPartyInviteQr(...)` on every waiting/notified re-render whenever `showShareAction` is true
   - The same waiting-state screen also schedules a 5-second refresh loop
@@ -100,9 +116,8 @@
     - [app.js](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/web/app.js#L567)
     - [app.js](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/web/app.js#L667)
 - Recommended fix:
-  - Cache the QR preload by `joinToken` and skip re-requesting it if the token has not changed
-  - Only preload once per route session, or only when opening the share tray
-  - Keep the queue poll, but decouple it from QR image fetches
+  - Already fixed and verified live
+  - Keep QR preload cached by invite identity and keep this decoupled from the waiting-state queue poll loop
 
 ### Medium
 
@@ -151,27 +166,32 @@
 
 ### Low
 
-#### 1. Share tray link preview truncates heavily on narrow mobile widths
+#### 1. Historical: share tray link preview truncated heavily on narrow mobile widths (resolved same day)
 
 - Status:
-  - Confirmed runtime issue, but non-blocking
+  - Confirmed runtime issue on the earlier live build, but non-blocking
+  - Resolved on the current live build after the first redeploy
 - Reproduction:
   1. Open the waiting-state guest screen on a narrow mobile viewport
   2. Open `Invite others`
   3. Inspect the link preview row above the QR
 - Evidence:
-  - The link is technically available and copy works, but the preview becomes heavily truncated on narrow widths
+  - On the earlier build, the link was technically available and copy worked, but the preview became heavily truncated on narrow widths
+  - On the current live build, the link preview wraps and the `Copy` action stacks cleanly below it on iPhone width
 - Likely cause (inferable):
   - The current share row prioritizes keeping the `Copy` button inline, which compresses the preview string aggressively
 - Recommended fix:
-  - Consider a two-line wrapped preview, stacked layout on small widths, or a shorter display label such as “Session link”
+  - Already fixed and verified live
+  - Keep the stacked mobile layout as the default for narrow widths
 
 ## Not Testable In Current Session
 
 - The local repo build could not be browser-tested because Prisma could not reach Supabase from this shell
-- Staff/admin dashboard internals were not reachable because the live OTP send flow does not expose the code in-browser, and no out-of-band OTP delivery was available in this session
-- The seated guest tray shell (`Menu / Your Bucket / Ordered`) could not be validated at runtime because seating requires staff authentication
-- Shared seated-bucket sync, participant count in seated mode, bucket clearing after send, and final-payment CTA behavior were therefore not runtime-validated in this session
+- Staff/admin dashboard internals were not reachable because the live OTP send flow does not expose a usable code in-browser, and no out-of-band OTP delivery was available in this session
+- Seating could not be completed because staff verification could not be completed in-session
+- The seated guest tray shell (`Menu / Your Bucket / Ordered`) therefore remains blocked at runtime in this session
+- Shared seated-bucket sync, participant count in seated mode, bucket clearing after send, and final-payment CTA behavior remain blocked because seating was not reached
+- No live payment capture was attempted because payment mode was not re-verified as mock-safe in this session
 - The `20260303093000_v2_feedback_hardening` migration remains unverified here, so schema-dependent issues beyond what the live app exposed could not be confirmed
 
 ## What Is Working Well
@@ -183,12 +203,28 @@
   - share sheet opens
   - QR renders correctly through `/api/v1/share/qr`
   - a second participant can join successfully through the public join link
+- Same-device guest persistence works:
+  - revisiting `/v/the-barrel-room-koramangala` shows `Active queue entry found for this device`
+  - `Continue existing entry` links back to the active guest route
+- Missing-session recovery works:
+  - opening a guest route in a fresh isolated browser context shows the OTP restore gate
+  - entering the valid seating OTP restores the waiting-state guest session successfully
+- The production pre-order flow now works end to end for the non-payment portion:
+  - `Pre-order now` opens the pre-order UI
+  - direct reload of the `/preorder` URL remains stable
+  - item quantities update immediately
+  - the mobile summary dock updates immediately
+  - `Pay deposit` enables correctly once the cart is non-empty
 - Invalid join links fail with a clear inline message:
   - “This invite is invalid or expired.”
 - Staff and admin OTP send flows respond successfully and show visible success banners
 - Invalid staff OTP entry fails with clear inline feedback:
   - “Incorrect OTP”
-- No console errors were observed during the tested guest, staff, admin, and join-link flows
+- Invalid admin OTP entry fails with clear inline feedback:
+  - “OTP expired or not found”
+- No app-thrown console errors were observed during the tested guest, staff, admin, and join-link flows
+- Expected browser-level console noise does appear on deliberately invalid auth attempts:
+  - the browser logs the `400` response as a failed resource load, but the UI remains stable and shows inline error copy
 - The overall mobile visual language is strong:
   - consistent dark surface treatment
   - legible contrast
@@ -197,20 +233,20 @@
 
 ## Next Implementation Priorities
 
-1. Fix the live pre-order route regression and re-test both SPA navigation and direct URL entry on Render.
-2. Stop unnecessary QR prefetch churn on waiting/notified guest pages.
-3. Redeploy the latest local frontend after fixing the pre-order regression, then rerun the same mobile pass.
-4. Complete the typography cleanup so the live font system matches the intended Fraunces + DM Sans branding consistently.
-5. Create a practical test path for staff/admin verification in audit sessions:
+1. Secure a valid OTP path so the authenticated staff/admin surfaces can be exercised during the next production audit.
+2. Create a practical test path for staff/admin verification in audit sessions:
    - a non-production dev hook, or
    - a controlled staging OTP path, or
    - confirmed out-of-band OTP delivery during test windows.
-6. After staff access is available, run the missing runtime coverage:
+3. After staff access is available, run the missing runtime coverage:
    - seating
    - seated tray shell
    - shared bucket sync across two clients
    - final payment CTA behavior
    - staff/admin dashboards
+4. Complete the typography cleanup so the live font system matches the intended Fraunces + DM Sans branding consistently.
+5. Replace dev-local helper copy on `/staff/login` and `/admin/login` with production-safe operator copy.
+6. Reconfirm payment mode before any future production audit that exercises deposit or final payment capture.
 
 ## Follow-up Local Fix Applied After This Audit
 
@@ -252,3 +288,45 @@
 - Current state after this second fix:
   - the follow-up fix is local only
   - it still needs to be pushed and manually redeployed before production can be re-tested again
+
+## Second Redeploy Verification (same day)
+
+- A second focused production re-test was run after deploying commit `6ddc5c1`.
+- Result:
+  - the guest pre-order flow is now working in production
+- Verified in production:
+  1. Join a fresh queue entry
+  2. Tap `Pre-order now` from the waiting-state guest screen
+  3. The actual pre-order UI renders successfully
+  4. Hard-refresh the exact `/v/:slug/e/:entryId/preorder` URL
+  5. The pre-order UI still renders correctly after reload
+- Additional mobile UX confirmation:
+  - on the live pre-order screen, adding an item updates the mobile summary dock immediately
+  - the `Pay deposit` CTA becomes enabled as expected once the cart contains items
+- Current production status after the second redeploy:
+  - pre-order route regression: resolved
+  - QR prefetch churn while idle: resolved
+  - share-tray narrow-width link layout: resolved
+
+## Full Flow Continuation (same day)
+
+- Additional production checks were completed after the guest hotfixes were live.
+- Same-device persistence is confirmed:
+  - reloading an active guest route keeps the guest on the waiting-state screen
+  - reopening the venue route in the same browser context shows `Active queue entry found for this device`
+  - `Continue existing entry` links back to the active guest entry
+- Missing-session recovery is confirmed:
+  - opening the guest route in a fresh isolated browser context shows the OTP restore screen
+  - entering the valid seating OTP restores the guest session and returns the browser to the waiting-state guest route
+- Narrow-width iPhone pre-order rendering remains stable on the live build:
+  - the pre-order copy, category pills, item controls, summary dock, and `Pay deposit` CTA all remain visible in the tested `390 x 844` viewport
+- Admin invalid-auth handling is confirmed:
+  - `POST /api/v1/auth/staff/otp/verify` returns `400` for an invalid admin OTP attempt on the shared OTP rail
+  - the live UI surfaces `OTP expired or not found`
+- The remaining blocked coverage is now explicit:
+  - authenticated staff dashboard
+  - seating flow
+  - seated guest tray shell
+  - shared seated-bucket sync
+  - final payment entry points
+  - authenticated admin dashboard

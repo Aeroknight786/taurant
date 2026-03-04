@@ -600,7 +600,7 @@ However, the important remaining gap is not “no deployment.” It is:
 - local code can move ahead of the last manual Render deploy
 - production parity must be checked by commit, not assumed
 - the currently verified live commit is:
-  - `4af4271`
+  - `6ddc5c1`
 
 Need:
 
@@ -952,9 +952,15 @@ The current live Render deployment was rechecked and is:
 - service: `taurant`
 - URL: `https://taurant.onrender.com`
 - live deploy: `dep-d6jrcmklsarc73cu4nf0`
-- live commit: `4af4271`
+- live commit at the start of the session: `4af4271`
+- current live behavior after the same-day manual redeploys matches the `6ddc5c1` hotfix set
 
-Because commit `4af4271` is newer than `96f996c` (`Add shared session UX and QR proxy preload`), production should include the visible share/join layer that was introduced in that commit line.
+Because the currently validated live behavior matches `6ddc5c1`, production includes:
+
+- the visible share/join layer introduced in the earlier `96f996c` line
+- the guest pre-order routing fix
+- the idle QR-preload cache fix
+- the narrow-mobile share-tray layout fix
 
 ## Still uncertain
 
@@ -1084,3 +1090,136 @@ Current deployment note:
 
 - the first UX hotfix deploy is partially verified live
 - the second pre-order fix is still local only and requires one more push + manual Render deploy before production can be re-tested
+
+## Second redeploy verification status (same-day final check)
+
+After the second manual Render deploy (commit `6ddc5c1`), the previously failing guest pre-order route was re-tested in production.
+
+Confirmed live:
+
+- `Pre-order now` from the waiting-state guest route opens the actual pre-order UI
+- hard-reloading `/v/:slug/e/:entryId/preorder` preserves the pre-order UI
+- adding items on the pre-order page updates the mobile summary dock immediately
+- the `Pay deposit` CTA enables correctly once the cart is non-empty
+
+This means the originally reported guest pre-order regression is now resolved on the live Render deployment.
+
+Combined production result after the two redeploys:
+
+- pre-order route regression: resolved
+- QR prefetch churn while idle on waiting-state guest pages: resolved
+- narrow-mobile share-tray link wrapping/layout: resolved
+
+Still pending runtime coverage:
+
+- authenticated staff dashboard flows
+- authenticated admin dashboard flows
+- seating -> seated tray shell -> shared bucket -> final payment end-to-end
+
+## Full non-destructive production flow continuation (2026-03-04)
+
+Additional live checks were completed after the guest hotfixes were confirmed in production.
+
+Confirmed live:
+
+- same-device guest persistence:
+  - reloading an active guest route preserves the waiting-state guest view
+  - revisiting the venue route in the same browser context shows `Active queue entry found for this device`
+  - `Continue existing entry` returns to the active queue entry
+- missing-session recovery:
+  - opening an active guest route in a fresh isolated browser context shows the OTP restore gate
+  - entering the valid seating OTP restores the guest session successfully
+- narrow-width pre-order stability:
+  - the live pre-order screen remains usable at `390 x 844`
+  - the copy, category pills, quantity controls, mobile summary dock, and `Pay deposit` CTA all remain visible
+- invalid admin OTP handling:
+  - the shared OTP verify endpoint returns `400` for an invalid code
+  - the UI shows `OTP expired or not found`
+
+Still blocked in this session:
+
+- authenticated staff dashboard runtime coverage
+- seating flow runtime coverage
+- seated tray shell runtime coverage
+- shared seated-bucket sync runtime coverage
+- final payment entry-point runtime coverage
+- authenticated admin dashboard runtime coverage
+
+Reason:
+
+- no valid OTP was available in-session for staff/admin login completion
+- payment mode was not re-verified as safe for live capture, so no payment capture was attempted
+
+## Local-only auth test hook added (2026-03-04)
+
+To restore a practical authenticated test path without depending on direct DB reads, a new explicit test-only env flag now exists:
+
+- `EXPOSE_MOCK_OTP_IN_API=false` by default
+
+Current behavior:
+
+- when both:
+  - `USE_MOCK_NOTIFICATIONS=true`
+  - `EXPOSE_MOCK_OTP_IN_API=true`
+- the auth OTP send endpoints include the generated OTP in the response body as `mockOtp`
+
+Covered endpoints:
+
+- `POST /api/v1/auth/guest/otp/send`
+- `POST /api/v1/auth/staff/otp/send`
+
+When the flag is left off:
+
+- responses remain unchanged
+- only `message: "OTP sent"` is returned
+
+This is intentionally an explicit opt-in test hook, not a default production behavior.
+
+Validation completed locally:
+
+- `node --check src/controllers/auth.controller.ts`
+- `npm run build`
+
+Deployment note:
+
+- this hook is not live until Render is manually redeployed
+- even after redeploy, it will stay inactive unless `EXPOSE_MOCK_OTP_IN_API=true` is set in the environment
+
+## Local-only internal verification route added (2026-03-04)
+
+To work around the current environment limitation where:
+
+- Supabase MCP is not usable for direct queries in this session
+- direct DB connectivity from this shell is failing
+
+a guarded read-only verification route now exists in code:
+
+- `GET /api/v1/internal/test-state`
+
+Behavior:
+
+- requires `x-flock-onboarding-token`
+- returns `404` unless `EXPOSE_MOCK_OTP_IN_API=true`
+- accepts:
+  - `phone` (required)
+  - `purpose` (`STAFF_LOGIN` default, or `GUEST_QUEUE`)
+  - `migration` (optional)
+
+Returned data:
+
+- latest unverified OTP row for the requested phone/purpose
+- latest 10 rows from `_prisma_migrations`
+- if `migration` is supplied:
+  - whether that migration name was matched
+  - whether it has a non-null `finished_at`
+
+This is intended only as a temporary operational verification path for pilot testing.
+
+Validation completed locally:
+
+- `npm run build`
+
+Deployment note:
+
+- this route is not live until the next manual Render deploy
+- it remains disabled unless `EXPOSE_MOCK_OTP_IN_API=true`
