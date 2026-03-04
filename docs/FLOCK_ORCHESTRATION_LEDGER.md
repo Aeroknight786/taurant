@@ -1,6 +1,6 @@
 # Flock Orchestration Ledger
 
-Last updated: 2026-03-03
+Last updated: 2026-03-04
 Status: active
 
 ## Purpose
@@ -51,20 +51,23 @@ without disrupting restaurant floor operations.
 
 ## Current Build Focus
 
-Phase 6A has started: backend groundwork for true multi-user table sessions.
+Phase 6C is the active feature track in code: visible multi-user share/join on top of shared table sessions.
 
 Current implementation target:
 
-- add `PartySession`, `PartyParticipant`, and `PartyBucketItem`
-- create one party session automatically for each queue entry
-- issue guest tokens that can carry participant and party-session identity
-- add backend APIs for:
-  - join-by-token
-  - session summary
-  - participant list
-  - shared bucket reads/writes
+- backend already defines:
+  - `PartySession`
+  - `PartyParticipant`
+  - `PartyBucketItem`
+- queue join now creates and/or ensures one party session automatically per queue entry
+- guest tokens can carry participant and party-session identity
+- shared-bucket frontend cutover exists in the guest tray shell
+- a visible share/join layer now exists in the guest UI:
+  - `Invite others`
+  - share tray
+  - public join route `/v/:slug/session/:joinToken`
 
-This phase is intentionally backend-first. The current guest tray shell remains local-bucket-based until the shared session APIs are stable.
+The current open work is no longer “backend-first only.” The remaining work is validation, deployment parity, and refinement of the user-facing multi-user flow.
 
 ## Locked Decisions
 
@@ -109,6 +112,16 @@ This phase is intentionally backend-first. The current guest tray shell remains 
 - The full seated happy path is now validated for both branches:
   - no-preorder seated guest branch
   - prepaid seated guest branch
+- Multi-user foundations now exist in code:
+  - party sessions
+  - party participants
+  - shared bucket rows
+- The guest tray shell is no longer local-bucket-only:
+  - the seated shell now uses backend `party-sessions` bucket state
+- A visible guest invite/share flow now exists in code and should be live on production commit lineage:
+  - `Invite others`
+  - share tray with link copy and QR
+  - public join route `/v/:slug/session/:joinToken`
 
 ## Database
 
@@ -131,8 +144,13 @@ This phase is intentionally backend-first. The current guest tray shell remains 
 
 ## Deployment
 
-- No stable public deployment yet
-- Current proven runtime is local only
+- Stable public deployment exists:
+  - `https://taurant.onrender.com`
+- Render deploys remain manual (`autoDeploy: no`)
+- Latest verified live Render commit is:
+  - `4af4271`
+- Production parity caveat:
+  - later local changes after `4af4271` are not guaranteed live until manually redeployed
 
 ## Completed Work
 
@@ -258,6 +276,37 @@ Any future substantive work on Flock should:
 ### 2026-03-02
 
 - Established `C/Flock` as the active project.
+
+### 2026-03-04
+
+- Re-baselined the live deployment status against Render.
+- Verified the current live Render deploy for `https://taurant.onrender.com` is:
+  - deploy `dep-d6jrcmklsarc73cu4nf0`
+  - commit `4af4271` (`Add test data reset script`)
+- Because `4af4271` is newer than `96f996c` (`Add shared session UX and QR proxy preload`), the currently live deployment should include:
+  - the visible `Invite others` guest action
+  - the public join route layer added in `web/app.js`
+  - the shared-bucket frontend cutover that shipped with the party-session UX bundle
+  - the app-side QR proxy route under `/api/v1/share/qr`
+- Documentation drift identified and corrected:
+  - previous docs still described Phase 6B as “no visible invite/share UI yet”
+  - that is now stale relative to the code and the currently live Render commit lineage
+- Remaining deployment uncertainty:
+  - local changes made after `4af4271` are **not** guaranteed live until manually redeployed on Render
+  - this includes later local-only UX refinements unless explicitly confirmed by a newer live deploy
+- Remaining database uncertainty:
+  - the `20260303093000_v2_feedback_hardening` migration is still not re-verified from this session
+  - Supabase MCP is currently unavailable in this session (`Auth required`)
+  - direct DB verification from this shell is blocked by network reachability to the Supabase pooler
+- Verified database fact still held from prior work:
+  - the Phase 6A `party_sessions_phase6a` schema was applied directly to the database earlier so `PartySession`, `PartyParticipant`, and `PartyBucketItem` exist for current multi-user work
+- Current recommended operating assumption:
+  - treat production as live on `4af4271`
+  - treat the share/join layer as deployed
+  - treat later local UI polish after `4af4271` as local-only until the next manual Render deploy
+
+### 2026-03-02 (continued historical log)
+
 - Added the new frontend based on `flock v2.html`.
 - Hardened queue, seating, payment, and webhook flows.
 - Connected Supabase and applied schema.
@@ -440,3 +489,53 @@ Any future substantive work on Flock should:
 - Added a developer-only local test helper:
   - `window.__flockJoinPartySession(joinToken, displayName)`
   so a second tab can join the same active party session before we build visible invite/share UI.
+
+### 2026-03-04 (UX audit pass)
+
+- Completed a browser-driven Phase 6 UX/runtime audit against the live Render deployment using Chrome DevTools MCP.
+- Runtime used for the audit:
+  - `https://taurant.onrender.com`
+  - live deploy `dep-d6jrcmklsarc73cu4nf0`
+  - live commit lineage `4af4271`
+- Device coverage completed:
+  - Pixel-sized mobile viewport
+  - iPhone-sized mobile viewport
+- Confirmed working on the live app:
+  - guest queue join
+  - waiting-state rendering
+  - visible `Invite others`
+  - share tray with QR via `/api/v1/share/qr`
+  - second-participant join via `/v/:slug/session/:joinToken`
+  - invalid join-token inline error
+  - staff/admin OTP send
+  - staff invalid-OTP error handling
+- Confirmed live runtime issue:
+  - `Pre-order now` currently routes to `/v/:slug/e/:entryId/preorder` but still renders the waiting-state screen on the current live build
+  - this is the primary UX blocker found in the live guest flow
+- Confirmed live performance issue:
+  - waiting-state guest pages repeatedly refetch the QR proxy endpoint while idle because the QR preload runs on repeated guest rerenders
+- Additional likely design consistency issue from code inspection:
+  - the branding migration is still incomplete because `web/styles.css` retains `Instrument Serif` references while `web/index.html` imports only `Fraunces` and `DM Sans`
+- Test blockers recorded:
+  - local repo runtime could not be started for browser testing because Prisma could not reach the Supabase pooler from this shell
+  - staff/admin verification could not be completed in-session because no real OTP was available through the live UI
+  - seated tray shell and shared seated-bucket sync remain unverified at runtime until staff seating can be exercised
+- Wrote the structured audit to:
+  - `docs/UX_TEST_AUDIT_PHASE6.md`
+
+### 2026-03-04 (Phase 6 UX hotfix patch, local only)
+
+- Applied a minimal frontend hotfix in the local repo to address the highest-confidence issues found in the UX audit:
+  - `web/app.js`
+    - `navigate(path)` now clears pending refresh timers before route transitions
+    - `/v/:slug/e/:entryId/preorder` route matching is now explicit (`segments.length === 5`) and is checked before the base guest entry route
+    - QR preload is now cached by invite URL so waiting/notified guest rerenders do not repeatedly refetch `/api/v1/share/qr`
+  - `web/styles.css`
+    - the share tray now stacks the link row on narrow widths and allows the invite-link preview to wrap instead of hard truncating
+- Validation completed after the patch:
+  - `node --check web/app.js`
+  - `npm run build`
+- Current deployment state after this patch:
+  - the fix is local only
+  - Render has not been manually redeployed yet
+  - the live app still needs a post-deploy browser re-test to confirm the pre-order regression is actually resolved in production
