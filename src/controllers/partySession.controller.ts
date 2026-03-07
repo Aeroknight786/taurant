@@ -37,6 +37,15 @@ export async function getPartySessionSummary(req: AuthenticatedRequest, res: Res
   }
 }
 
+export async function getPartySessionRealtime(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const data = await PartySessionService.getPartySessionRealtime(req.params.sessionId, req.guest!);
+    ok(res, data);
+  } catch (error) {
+    next(error);
+  }
+}
+
 export async function getPartyParticipants(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const data = await PartySessionService.getPartyParticipants(req.params.sessionId, req.guest!);

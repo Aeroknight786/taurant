@@ -33,7 +33,9 @@ export async function verifyGuestOtp(phone: string, code: string, venueId: strin
   });
 
   if (!record) throw new AppError('OTP expired or not found', 400, 'OTP_INVALID');
-  if (record.attempts >= MAX_OTP_ATTEMPTS) throw new AppError('Too many attempts', 429, 'OTP_TOO_MANY_ATTEMPTS');
+  if (record.attempts >= MAX_OTP_ATTEMPTS) {
+    throw new AppError('Too many incorrect attempts. Request a fresh OTP and retry', 429, 'OTP_TOO_MANY_ATTEMPTS');
+  }
 
   if (record.code !== code) {
     await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });
@@ -69,7 +71,9 @@ export async function verifyStaffOtp(phone: string, code: string, venueId: strin
   });
 
   if (!record || !record.staff) throw new AppError('OTP expired or not found', 400, 'OTP_INVALID');
-  if (record.attempts >= MAX_OTP_ATTEMPTS) throw new AppError('Too many attempts', 429);
+  if (record.attempts >= MAX_OTP_ATTEMPTS) {
+    throw new AppError('Too many incorrect attempts. Request a fresh OTP and retry', 429, 'OTP_TOO_MANY_ATTEMPTS');
+  }
 
   if (record.code !== code) {
     await prisma.otpCode.update({ where: { id: record.id }, data: { attempts: { increment: 1 } } });

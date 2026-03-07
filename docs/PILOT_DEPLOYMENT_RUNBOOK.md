@@ -1,6 +1,6 @@
 # Flock Pilot Deployment Runbook
 
-Last updated: 2026-03-02
+Last updated: 2026-03-07
 
 ## Goal
 
@@ -77,6 +77,12 @@ These must be set before first successful production boot:
 - `NODE_ENV=production`
 - `API_VERSION=v1`
 - `APP_ALLOWED_ORIGINS=https://<render-host>` (comma-separated if you later add a custom domain)
+- `RATE_LIMIT_STRATEGY_VERSION=2`
+- `RATE_LIMIT_OPERATOR_READ_MAX=800`
+- `RATE_LIMIT_OPERATOR_WRITE_MAX=240`
+- `RATE_LIMIT_GUEST_POLL_MAX=1500`
+- `RATE_LIMIT_OTP_SEND_MAX=8`
+- `RATE_LIMIT_OTP_VERIFY_MAX=12`
 
 Current implementation requirement (temporary divergence from PM source truth):
 
@@ -259,6 +265,43 @@ Before you hand this to a restaurant:
 7. Turn on real notifications only after template delivery succeeds.
 8. Keep `USE_MOCK_POS=true` for the first pilot unless UrbanPiper is fully ready.
 9. Remove transient test queue/order/payment records.
+10. Confirm reliability hardening is active:
+- `/api/v1/health` includes `rateLimitStrategyVersion: 2`
+- operator routes stay usable while multiple seated guest contexts are active
+- staff/admin dashboards do not hard-crash when one dependency soft-fails
+
+## Reliability Verification (Phase 6 Hardening)
+
+Before canary or full rollout, verify:
+
+1. `GET /api/v1/party-sessions/:sessionId/realtime` returns:
+- `session`
+- `participants`
+- `bucket`
+- `billSummary` (nullable)
+2. Guest seated runtime uses realtime polling with backoff:
+- no tight 3s retry loop on repeated `429/5xx`
+- tab-hidden state reduces poll pressure
+3. Staff dashboard resilience:
+- if `/tables` or `/tables/events/recent` is limited, shell still renders with warning banner
+4. Admin dashboard resilience:
+- if `/menu/admin/current` is limited, shell still renders with warning banner
+5. OTP behavior:
+- verify/sent limits enforced
+- user-facing copy clearly distinguishes throttle vs incorrect OTP
+
+## Alert Conditions (Ops)
+
+Track and alert on:
+
+- spike in `http_429_total` for buckets:
+  - `operator_read`
+  - `operator_write`
+- spike in `http_5xx_total` on:
+  - `/api/v1/party-sessions/:id/realtime`
+  - `/api/v1/party-sessions/:id/bucket`
+  - `/api/v1/party-sessions/:id/participants`
+- repeated dashboard dependency warnings observed during canary window
 
 ## First On-Site Pilot Mode
 

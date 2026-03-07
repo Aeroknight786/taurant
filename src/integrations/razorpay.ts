@@ -66,7 +66,11 @@ export function verifyWebhookSignature(body: string, signature: string): boolean
     .createHmac('sha256', env.RAZORPAY_WEBHOOK_SECRET)
     .update(body)
     .digest('hex');
-  return expected === signature;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(signature, 'hex'));
+  } catch {
+    return false;
+  }
 }
 
 /** Verify payment signature after client-side capture */
@@ -81,7 +85,11 @@ export function verifyPaymentSignature(params: {
     .createHmac('sha256', env.RAZORPAY_KEY_SECRET)
     .update(message)
     .digest('hex');
-  return expected === params.signature;
+  try {
+    return crypto.timingSafeEqual(Buffer.from(expected, 'hex'), Buffer.from(params.signature, 'hex'));
+  } catch {
+    return false;
+  }
 }
 
 /** Fetch payment details directly from Razorpay for server-side verification fallback */

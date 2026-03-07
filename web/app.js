@@ -208,6 +208,15 @@ function renderPage(html, title = 'Flock') {
   });
 }
 
+const _actionGuards = new Set();
+function guardedAction(key, fn) {
+  return async function (...args) {
+    if (_actionGuards.has(key)) return;
+    _actionGuards.add(key);
+    try { await fn.apply(this, args); } finally { _actionGuards.delete(key); }
+  };
+}
+
 function handleFatalError(error) {
   const message = describeClientError(error);
   renderPage(renderShell({
@@ -772,6 +781,7 @@ async function renderGuestSessionJoin(slug, joinToken) {
         venueId: payload.venueId,
         guestToken: payload.guestToken,
         otp: existingSession?.otp || '',
+        isPartyJoiner: true,
         partySessionId: payload.sessionId,
         participantId: payload.participant?.id || null,
       });
@@ -1511,36 +1521,32 @@ async function renderStaffDashboard() {
   });
 
   document.querySelectorAll('[data-cancel-entry]').forEach((button) => {
-    button.addEventListener('click', async () => {
+    const entryId = button.getAttribute('data-cancel-entry');
+    button.addEventListener('click', guardedAction(`cancel-${entryId}`, async () => {
       try {
-        await apiRequest(`/queue/${button.getAttribute('data-cancel-entry')}`, {
-          method: 'DELETE',
-          auth: true,
-        });
+        await apiRequest(`/queue/${entryId}`, { method: 'DELETE', auth: true });
         setFlash('green', 'Queue entry cancelled.');
         await renderStaffDashboard();
       } catch (error) {
         setFlash('red', error.message);
         await renderStaffDashboard();
       }
-    });
+    }));
   });
 
   document.querySelectorAll('[data-table-status]').forEach((button) => {
-    button.addEventListener('click', async () => {
+    const tableId = button.getAttribute('data-table-id');
+    const status = button.getAttribute('data-table-status');
+    button.addEventListener('click', guardedAction(`table-${tableId}-${status}`, async () => {
       try {
-        await apiRequest(`/tables/${button.getAttribute('data-table-id')}/status`, {
-          method: 'PATCH',
-          auth: true,
-          body: { status: button.getAttribute('data-table-status') },
-        });
+        await apiRequest(`/tables/${tableId}/status`, { method: 'PATCH', auth: true, body: { status } });
         setFlash('green', 'Table status updated.');
         await renderStaffDashboard();
       } catch (error) {
         setFlash('red', error.message);
         await renderStaffDashboard();
       }
-    });
+    }));
   });
 
   document.getElementById('seat-form')?.addEventListener('submit', async (event) => {
@@ -1621,27 +1627,22 @@ async function renderStaffDashboard() {
     uiState.staffSeat.success = '';
   });
 
-  document.getElementById('toggle-queue')?.addEventListener('click', async () => {
+  document.getElementById('toggle-queue')?.addEventListener('click', guardedAction('toggle-queue', async () => {
     try {
-      await apiRequest('/venues/config', {
-        method: 'PATCH',
-        auth: true,
-        body: { isQueueOpen: !venue.isQueueOpen },
-      });
+      await apiRequest('/venues/config', { method: 'PATCH', auth: true, body: { isQueueOpen: !venue.isQueueOpen } });
       setFlash('green', `Queue ${venue.isQueueOpen ? 'closed' : 'opened'}.`);
       await renderStaffDashboard();
     } catch (error) {
       setFlash('red', error.message);
       await renderStaffDashboard();
     }
-  });
+  }));
 
-  document.getElementById('manager-config-form')?.addEventListener('submit', async (event) => {
+  document.getElementById('manager-config-form')?.addEventListener('submit', guardedAction('config-form', async (event) => {
     event.preventDefault();
     try {
       await apiRequest('/venues/config', {
-        method: 'PATCH',
-        auth: true,
+        method: 'PATCH', auth: true,
         body: {
           depositPercent: Number(document.getElementById('manager-deposit').value),
           tableReadyWindowMin: Number(document.getElementById('manager-window').value),
@@ -1653,14 +1654,13 @@ async function renderStaffDashboard() {
       setFlash('red', error.message);
       await renderStaffDashboard();
     }
-  });
+  }));
 
-  document.getElementById('offline-settle-form')?.addEventListener('submit', async (event) => {
+  document.getElementById('offline-settle-form')?.addEventListener('submit', guardedAction('offline-settle', async (event) => {
     event.preventDefault();
     try {
       await apiRequest('/payments/final/settle-offline', {
-        method: 'POST',
-        auth: true,
+        method: 'POST', auth: true,
         body: { queueEntryId: document.getElementById('offline-queue-entry').value.trim() },
       });
       setFlash('green', 'Final bill marked as settled offline.');
@@ -1669,17 +1669,14 @@ async function renderStaffDashboard() {
       setFlash('red', error.message);
       await renderStaffDashboard();
     }
-  });
+  }));
 
-  document.getElementById('refund-form')?.addEventListener('submit', async (event) => {
+  document.getElementById('refund-form')?.addEventListener('submit', guardedAction('refund-form', async (event) => {
     event.preventDefault();
     try {
       await apiRequest('/payments/refund', {
-        method: 'POST',
-        auth: true,
-        body: {
-          paymentId: document.getElementById('refund-payment-id').value.trim(),
-        },
+        method: 'POST', auth: true,
+        body: { paymentId: document.getElementById('refund-payment-id').value.trim() },
       });
       setFlash('green', 'Refund request recorded.');
       await renderStaffDashboard();
@@ -1687,9 +1684,9 @@ async function renderStaffDashboard() {
       setFlash('red', error.message);
       await renderStaffDashboard();
     }
-  });
+  }));
 
-  if (currentTab !== 'seat' && !uiState.staffSeat.isSubmitting) {
+  if (currentTab !== 'seat' && currentTab !== 'manager' && !uiState.staffSeat.isSubmitting) {
     const refreshMs = dependencyWarnings.length
       ? 8000
       : currentTab === 'seated'
@@ -1802,43 +1799,38 @@ async function renderAdminDashboard() {
   });
 
   document.querySelectorAll('[data-admin-toggle]').forEach((button) => {
-    button.addEventListener('click', async () => {
+    const itemId = button.getAttribute('data-admin-toggle');
+    button.addEventListener('click', guardedAction(`toggle-${itemId}`, async () => {
       try {
-        await apiRequest(`/menu/items/${button.getAttribute('data-admin-toggle')}/toggle`, {
-          method: 'PATCH',
-          auth: true,
-        });
+        await apiRequest(`/menu/items/${itemId}/toggle`, { method: 'PATCH', auth: true });
         setFlash('green', 'Menu item availability updated.');
         await renderAdminDashboard();
       } catch (error) {
         setFlash('red', error.message);
         await renderAdminDashboard();
       }
-    });
+    }));
   });
 
   document.querySelectorAll('[data-admin-remove]').forEach((button) => {
-    button.addEventListener('click', async () => {
+    const itemId = button.getAttribute('data-admin-remove');
+    button.addEventListener('click', guardedAction(`remove-${itemId}`, async () => {
       try {
-        await apiRequest(`/menu/items/${button.getAttribute('data-admin-remove')}`, {
-          method: 'DELETE',
-          auth: true,
-        });
+        await apiRequest(`/menu/items/${itemId}`, { method: 'DELETE', auth: true });
         setFlash('green', 'Menu item removed.');
         await renderAdminDashboard();
       } catch (error) {
         setFlash('red', error.message);
         await renderAdminDashboard();
       }
-    });
+    }));
   });
 
-  document.getElementById('admin-category-form')?.addEventListener('submit', async (event) => {
+  document.getElementById('admin-category-form')?.addEventListener('submit', guardedAction('create-category', async (event) => {
     event.preventDefault();
     try {
       await apiRequest('/menu/categories', {
-        method: 'POST',
-        auth: true,
+        method: 'POST', auth: true,
         body: {
           name: document.getElementById('admin-category-name').value.trim(),
           sortOrder: Number(document.getElementById('admin-category-sort').value || 0),
@@ -1850,14 +1842,13 @@ async function renderAdminDashboard() {
       setFlash('red', error.message);
       await renderAdminDashboard();
     }
-  });
+  }));
 
-  document.getElementById('admin-item-form')?.addEventListener('submit', async (event) => {
+  document.getElementById('admin-item-form')?.addEventListener('submit', guardedAction('create-item', async (event) => {
     event.preventDefault();
     try {
       await apiRequest('/menu/items', {
-        method: 'POST',
-        auth: true,
+        method: 'POST', auth: true,
         body: {
           categoryId: document.getElementById('admin-item-category').value,
           name: document.getElementById('admin-item-name').value.trim(),
@@ -1875,7 +1866,7 @@ async function renderAdminDashboard() {
       setFlash('red', error.message);
       await renderAdminDashboard();
     }
-  });
+  }));
 }
 
 function renderQueueTab(waiting, tables) {
@@ -2391,6 +2382,7 @@ function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
       </div>
       <div id="guest-tray-host"></div>
       <div id="guest-floating-pay-host">${renderFloatingPayButton(bill?.summary?.balanceDue || 0)}</div>
+      <div id="guest-bucket-toast-host"></div>
       <div id="guest-bottom-nav-host">${renderGuestBottomNav(uiState.guestTray, bucketItemCount)}</div>
     </div>
   `;
@@ -2427,6 +2419,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
   const trayHost = document.getElementById('guest-tray-host');
   const navHost = document.getElementById('guest-bottom-nav-host');
   const payHost = document.getElementById('guest-floating-pay-host');
+  const toastHost = document.getElementById('guest-bucket-toast-host');
   if (!trayHost || !navHost || !payHost) {
     return;
   }
@@ -2465,7 +2458,23 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
     };
 
     navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount);
-    payHost.innerHTML = renderFloatingPayButton(liveBill?.summary?.balanceDue || 0);
+
+    const showFloatingPay = uiState.guestTray !== 'ordered';
+    payHost.innerHTML = showFloatingPay ? renderFloatingPayButton(liveBill?.summary?.balanceDue || 0) : '';
+
+    if (toastHost) {
+      const showToast = uiState.guestTray === 'menu' && bucketCount > 0;
+      toastHost.innerHTML = showToast ? `
+        <div class="bucket-toast">
+          <span class="bucket-toast-text">${bucketCount} item${bucketCount === 1 ? '' : 's'} in your bucket</span>
+          <button class="btn btn-primary btn-sm bucket-toast-btn" type="button" data-toast-go-bucket>View Bucket</button>
+        </div>
+      ` : '';
+      toastHost.querySelector('[data-toast-go-bucket]')?.addEventListener('click', () => {
+        uiState.guestTray = 'bucket';
+        renderTrayShell();
+      });
+    }
 
     if (uiState.guestTray === 'menu') {
       trayHost.innerHTML = renderGuestMenuTray({ venue: liveVenue, draftCart });
@@ -2656,13 +2665,10 @@ function renderGuestStateHero(entry, guestSession) {
         <div class="queue-pos-label">Queue position</div>
         <div class="queue-pos-sub">We will notify you when a matching table clears.</div>
       </div>
-      <div class="wait-estimate">
-        <div class="wait-icon">ETA</div>
-        <div class="wait-text">
-          <div class="wait-label">Estimated wait</div>
-          <div class="wait-value">${entry.estimatedWaitMin || 0}<span>mins</span></div>
-        </div>
-        <div class="progress-ring" style="--pct:${pct}%"></div>
+      <div class="wait-strip">
+        <span class="wait-strip-ring" style="--pct:${pct}%"></span>
+        <span class="wait-strip-val">${entry.estimatedWaitMin || 0}</span>
+        <span class="wait-strip-unit">min wait</span>
       </div>
       <div class="otp-block">
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'Active'}</div>
@@ -2715,6 +2721,8 @@ function renderGuestStateHero(entry, guestSession) {
 }
 
 function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary }) {
+  const isPartyJoiner = Boolean(guestSession?.isPartyJoiner);
+
   if (entry.status === 'WAITING') {
     return `
       <div class="grid grid-2">
@@ -2722,11 +2730,12 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
           <div class="card-title">Waiting state</div>
           <div class="card-sub">Phone number is the guest identity. The seating OTP is already active.</div>
           <div class="alert alert-blue"><div>WhatsApp and SMS notifications are sent through the backend notification layer.</div></div>
-          ${entry.depositPaid > 0 ? `
-            <div class="alert alert-green"><div>Deposit captured: ${formatMoney(entry.depositPaid)}. Pre-order total: ${formatMoney(entry.preOrderTotal || 0)}.</div></div>
-          ` : `
-            <button class="btn btn-primary" id="preorder-cta">Pre-order now</button>
-          `}
+          ${entry.depositPaid > 0
+            ? isPartyJoiner
+              ? `<div class="alert alert-blue"><div>The host has already placed a pre-order (${formatMoney(entry.preOrderTotal || 0)}). You can add more items once seated.</div></div>`
+              : `<div class="alert alert-green"><div>Deposit captured: ${formatMoney(entry.depositPaid)}. Pre-order total: ${formatMoney(entry.preOrderTotal || 0)}.</div></div>`
+            : `<button class="btn btn-primary" id="preorder-cta">Pre-order now</button>`
+          }
         </div>
         <div class="card">
           <div class="card-title">Venue</div>
@@ -2745,7 +2754,12 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
           <div class="card-title">Table ready</div>
           <div class="card-sub">${entry.table?.label ? `Reserved: ${escapeHtml(entry.table.label)}` : 'A matching table was reserved for you.'}</div>
           <div class="alert alert-green"><div>Arrive within the venue window and show the OTP to staff to avoid reassignment.</div></div>
-          ${entry.depositPaid > 0 ? `<div class="muted">Deposit secured: ${formatMoney(entry.depositPaid)}</div>` : '<button class="btn btn-primary" id="preorder-cta">Add a pre-order before seating</button>'}
+          ${entry.depositPaid > 0
+            ? isPartyJoiner
+              ? `<div class="alert alert-blue"><div>The host locked a pre-order before seating. You'll be able to add items once seated.</div></div>`
+              : `<div class="muted">Deposit secured: ${formatMoney(entry.depositPaid)}</div>`
+            : '<button class="btn btn-primary" id="preorder-cta">Add a pre-order before seating</button>'
+          }
         </div>
         <div class="card">
           <div class="card-title">Guest snapshot</div>
@@ -3642,37 +3656,7 @@ function startPartySessionPolling() {
   }, uiState.partyPoll.baseDelayMs);
 }
 
-window.__flockJoinPartySession = async function joinPartySessionForLocalTest(joinToken, displayName = '') {
-  const payload = await apiRequest(`/party-sessions/join/${encodeURIComponent(joinToken)}`, {
-    method: 'POST',
-    body: displayName ? { displayName } : {},
-  });
-
-  const currentView = uiState.activeGuestView;
-  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-  const routeContext = currentView || (
-    segments[0] === 'v' && segments[2] === 'e' && segments[3]
-      ? { slug: segments[1], entryId: segments[3] }
-      : null
-  );
-
-  if (routeContext && payload.queueEntryId === routeContext.entryId) {
-    const existingSession = getGuestSession(payload.queueEntryId);
-    setGuestEntryId(routeContext.slug, payload.queueEntryId);
-    setGuestSession({
-      entryId: payload.queueEntryId,
-      venueSlug: routeContext.slug,
-      venueId: payload.venueId,
-      guestToken: payload.guestToken,
-      otp: existingSession?.otp || '',
-      partySessionId: payload.sessionId,
-      participantId: payload.participant?.id || null,
-    });
-    await renderGuestEntry(routeContext.slug, payload.queueEntryId);
-  }
-
-  return payload;
-};
+// Debug helper removed for production safety (was window.__flockJoinPartySession)
 
 function isManagerRole(role) {
   return role === 'OWNER' || role === 'MANAGER';

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import * as Table from '../controllers/table.controller';
 import { requireAuth, requireRole } from '../middleware/auth';
+import { operatorReadLimiter, operatorWriteLimiter } from '../middleware/rateLimiter';
 const router = Router();
-router.get  ('/',                  requireAuth, Table.getTables);
-router.post ('/',                  requireAuth, requireRole('OWNER','MANAGER'), Table.createTable);
-router.get  ('/events/recent',     requireAuth, Table.getRecentTableEvents);
-router.patch('/:tableId/status',   requireAuth, Table.updateTableStatus);
-router.get  ('/:tableId/events',   requireAuth, Table.getTableEvents);
+router.get  ('/',                  requireAuth, operatorReadLimiter, Table.getTables);
+router.post ('/',                  requireAuth, requireRole('OWNER','MANAGER'), operatorWriteLimiter, Table.createTable);
+router.get  ('/events/recent',     requireAuth, operatorReadLimiter, Table.getRecentTableEvents);
+router.patch('/:tableId/status',   requireAuth, operatorWriteLimiter, Table.updateTableStatus);
+router.get  ('/:tableId/events',   requireAuth, operatorReadLimiter, Table.getTableEvents);
 export default router;

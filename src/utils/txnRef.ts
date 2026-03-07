@@ -18,8 +18,9 @@ export function generateTxnRef(): string {
 export function generateInvoiceNumber(sequence: number): string {
   const now = new Date();
   const year = now.getFullYear();
-  const nextYear = (year + 1).toString().slice(2);
-  const fy = `${year}-${nextYear}`;
+  const month = now.getMonth(); // 0-indexed; April = 3
+  const fyStart = month < 3 ? year - 1 : year;
+  const fy = `${fyStart}-${(fyStart + 1).toString().slice(2)}`;
   const seq = sequence.toString().padStart(5, '0');
   return `FLOCK/${fy}/${seq}`;
 }

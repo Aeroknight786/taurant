@@ -563,62 +563,47 @@ button, input, select {
   margin-top: 10px;
 }
 
-.wait-estimate {
+.wait-strip {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 10px;
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r);
-  padding: 16px 20px;
+  padding: 10px 16px;
   margin-bottom: 14px;
 }
 
-.wait-icon {
-  font-size: 22px;
-}
-
-.wait-text {
-  flex: 1;
-}
-
-.wait-label {
-  font-size: 11px;
-  letter-spacing: 0.15em;
-  text-transform: uppercase;
-  color: var(--cream-dimmer);
-  margin-bottom: 4px;
-}
-
-.wait-value {
-  font-family: "Fraunces", serif;
-  font-size: 26px;
-  font-weight: 300;
-  font-style: italic;
-}
-
-.wait-value span {
-  font-family: "DM Sans", sans-serif;
-  font-size: 14px;
-  margin-left: 4px;
-  color: var(--cream-dim);
-}
-
-.progress-ring {
-  width: 48px;
-  height: 48px;
+.wait-strip-ring {
+  width: 28px;
+  height: 28px;
   border-radius: 50%;
   background: conic-gradient(var(--amber) var(--pct, 50%), var(--border2) 0);
   display: grid;
   place-items: center;
+  flex-shrink: 0;
 }
 
-.progress-ring::before {
+.wait-strip-ring::before {
   content: "";
-  width: 40px;
-  height: 40px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  background: var(--surface);
+  background: var(--surface2);
+}
+
+.wait-strip-val {
+  font-family: "Instrument Serif", serif;
+  font-size: 22px;
+  font-weight: 400;
+  font-style: italic;
+  color: var(--cream);
+}
+
+.wait-strip-unit {
+  font-size: 13px;
+  color: var(--cream-dim);
+  letter-spacing: 0.05em;
 }
 
 .otp-block {
@@ -873,6 +858,38 @@ button, input, select {
   box-shadow: 0 16px 32px rgba(232, 168, 48, 0.16);
 }
 
+.bucket-toast {
+  position: fixed;
+  left: max(12px, env(safe-area-inset-left));
+  right: max(12px, env(safe-area-inset-right));
+  bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+  z-index: 88;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background: var(--surface3);
+  border: 1px solid var(--amber-border);
+  border-radius: var(--r);
+  animation: toastSlideUp 0.25s ease-out;
+}
+
+.bucket-toast-text {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--cream);
+}
+
+.bucket-toast-btn {
+  flex-shrink: 0;
+}
+
+@keyframes toastSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
 .join-session-card {
   max-width: 560px;
 }
@@ -1052,7 +1069,7 @@ button, input, select {
 .menu-grid {
   display: grid;
   gap: 10px;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
 }
 
 .menu-item {
@@ -1060,6 +1077,7 @@ button, input, select {
   border: 1px solid var(--border);
   border-radius: var(--r);
   padding: 16px;
+  min-width: 0;
 }
 
 .menu-item.selected {
@@ -1091,7 +1109,8 @@ button, input, select {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+  overflow: hidden;
 }
 
 .menu-item-price {
@@ -1104,17 +1123,24 @@ button, input, select {
 .qty-ctrl {
   display: flex;
   align-items: center;
-  gap: 9px;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .qty-btn {
-  width: 28px;
-  height: 28px;
+  min-width: 36px;
+  min-height: 36px;
+  width: 36px;
+  height: 36px;
   border-radius: var(--r-sm);
   border: 1px solid var(--border2);
   background: var(--surface2);
   color: var(--cream-dim);
   cursor: pointer;
+  flex-shrink: 0;
+  display: grid;
+  place-items: center;
+  font-size: 16px;
 }
 
 .qty-num.active {
@@ -1507,11 +1533,6 @@ button, input, select {
     font-size: 9px;
   }
 
-  .wait-estimate {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
   .q-row {
     flex-direction: column;
     align-items: flex-start;
@@ -1559,5 +1580,11 @@ button, input, select {
 
   .floating-pay-btn {
     min-height: 50px;
+  }
+}
+
+@media (max-width: 400px) {
+  .menu-grid {
+    grid-template-columns: 1fr;
   }
 }

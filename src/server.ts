@@ -7,6 +7,13 @@ import { closeRedis, connectRedis } from './config/redis';
 import { startTmsPoller } from './workers/tmsPoller';
 
 async function bootstrap(): Promise<void> {
+  if (env.isProd() && (env.USE_MOCK_PAYMENTS || env.USE_MOCK_NOTIFICATIONS || env.USE_MOCK_GST)) {
+    throw new Error(
+      'FATAL: Mock mode flags (USE_MOCK_PAYMENTS, USE_MOCK_NOTIFICATIONS, USE_MOCK_GST) must be explicitly set to false in production. ' +
+      'Refusing to start with mock integrations enabled.',
+    );
+  }
+
   // Connect to infrastructure
   await connectDatabase();
   await connectRedis();

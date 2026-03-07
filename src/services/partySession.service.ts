@@ -4,6 +4,7 @@ import { AppError } from '../middleware/errorHandler';
 import { GuestAuthContext } from '../types';
 import { signGuestToken } from '../utils/jwt';
 import { PartyParticipantRole, PartySessionStatus } from '@prisma/client';
+import * as OrderService from './order.service';
 
 function generateJoinToken(): string {
   return randomBytes(8).toString('hex');
@@ -256,6 +257,22 @@ export async function getPartySessionSummary(sessionId: string, guest: GuestAuth
       isPayer: participant.isPayer,
     },
     participantCount,
+  };
+}
+
+export async function getPartySessionRealtime(sessionId: string, guest: GuestAuthContext) {
+  const [summary, participants, bucket, bill] = await Promise.all([
+    getPartySessionSummary(sessionId, guest),
+    getPartyParticipants(sessionId, guest),
+    getPartyBucket(sessionId, guest),
+    OrderService.getGuestBill(guest.queueEntryId).catch(() => null),
+  ]);
+
+  return {
+    session: summary,
+    participants,
+    bucket,
+    billSummary: bill?.summary || null,
   };
 }
 

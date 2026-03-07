@@ -1,6 +1,6 @@
 # Flock Implementation State
 
-Last updated: 2026-03-04
+Last updated: 2026-03-07
 
 ## Purpose
 
@@ -278,6 +278,87 @@ Current deployment stance:
 ## 12. Phase 1 PM-Faithful Seated Ordering Added
 
 The main PM product-flow gap is now implemented in code.
+
+## 2026-03-07 Production Runtime Validation Snapshot
+
+Production runtime was tested via Chrome DevTools MCP (mobile-first) with:
+
+- Pixel viewport `412x915`
+- iPhone viewport `390x844`
+
+Detailed evidence is captured in:
+
+- `docs/UX_TEST_AUDIT_PHASE6.md`
+
+### Confirmed Working In Production
+
+- Guest join and waiting flow is working.
+- Public invite/share/join is working.
+- Pre-order route is stable and reload-safe.
+- Seated tray shell is live and usable:
+  - Menu
+  - Your Bucket
+  - Ordered
+- Shared bucket sync across two participants is working.
+- Send-order clears shared bucket and ordered/bill state updates.
+- Final payment initiation CTA opens Razorpay checkout flow.
+
+### Confirmed Production Regressions / Instabilities
+
+- Staff dashboard route currently hard-fails when `/api/v1/tables` returns `429`.
+- Admin dashboard route currently hard-fails when `/api/v1/menu/admin/current` returns `429`.
+- Party-session polling endpoints intermittently return `502`, creating noisy transient errors in seated guest runtime.
+
+### Scope Marked Blocked In This Pass
+
+- Full staff tab workflow validation (Queue, Seated, Tables, Seat OTP, Manager) is blocked by the dashboard hard-fail.
+- Admin menu CRUD runtime validation is blocked by the dashboard hard-fail.
+
+### Verification Status Markers
+
+- Verified: mobile guest flows, seated shared-session flow, payment initiation entry.
+- Inferred: deployment parity by manual redeploy history only.
+- Unverified due environment limitations:
+  - exact migration application status for latest DB migrations from this session.
+
+## 2026-03-07 Reliability Hardening (Implemented Locally)
+
+## Backend
+
+- Added route-class, actor-aware rate limiting with env-tunable buckets:
+  - `RATE_LIMIT_STRATEGY_VERSION`
+  - `RATE_LIMIT_OPERATOR_READ_MAX`
+  - `RATE_LIMIT_OPERATOR_WRITE_MAX`
+  - `RATE_LIMIT_GUEST_POLL_MAX`
+  - `RATE_LIMIT_OTP_SEND_MAX`
+  - `RATE_LIMIT_OTP_VERIFY_MAX`
+- Kept rollback-safe legacy limiter path for v1 strategy.
+- Added consolidated realtime party-session API:
+  - `GET /api/v1/party-sessions/:sessionId/realtime`
+  - includes `session`, `participants`, `bucket`, `billSummary`.
+- Applied new limiter middleware to high-risk routes:
+  - auth OTP send/verify
+  - queue live/seat/cancel/session-restore
+  - tables read/write
+  - menu admin read/write
+  - party-session join/read/write
+  - order guest/staff mutations + bill read
+  - payment endpoints
+- Added lightweight reliability counters exposed through health payload.
+
+## Frontend
+
+- Staff and admin dashboard bootstraps now use dependency-level soft-failure handling.
+- Dashboard shell remains available when one dependency is throttled/unavailable.
+- Added transient dependency warning banners instead of route-fatal crashes.
+- Migrated seated shared-session polling to `/party-sessions/:id/realtime`.
+- Added adaptive poll backoff/jitter and tab-hidden polling slowdown.
+- Reduced stale closure risk in seated tray rendering by using live active guest view state for re-renders.
+
+## Verification
+
+- `node --check web/app.js` passed.
+- `npm run build` passed.
 
 Backend additions:
 

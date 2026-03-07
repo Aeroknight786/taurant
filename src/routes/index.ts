@@ -11,6 +11,7 @@ import { prisma } from '../config/database';
 import { isRedisReady } from '../config/redis';
 import { env } from '../config/env';
 import { requireOnboardingToken } from '../middleware/onboarding';
+import { getCountersSnapshot } from '../config/metrics';
 
 const router = Router();
 
@@ -24,6 +25,8 @@ router.get('/health', async (_req, res) => {
       service: 'flock-api',
       db: 'ok',
       redis,
+      rateLimitStrategyVersion: env.RATE_LIMIT_STRATEGY_VERSION,
+      metrics: getCountersSnapshot(),
       ts: new Date().toISOString(),
     });
   } catch {
@@ -32,6 +35,8 @@ router.get('/health', async (_req, res) => {
       service: 'flock-api',
       db: 'down',
       redis,
+      rateLimitStrategyVersion: env.RATE_LIMIT_STRATEGY_VERSION,
+      metrics: getCountersSnapshot(),
       ts: new Date().toISOString(),
     });
   }

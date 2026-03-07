@@ -8,7 +8,8 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import router from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
-import { apiLimiter, otpLimiter, publicVenueReadLimiter } from './middleware/rateLimiter';
+import { apiSafetyLimiter, legacyApiLimiter, publicVenueReadLimiter } from './middleware/rateLimiter';
+import { incrementCounter } from './config/metrics';
 
 const app = express();
 
@@ -46,9 +47,31 @@ app.use(cors({
 // ── Rate limiting ─────────────────────────────────────────────────
 if (env.isProd()) {
   app.use(`/api/${env.API_VERSION}`, publicVenueReadLimiter);
-  app.use(`/api/${env.API_VERSION}`, apiLimiter);
-  app.use(`/api/${env.API_VERSION}/auth/staff/otp/send`, otpLimiter);
+  if (env.RATE_LIMIT_STRATEGY_VERSION >= 2) {
+    app.use(`/api/${env.API_VERSION}`, apiSafetyLimiter);
+  } else {
+    app.use(`/api/${env.API_VERSION}`, legacyApiLimiter);
+  }
 }
+
+// ── Lightweight HTTP counters ─────────────────────────────────────
+app.use((req, res, next) => {
+  res.on('finish', () => {
+    if (res.statusCode >= 500) {
+      incrementCounter('http_5xx_total', {
+        route: req.path,
+        method: req.method,
+        status: String(res.statusCode),
+      });
+      logger.warn('http_5xx_observed', {
+        route: req.path,
+        method: req.method,
+        statusCode: res.statusCode,
+      });
+    }
+  });
+  next();
+});
 
 // ── Parsing ───────────────────────────────────────────────────────
 // Raw body for Razorpay webhook signature verification

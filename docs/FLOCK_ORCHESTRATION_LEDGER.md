@@ -1,6 +1,6 @@
 # Flock Orchestration Ledger
 
-Last updated: 2026-03-04
+Last updated: 2026-03-07
 Status: active
 
 ## Purpose
@@ -147,10 +147,94 @@ The current open work is no longer “backend-first only.” The remaining work 
 - Stable public deployment exists:
   - `https://taurant.onrender.com`
 - Render deploys remain manual (`autoDeploy: no`)
-- Latest verified live Render commit is:
-  - `6ddc5c1`
+- Latest verified live Render commit:
+  - unverified from this session (no direct release-id -> git-sha assertion from app response)
 - Production parity caveat:
-  - later local changes after `6ddc5c1` are not guaranteed live until manually redeployed
+  - deployment identity should be treated as inferred from manual deploy history unless explicitly verified by release metadata
+
+## 2026-03-07 Production DevTools Audit Writeback
+
+Runtime validation was executed against `https://taurant.onrender.com` with Chrome DevTools MCP in both mobile viewports:
+
+- Pixel `412x915`
+- iPhone `390x844`
+
+Primary evidence file:
+
+- `docs/UX_TEST_AUDIT_PHASE6.md`
+
+### Confirmed Runtime Outcomes
+
+- Guest acquisition flow works:
+  - `/`
+  - `/v/:slug`
+  - queue join
+  - waiting state persistence
+- Public share/join works:
+  - `Invite others`
+  - `/v/:slug/session/:joinToken`
+  - second participant join success
+- Pre-order route regression is fixed in production:
+  - `/v/:slug/e/:entryId/preorder` renders correctly
+  - route survives hard reload
+- Seated tray shell works in production:
+  - `Menu`
+  - `Your Bucket`
+  - `Ordered`
+- Shared bucket sync works cross-context and clear-after-send works.
+- Final payment initiation path works:
+  - payment CTA opens Razorpay checkout (initiation only; no capture completed).
+
+### Confirmed Runtime Issues
+
+- Critical:
+  - staff dashboard hard-fails on `429` from `/api/v1/tables` and becomes unusable.
+  - admin dashboard hard-fails on `429` from `/api/v1/menu/admin/current` and becomes unusable.
+- High:
+  - seated polling endpoints intermittently return `502`:
+    - `/api/v1/party-sessions/:id/bucket`
+    - `/api/v1/party-sessions/:id/participants`
+  - share tray QR can transiently stall in `Loading QR…` during those failure windows.
+
+### Explicit Uncertainty
+
+- Database migration state remains unverified from this session due environment limitations previously observed for Supabase MCP resource exposure and direct DB connectivity paths.
+
+## 2026-03-07 Reliability Hardening Implementation Writeback
+
+Implemented in code (local repo):
+
+- Rate limiting architecture is now partitioned by route class with actor-aware keys:
+  - `public_venue_read`
+  - `guest_poll_read`
+  - `guest_mutation`
+  - `operator_read`
+  - `operator_write`
+  - `otp_send`
+  - `otp_verify`
+  - `party_join`
+  - `payment`
+- Strategy switch is env-gated:
+  - `RATE_LIMIT_STRATEGY_VERSION=2` enables new partitioned model
+  - v1 fallback remains available via `legacy_api`
+- Operator route limiters are now route-level (staff/admin critical APIs no longer depend on shared global bucket).
+- New consolidated realtime endpoint added:
+  - `GET /api/v1/party-sessions/:sessionId/realtime`
+  - response includes: `session`, `participants`, `bucket`, `billSummary`
+- Frontend seated polling migrated to realtime endpoint with adaptive backoff + jitter and tab-hidden slowdown.
+- Staff/admin dashboards now soft-fail dependency fetches:
+  - route shell remains renderable
+  - dependency warning banner shown instead of hard crash
+- OTP throttling split into send/verify limiters with clearer throttle messaging.
+- Lightweight reliability counters added and exposed in `/api/v1/health`:
+  - `http_429_total`
+  - `http_5xx_total`
+  - health now includes `rateLimitStrategyVersion` and `metrics` snapshot.
+
+Validation run (local):
+
+- `node --check web/app.js` passed.
+- `npm run build` passed.
 
 ## Completed Work
 

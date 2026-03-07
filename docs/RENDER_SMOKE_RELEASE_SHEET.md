@@ -1,6 +1,6 @@
 # Render Smoke Release Sheet
 
-Last updated: 2026-03-02
+Last updated: 2026-03-07
 
 Use this for the **first hosted Render deployment** only.
 
@@ -27,6 +27,12 @@ Set these values in the Render dashboard for the smoke release.
 - `PORT=10000`
 - `API_VERSION=v1`
 - `APP_ALLOWED_ORIGINS=https://<your-render-service>.onrender.com`
+- `RATE_LIMIT_STRATEGY_VERSION=2`
+- `RATE_LIMIT_OPERATOR_READ_MAX=800`
+- `RATE_LIMIT_OPERATOR_WRITE_MAX=240`
+- `RATE_LIMIT_GUEST_POLL_MAX=1500`
+- `RATE_LIMIT_OTP_SEND_MAX=8`
+- `RATE_LIMIT_OTP_VERIFY_MAX=12`
 
 ### Database
 
@@ -88,7 +94,8 @@ The app now skips Redis cleanly and runs in degraded mode.
 After deploy succeeds:
 
 1. Open `https://<host>/api/v1/health`
-   - expect: JSON status `ok`
+   - expect: JSON status `ok` or `degraded` with `db: "ok"`
+   - expect: `rateLimitStrategyVersion: 2`
 2. Open `https://<host>/v/the-barrel-room-koramangala`
    - expect: guest landing loads
 3. Open `https://<host>/staff/login`
