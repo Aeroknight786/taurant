@@ -663,3 +663,27 @@ Any future substantive work on Flock should:
 - Current deployment state:
   - this route is local only until the next push + manual Render deploy
   - it will remain inactive on Render unless `EXPOSE_MOCK_OTP_IN_API=true` is set
+
+### 2026-03-07 (OTP restore + authenticated production flow continuation)
+
+- Pushed commit `da19650`:
+  - `Add guarded OTP and DB verification hooks`
+- Production config update:
+  - enabled `EXPOSE_MOCK_OTP_IN_API=true`
+  - this exposed `mockOtp` in auth OTP send responses while notifications are in mock mode
+- Deploy incident encountered and fixed:
+  - first deploy failed due invalid production `DATABASE_URL` credentials (`P1000`)
+  - corrected `DATABASE_URL` in Render to the proper Supabase pooler URI format
+  - follow-up deploy reached `live`
+- Authenticated production flow verification unblocked and completed via live API:
+  - staff OTP verify succeeded for manager phone
+  - fresh queue entry was seated by staff
+  - guest state confirmed `SEATED`
+  - second participant joined session successfully
+  - shared bucket sync verified in both directions (host -> member and member -> host)
+  - seated guest table order succeeded
+  - bill endpoint reflected expected totals
+  - final payment initiation succeeded (capture intentionally skipped)
+  - admin menu read + reversible availability toggle succeeded
+- Remaining uncertainty explicitly retained:
+  - migration `20260303093000_v2_feedback_hardening` remains unverified from this session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from this shell

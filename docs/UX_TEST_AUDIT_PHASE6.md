@@ -330,3 +330,40 @@
   - shared seated-bucket sync
   - final payment entry points
   - authenticated admin dashboard
+
+## Authenticated Continuation (2026-03-07)
+
+- Browser-driven auth remained constrained by Chrome MCP instability in this session, so authenticated continuation was completed through live API verification against `https://taurant.onrender.com`.
+- A test-only OTP restore path is now live:
+  - `POST /api/v1/auth/staff/otp/send` includes `mockOtp` because:
+    - `USE_MOCK_NOTIFICATIONS=true`
+    - `EXPOSE_MOCK_OTP_IN_API=true`
+- Verified runtime checks completed:
+  1. staff OTP verify succeeded for `9000000002` and returned a manager token
+  2. fresh queue join created entry `9a3b7c31-62e0-4415-bd26-7b6e1deb0e1e` with OTP `835816`
+  3. staff seating succeeded on `table_t1`
+  4. guest-auth queue read confirmed `SEATED` status and active `partySession`
+  5. second participant joined via live session token
+  6. shared bucket host write was visible to second participant
+  7. shared bucket second-participant write was visible to host
+  8. seated guest table order succeeded and bill reflected expected totals
+  9. final payment initiation succeeded (no capture executed)
+  10. admin menu load endpoint succeeded and a reversible availability toggle passed
+- Temporary operational issue observed and resolved during this continuation:
+  - a Render deploy failed due invalid production `DATABASE_URL` credentials (P1000)
+  - credentials were corrected and service recovered on a subsequent deploy
+- No live payment capture was performed.
+
+## Verification Classification (Current Session)
+
+- Verified:
+  - live commit behavior includes OTP test-hook and guarded internal verification route
+  - staff-auth seating path
+  - shared-bucket two-participant sync path (API-level)
+  - seated ordering and bill calculation
+  - final payment initiation entry point (no capture)
+  - admin menu read + reversible toggle mutation
+- Inferred:
+  - seated tray UI behavior across tabs after seating is likely consistent with API state transitions that now pass, but was not re-walked end-to-end in browser UI in this continuation window
+- Unverified due environment limitations:
+  - migration `20260303093000_v2_feedback_hardening` remains unverified from this session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from this shell

@@ -1223,3 +1223,40 @@ Deployment note:
 
 - this route is not live until the next manual Render deploy
 - it remains disabled unless `EXPOSE_MOCK_OTP_IN_API=true`
+
+## Production unblocking update (2026-03-07)
+
+The OTP test hook and guarded verification route are now deployed on production commit `da19650`.
+
+Production behavior now includes:
+
+- `POST /api/v1/auth/guest/otp/send` can return `mockOtp`
+- `POST /api/v1/auth/staff/otp/send` can return `mockOtp`
+- `GET /api/v1/internal/test-state` exists (onboarding-token gated and only active when `EXPOSE_MOCK_OTP_IN_API=true`)
+
+Operational note:
+
+- an initial deploy failed because production `DATABASE_URL` credentials were invalid (`P1000`)
+- production recovered after correcting `DATABASE_URL` and redeploying
+
+Authenticated runtime coverage completed after this unblocking:
+
+- staff OTP verify
+- staff seating
+- seated guest state read
+- second participant join
+- shared bucket two-way sync
+- seated guest table order
+- bill read
+- final payment initiation (no capture)
+- admin menu read
+- reversible admin item toggle
+
+Evidence classification for DB/migration state in this session:
+
+- verified:
+  - runtime DB connectivity from production app itself (Prisma connected in service logs)
+- inferred:
+  - Phase 6 data model paths used by seated+shared-session flow are operational because their live endpoints returned valid data
+- unverified:
+  - migration `20260303093000_v2_feedback_hardening` remains unverified from this session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from this shell
