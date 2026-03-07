@@ -44,6 +44,13 @@ const uiState = {
   shareLink: '',
   sessionJoinSubmitting: false,
   sessionJoinError: '',
+  partyPoll: {
+    baseDelayMs: 3000,
+    maxDelayMs: 30000,
+    nextDelayMs: 3000,
+    failureCount: 0,
+    lastError: '',
+  },
   partyBucket: {
     cart: {},
     serverItems: [],
@@ -86,6 +93,12 @@ document.addEventListener('click', (event) => {
 window.addEventListener('popstate', () => {
   uiState.nextRenderResetScroll = true;
   renderRoute().catch(handleFatalError);
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (!document.hidden && uiState.activePartySessionId && !uiState.partyPollerId) {
+    startPartySessionPolling();
+  }
 });
 
 renderRoute().catch(handleFatalError);
@@ -139,6 +152,24 @@ function scheduleRefresh(fn, delayMs) {
   uiState.timerId = window.setTimeout(() => {
     fn().catch(handleBackgroundRefreshError);
   }, delayMs);
+}
+
+function isAuthErrorMessage(message) {
+  return /Unauthorized|expired|invalid token|session invalid/i.test(String(message || ''));
+}
+
+function isTransientServiceErrorMessage(message) {
+  return /too many|temporarily unavailable|waking up|retry|429|502|503|504/i.test(String(message || ''));
+}
+
+function renderDependencyWarnings(messages) {
+  if (!messages.length) return '';
+  return `
+    <div class="alert alert-amber" data-transient-error="true">
+      <div>Some live data is temporarily unavailable:</div>
+      <div>${escapeHtml(messages.join(' • '))}</div>
+    </div>
+  `;
 }
 
 function navigate(path) {
@@ -1168,13 +1199,22 @@ async function renderStaffLogin() {
     event.preventDefault();
     const phone = normalisePhone(document.getElementById('staff-phone').value);
     try {
-      await apiRequest('/auth/staff/otp/send', {
+      const result = await apiRequest('/auth/staff/otp/send', {
         method: 'POST',
         body: { phone, venueId: venue.id },
       });
       sessionStorage.setItem(STAFF_PENDING_PHONE_KEY, phone);
-      setFlash('green', 'OTP sent. Enter the code to access the console.');
+      if (result?.mockOtp) {
+        sessionStorage.setItem('flock_staff_mock_otp', result.mockOtp);
+        setFlash('green', `[Demo] OTP auto-filled: ${result.mockOtp}`);
+      } else {
+        setFlash('green', 'OTP sent. Enter the code to access the console.');
+      }
       await renderStaffLogin();
+      if (result?.mockOtp) {
+        const codeInput = document.getElementById('staff-code');
+        if (codeInput) codeInput.value = result.mockOtp;
+      }
     } catch (error) {
       setFlash('red', error.message);
       await renderStaffLogin();
@@ -1250,13 +1290,21 @@ async function renderAdminLogin() {
     event.preventDefault();
     const phone = normalisePhone(document.getElementById('admin-phone').value);
     try {
-      await apiRequest('/auth/staff/otp/send', {
+      const result = await apiRequest('/auth/staff/otp/send', {
         method: 'POST',
         body: { phone, venueId: venue.id },
       });
       sessionStorage.setItem(ADMIN_PENDING_PHONE_KEY, phone);
-      setFlash('green', 'OTP sent. Admin access still requires a manager or owner role.');
+      if (result?.mockOtp) {
+        setFlash('green', `[Demo] OTP auto-filled: ${result.mockOtp}`);
+      } else {
+        setFlash('green', 'OTP sent. Admin access still requires a manager or owner role.');
+      }
       await renderAdminLogin();
+      if (result?.mockOtp) {
+        const codeInput = document.getElementById('admin-code');
+        if (codeInput) codeInput.value = result.mockOtp;
+      }
     } catch (error) {
       setFlash('red', error.message);
       await renderAdminLogin();
@@ -1297,26 +1345,63 @@ async function renderStaffDashboard() {
     navigate('/staff/login');
     return;
   }
-  let venue;
-  let queue;
-  let tables;
+  let venue = {
+    name: 'Venue unavailable',
+    isQueueOpen: true,
+    depositPercent: 75,
+    tableReadyWindowMin: 10,
+  };
+  let queue = [];
+  let tables = [];
   let stats = uiState.staffStats || EMPTY_VENUE_STATS;
   let recentTableEvents = [];
+  const dependencyWarnings = [];
 
-  try {
-    [venue, queue, tables, recentTableEvents] = await Promise.all([
-      apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
-      apiRequest('/queue/live', { auth: true }),
-      apiRequest('/tables', { auth: true }),
-      apiRequest('/tables/events/recent', { auth: true }).catch(() => []),
-    ]);
-  } catch (error) {
-    if (/Unauthorized|expired/i.test(error.message)) {
-      clearStaffAuth();
-      navigate('/staff/login');
-      return;
-    }
-    throw error;
+  const [venueResult, queueResult, tablesResult, eventsResult] = await Promise.allSettled([
+    apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
+    apiRequest('/queue/live', { auth: true }),
+    apiRequest('/tables', { auth: true }),
+    apiRequest('/tables/events/recent', { auth: true }),
+  ]);
+
+  if (venueResult.status === 'fulfilled') {
+    venue = venueResult.value;
+  } else if (isAuthErrorMessage(venueResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/staff/login');
+    return;
+  } else {
+    dependencyWarnings.push('Venue details');
+  }
+
+  if (queueResult.status === 'fulfilled') {
+    queue = queueResult.value;
+  } else if (isAuthErrorMessage(queueResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/staff/login');
+    return;
+  } else {
+    dependencyWarnings.push('Live queue');
+  }
+
+  if (tablesResult.status === 'fulfilled') {
+    tables = tablesResult.value;
+  } else if (isAuthErrorMessage(tablesResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/staff/login');
+    return;
+  } else {
+    dependencyWarnings.push('Tables');
+  }
+
+  if (eventsResult.status === 'fulfilled') {
+    recentTableEvents = eventsResult.value;
+  } else if (isAuthErrorMessage(eventsResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/staff/login');
+    return;
+  } else {
+    dependencyWarnings.push('Table events');
   }
 
   if (!uiState.staffStatsFetchedAt || (Date.now() - uiState.staffStatsFetchedAt) >= 60000) {
@@ -1324,7 +1409,15 @@ async function renderStaffDashboard() {
     try {
       stats = await apiRequest('/venues/stats/today', { auth: true });
       uiState.staffStats = stats;
-    } catch {
+    } catch (error) {
+      if (isAuthErrorMessage(error.message)) {
+        clearStaffAuth();
+        navigate('/staff/login');
+        return;
+      }
+      if (isTransientServiceErrorMessage(error.message)) {
+        dependencyWarnings.push('Venue stats');
+      }
       stats = uiState.staffStats || EMPTY_VENUE_STATS;
     }
   }
@@ -1351,6 +1444,7 @@ async function renderStaffDashboard() {
     pill: 'Staff',
     body: `
       ${flash ? renderInlineFlash(flash) : ''}
+      ${renderDependencyWarnings(dependencyWarnings)}
       <div class="section-head">
         <div class="section-title">Floor command</div>
         <div class="section-sub">${escapeHtml(auth.staff.name)} · ${escapeHtml(auth.staff.role)} · ${escapeHtml(venue.name)}</div>
@@ -1596,7 +1690,12 @@ async function renderStaffDashboard() {
   });
 
   if (currentTab !== 'seat' && !uiState.staffSeat.isSubmitting) {
-    scheduleRefresh(() => renderStaffDashboard(), currentTab === 'seated' ? 10000 : 3000);
+    const refreshMs = dependencyWarnings.length
+      ? 8000
+      : currentTab === 'seated'
+        ? 10000
+        : 3000;
+    scheduleRefresh(() => renderStaffDashboard(), refreshMs);
   }
 }
 
@@ -1633,21 +1732,37 @@ async function renderAdminDashboard() {
     return;
   }
 
-  let venue;
-  let menu;
+  const dependencyWarnings = [];
+  let venue = {
+    name: 'Venue unavailable',
+  };
+  let menu = {
+    categories: uiState.adminMenu.categories || [],
+  };
 
-  try {
-    [venue, menu] = await Promise.all([
-      apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
-      apiRequest('/menu/admin/current', { auth: true }),
-    ]);
-  } catch (error) {
-    if (/Unauthorized|expired/i.test(error.message)) {
-      clearStaffAuth();
-      navigate('/admin/login');
-      return;
-    }
-    throw error;
+  const [venueResult, menuResult] = await Promise.allSettled([
+    apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
+    apiRequest('/menu/admin/current', { auth: true }),
+  ]);
+
+  if (venueResult.status === 'fulfilled') {
+    venue = venueResult.value;
+  } else if (isAuthErrorMessage(venueResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/admin/login');
+    return;
+  } else {
+    dependencyWarnings.push('Venue details');
+  }
+
+  if (menuResult.status === 'fulfilled') {
+    menu = menuResult.value;
+  } else if (isAuthErrorMessage(menuResult.reason?.message)) {
+    clearStaffAuth();
+    navigate('/admin/login');
+    return;
+  } else {
+    dependencyWarnings.push('Admin menu');
   }
 
   const flash = consumeFlash();
@@ -1657,6 +1772,7 @@ async function renderAdminDashboard() {
     pill: 'Admin',
     body: `
       ${flash ? renderInlineFlash(flash) : ''}
+      ${renderDependencyWarnings(dependencyWarnings)}
       <div class="section-head">
         <div class="section-title">Admin command</div>
         <div class="section-sub">${escapeHtml(auth.staff.name)} · ${escapeHtml(auth.staff.role)} · ${escapeHtml(venue.name)}</div>
@@ -2315,26 +2431,44 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
     return;
   }
 
-  const renderTrayShell = () => {
-    const draftCart = BucketStore.getDraftCart();
-    const draftSummary = buildCartSummary(venue.menuCategories || [], draftCart);
-    const bucketCount = getBucketItemCount(draftSummary);
+  uiState.activeGuestView = {
+    slug,
+    entryId: entry.id,
+    entry,
+    venue,
+    bill,
+    guestSession,
+    refreshSeatedShell: null,
+  };
 
-    uiState.activeGuestView = {
+  const renderTrayShell = () => {
+    const liveView = uiState.activeGuestView || {
       slug,
       entryId: entry.id,
       entry,
       venue,
       bill,
       guestSession,
+      refreshSeatedShell: null,
+    };
+    const liveEntry = liveView.entry;
+    const liveVenue = liveView.venue;
+    const liveBill = liveView.bill;
+    const liveGuestSession = liveView.guestSession;
+    const draftCart = BucketStore.getDraftCart();
+    const draftSummary = buildCartSummary(liveVenue.menuCategories || [], draftCart);
+    const bucketCount = getBucketItemCount(draftSummary);
+
+    uiState.activeGuestView = {
+      ...liveView,
       refreshSeatedShell: renderTrayShell,
     };
 
     navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount);
-    payHost.innerHTML = renderFloatingPayButton(bill?.summary?.balanceDue || 0);
+    payHost.innerHTML = renderFloatingPayButton(liveBill?.summary?.balanceDue || 0);
 
     if (uiState.guestTray === 'menu') {
-      trayHost.innerHTML = renderGuestMenuTray({ venue, draftCart });
+      trayHost.innerHTML = renderGuestMenuTray({ venue: liveVenue, draftCart });
 
       trayHost.querySelectorAll('[data-bucket-item]').forEach((button) => {
         button.addEventListener('click', () => {
@@ -2343,7 +2477,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
           if (uiState.activePartySessionId) {
             applyPartyBucketDelta(menuItemId, delta);
           } else {
-            BucketStore.updateItem(entry.id, menuItemId, delta);
+            BucketStore.updateItem(liveEntry.id, menuItemId, delta);
             renderTrayShell();
           }
         });
@@ -2372,7 +2506,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
           if (uiState.activePartySessionId) {
             applyPartyBucketDelta(menuItemId, delta);
           } else {
-            BucketStore.updateItem(entry.id, menuItemId, delta);
+            BucketStore.updateItem(liveEntry.id, menuItemId, delta);
             renderTrayShell();
           }
         });
@@ -2381,10 +2515,10 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
       trayHost.querySelector('#submit-table-order')?.addEventListener('click', async () => {
         if (uiState.tableOrderSubmitting) return;
 
-        const activeGuestSession = getGuestSession(entry.id);
+        const activeGuestSession = getGuestSession(liveEntry.id);
         if (!activeGuestSession?.guestToken) {
           setFlash('amber', 'Re-enter OTP to continue ordering.');
-          await renderGuestEntry(slug, entry.id);
+          await renderGuestEntry(slug, liveEntry.id);
           return;
         }
 
@@ -2397,7 +2531,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
             auth: 'guest',
             guestToken: activeGuestSession.guestToken,
             body: {
-              queueEntryId: entry.id,
+              queueEntryId: liveEntry.id,
               items: draftSummary.lines.map((line) => ({
                 menuItemId: line.id,
                 quantity: line.quantity,
@@ -2421,16 +2555,16 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
               ? 'Order recorded. Venue is using manual kitchen sync right now.'
               : 'Table order sent to the venue.'
           );
-          await renderGuestEntry(slug, entry.id);
+          await renderGuestEntry(slug, liveEntry.id);
         } catch (error) {
           setFlash('red', error.message);
-          await renderGuestEntry(slug, entry.id);
+          await renderGuestEntry(slug, liveEntry.id);
         } finally {
           uiState.tableOrderSubmitting = false;
         }
       });
     } else {
-      trayHost.innerHTML = renderGuestOrderedTray({ entry, bill });
+      trayHost.innerHTML = renderGuestOrderedTray({ entry: liveEntry, bill: liveBill });
 
       document.getElementById('final-pay-cta')?.addEventListener('click', async () => {
         if (uiState.paymentSubmitting) return;
@@ -2443,22 +2577,22 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
             title: 'Flock final bill',
             initiatePath: '/payments/final/initiate',
             initiateBody: {
-              venueId: venue.id,
-              queueEntryId: entry.id,
+              venueId: liveVenue.id,
+              queueEntryId: liveEntry.id,
             },
             capturePath: '/payments/final/capture',
             prefill: {
-              name: entry.guestName,
-              contact: entry.guestPhone,
+              name: liveEntry.guestName,
+              contact: liveEntry.guestPhone,
             },
             auth: 'guest',
-            guestToken: guestSession.guestToken,
+            guestToken: liveGuestSession.guestToken,
           });
           setFlash('green', 'Final payment captured.');
-          await renderGuestEntry(slug, entry.id);
+          await renderGuestEntry(slug, liveEntry.id);
         } catch (error) {
           setFlash('red', error.message);
-          await renderGuestEntry(slug, entry.id);
+          await renderGuestEntry(slug, liveEntry.id);
         } finally {
           uiState.paymentSubmitting = false;
         }
@@ -2485,22 +2619,22 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
           title: 'Flock final bill',
           initiatePath: '/payments/final/initiate',
           initiateBody: {
-            venueId: venue.id,
-            queueEntryId: entry.id,
+            venueId: liveVenue.id,
+            queueEntryId: liveEntry.id,
           },
           capturePath: '/payments/final/capture',
           prefill: {
-            name: entry.guestName,
-            contact: entry.guestPhone,
+            name: liveEntry.guestName,
+            contact: liveEntry.guestPhone,
           },
           auth: 'guest',
-          guestToken: guestSession.guestToken,
+          guestToken: liveGuestSession.guestToken,
         });
         setFlash('green', 'Final payment captured.');
-        await renderGuestEntry(slug, entry.id);
+        await renderGuestEntry(slug, liveEntry.id);
       } catch (error) {
         setFlash('red', error.message);
-        await renderGuestEntry(slug, entry.id);
+        await renderGuestEntry(slug, liveEntry.id);
       } finally {
         uiState.paymentSubmitting = false;
       }
@@ -3322,25 +3456,21 @@ async function loadPartySessionState(entry, guestSession) {
 
   try {
     const sessionId = entry.partySession.id;
-    const [sessionMeta, bucketItems, participants] = await Promise.all([
-      apiRequest(`/party-sessions/${sessionId}`, {
-        auth: 'guest',
-        guestToken: guestSession.guestToken,
-      }),
-      apiRequest(`/party-sessions/${sessionId}/bucket`, {
-        auth: 'guest',
-        guestToken: guestSession.guestToken,
-      }),
-      apiRequest(`/party-sessions/${sessionId}/participants`, {
-        auth: 'guest',
-        guestToken: guestSession.guestToken,
-      }),
-    ]);
+    const realtime = await apiRequest(`/party-sessions/${sessionId}/realtime`, {
+      auth: 'guest',
+      guestToken: guestSession.guestToken,
+    });
 
     uiState.activePartySessionId = sessionId;
-    uiState.partySessionMeta = sessionMeta;
-    uiState.partyParticipants = participants;
-    BucketStore.replaceFromServer(bucketItems);
+    uiState.partySessionMeta = realtime.session;
+    uiState.partyParticipants = realtime.participants || [];
+    BucketStore.replaceFromServer(realtime.bucket || []);
+    if (uiState.activeGuestView?.bill && realtime.billSummary) {
+      uiState.activeGuestView.bill.summary = realtime.billSummary;
+    }
+    uiState.partyPoll.failureCount = 0;
+    uiState.partyPoll.nextDelayMs = uiState.partyPoll.baseDelayMs;
+    uiState.partyPoll.lastError = '';
     return true;
   } catch (error) {
     console.warn('Failed to load party session state:', error);
@@ -3348,6 +3478,8 @@ async function loadPartySessionState(entry, guestSession) {
     uiState.partySessionMeta = null;
     uiState.partyParticipants = [];
     resetPartyBucketState();
+    uiState.partyPoll.failureCount += 1;
+    uiState.partyPoll.lastError = error.message || 'Party session load failed.';
     return false;
   } finally {
     uiState.partyBucket.isLoading = false;
@@ -3359,53 +3491,54 @@ async function refreshPartySessionState({ includeSummary = false, rerender = tru
   const guestToken = uiState.activeGuestView?.guestSession?.guestToken;
 
   if (!sessionId || !guestToken) {
-    return;
+    return false;
   }
 
   try {
-    const requests = [
-      apiRequest(`/party-sessions/${sessionId}/bucket`, {
-        auth: 'guest',
-        guestToken,
-      }),
-      apiRequest(`/party-sessions/${sessionId}/participants`, {
-        auth: 'guest',
-        guestToken,
-      }),
-    ];
+    const realtime = await apiRequest(`/party-sessions/${sessionId}/realtime`, {
+      auth: 'guest',
+      guestToken,
+    });
 
-    if (includeSummary) {
-      requests.unshift(apiRequest(`/party-sessions/${sessionId}`, {
-        auth: 'guest',
-        guestToken,
-      }));
+    if (realtime.session) {
+      uiState.partySessionMeta = realtime.session;
+      if (uiState.activeGuestView?.entry) {
+        uiState.activeGuestView.entry.status = realtime.session.queueStatus || uiState.activeGuestView.entry.status;
+      }
     }
-
-    const results = await Promise.all(requests);
-    const sessionMeta = includeSummary ? results[0] : null;
-    const bucketItems = includeSummary ? results[1] : results[0];
-    const participants = includeSummary ? results[2] : results[1];
-
-    if (sessionMeta) {
-      uiState.partySessionMeta = sessionMeta;
-    }
-    uiState.partyParticipants = participants;
+    uiState.partyParticipants = realtime.participants || [];
 
     if (!uiState.partyBucket.dirty && !uiState.partyBucket.isSyncing) {
-      BucketStore.replaceFromServer(bucketItems);
+      BucketStore.replaceFromServer(realtime.bucket || []);
     } else {
-      uiState.partyBucket.serverItems = bucketItems;
+      uiState.partyBucket.serverItems = realtime.bucket || [];
       uiState.partyBucket.lastSyncedAt = Date.now();
     }
 
+    if (uiState.activeGuestView?.bill && realtime.billSummary) {
+      uiState.activeGuestView.bill.summary = realtime.billSummary;
+    }
+
+    uiState.partyPoll.failureCount = 0;
+    uiState.partyPoll.nextDelayMs = uiState.partyPoll.baseDelayMs;
+    uiState.partyPoll.lastError = '';
+
     if (rerender) {
       rerenderActiveGuestShell();
     }
+    return true;
   } catch (error) {
     uiState.partyBucket.lastSyncError = error.message || 'Shared bucket refresh failed.';
+    uiState.partyPoll.failureCount += 1;
+    uiState.partyPoll.lastError = uiState.partyBucket.lastSyncError;
+    uiState.partyPoll.nextDelayMs = Math.min(
+      uiState.partyPoll.maxDelayMs,
+      uiState.partyPoll.baseDelayMs * (2 ** Math.min(uiState.partyPoll.failureCount, 4)),
+    );
     if (rerender) {
       rerenderActiveGuestShell();
     }
+    return false;
   }
 }
 
@@ -3488,19 +3621,25 @@ function applyPartyBucketDelta(menuItemId, delta) {
 
 function startPartySessionPolling() {
   clearPartySessionPolling();
+  uiState.partyPoll.nextDelayMs = uiState.partyPoll.baseDelayMs;
 
   const runTick = async () => {
-    await refreshPartySessionState({ includeSummary: false, rerender: true });
+    const pollSucceeded = await refreshPartySessionState({ includeSummary: false, rerender: true });
     if (uiState.activePartySessionId && uiState.activeGuestView?.entry?.status === 'SEATED') {
+      const hiddenDelay = document.hidden ? Math.max(uiState.partyPoll.nextDelayMs, 12000) : uiState.partyPoll.nextDelayMs;
+      const jitter = Math.floor(Math.random() * 450);
       uiState.partyPollerId = window.setTimeout(() => {
         runTick().catch(() => {});
-      }, 3000);
+      }, hiddenDelay + jitter);
+    }
+    if (pollSucceeded && !document.hidden) {
+      uiState.partyPoll.nextDelayMs = uiState.partyPoll.baseDelayMs;
     }
   };
 
   uiState.partyPollerId = window.setTimeout(() => {
     runTick().catch(() => {});
-  }, 3000);
+  }, uiState.partyPoll.baseDelayMs);
 }
 
 window.__flockJoinPartySession = async function joinPartySessionForLocalTest(joinToken, displayName = '') {
