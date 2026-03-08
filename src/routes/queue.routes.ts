@@ -9,4 +9,5 @@ router.post('/:entryId/session',     otpVerifyLimiter, Queue.reissueGuestSession
 router.get ('/:entryId',             requireGuestAuth, guestPollReadLimiter, Queue.getQueueEntry);
 router.post('/seat',                 requireAuth, operatorWriteLimiter, Queue.seatGuest);
 router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), operatorWriteLimiter, Queue.cancelEntry);
+router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), operatorWriteLimiter, Queue.checkoutEntry);
 export default router;

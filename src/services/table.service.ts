@@ -67,6 +67,14 @@ export async function updateTableStatus(params: {
     await tx.tableEvent.create({
       data: { tableId: params.tableId, fromStatus: oldStatus, toStatus: params.status, triggeredBy: params.triggeredBy ?? 'STAFF' },
     });
+
+    // When a table is cleared, auto-complete any stale SEATED entries for it
+    if (params.status === TableStatus.FREE) {
+      await tx.queueEntry.updateMany({
+        where: { tableId: params.tableId, status: QueueEntryStatus.SEATED },
+        data:  { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null },
+      });
+    }
   });
 
   await redis.publish(PubSubChannels.tableUpdate(params.venueId), JSON.stringify({

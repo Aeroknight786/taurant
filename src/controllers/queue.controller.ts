@@ -67,3 +67,10 @@ export async function cancelEntry(req: AuthenticatedRequest, res: Response, next
     ok(res, result);
   } catch (e) { next(e); }
 }
+
+export async function checkoutEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    await QueueService.completeQueueEntry(req.params.entryId);
+    ok(res, { checkedOut: true });
+  } catch (e) { next(e); }
+}

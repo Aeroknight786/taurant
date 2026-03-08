@@ -470,6 +470,10 @@ async function renderGuestEntry(slug, entryId) {
             </div>
             <button class="btn btn-secondary btn-full" type="submit">Restore ordering</button>
           </form>
+          <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
+            <div class="card-sub" style="margin-bottom:10px;">Testing or wrong device? Clear this session and start fresh.</div>
+            <button class="btn btn-ghost btn-full" id="clear-guest-session-btn" type="button">Leave queue &amp; start fresh</button>
+          </div>
         </div>
       `,
       right: `<a class="btn btn-secondary btn-sm" data-nav href="/v/${slug}">Venue</a>`,
@@ -508,6 +512,13 @@ async function renderGuestEntry(slug, entryId) {
       } finally {
         uiState.guestSessionRestoring = false;
       }
+    });
+
+    document.getElementById('clear-guest-session-btn')?.addEventListener('click', () => {
+      clearGuestSession(entryId);
+      clearGuestEntryId(slug);
+      setTableCart(entryId, {});
+      navigate(`/v/${slug}`);
     });
 
     return;
@@ -1536,6 +1547,20 @@ async function renderStaffDashboard() {
     }));
   });
 
+  document.querySelectorAll('[data-checkout-entry]').forEach((button) => {
+    const entryId = button.getAttribute('data-checkout-entry');
+    button.addEventListener('click', guardedAction(`checkout-${entryId}`, async () => {
+      try {
+        await apiRequest(`/queue/${entryId}/checkout`, { method: 'POST', auth: true });
+        setFlash('green', 'Guest checked out.');
+        await renderStaffDashboard();
+      } catch (error) {
+        setFlash('red', error.message);
+        await renderStaffDashboard();
+      }
+    }));
+  });
+
   document.querySelectorAll('[data-table-status]').forEach((button) => {
     const tableId = button.getAttribute('data-table-id');
     const status = button.getAttribute('data-table-status');
@@ -1917,6 +1942,7 @@ function renderSeatedTab(seated, seatedBills) {
         <div class="q-row-actions" style="align-items:flex-end;">
           <div class="muted">${bill ? `Total ${formatMoney(bill.summary.totalIncGst)}` : 'Loading bill'}</div>
           ${bill ? `<div class="muted">Balance ${formatMoney(bill.summary.balanceDue)}</div>` : ''}
+          <button class="btn btn-secondary btn-sm" data-checkout-entry="${entry.id}" style="margin-top:6px;">Check out</button>
         </div>
       </div>
     `;

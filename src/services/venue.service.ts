@@ -65,8 +65,12 @@ export async function updateVenueConfig(venueId: string, data: z.infer<typeof Up
 
 export async function getVenueStats(venueId: string) {
   const now = new Date();
-  const startOfDay = new Date(now.getTime());
-  startOfDay.setHours(0, 0, 0, 0);
+  // Server runs UTC; compute start-of-day in IST (UTC+5:30)
+  const IST_MS = 5.5 * 60 * 60 * 1000;
+  const nowIST = new Date(now.getTime() + IST_MS);
+  const startOfDay = new Date(
+    Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), nowIST.getUTCDate()) - IST_MS,
+  );
 
   const [queueStats, tableStats, revenueStats] = await Promise.all([
     prisma.queueEntry.aggregate({
