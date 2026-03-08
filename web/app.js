@@ -30,7 +30,7 @@ const uiState = {
   tableOrderSubmitting: false,
   paymentSubmitting: false,
   guestSessionRestoring: false,
-  guestTray: 'ordered',
+  guestTray: null,
   guestMenuActiveCategory: null,
   activeGuestView: null,
   activePartySessionId: null,
@@ -80,6 +80,12 @@ const uiState = {
     categories: [],
     isLoading: false,
     error: '',
+  },
+  flowLookup: {
+    query: '',
+    result: null,
+    error: '',
+    isLoading: false,
   },
 };
 
@@ -140,6 +146,8 @@ function resetPartyBucketState() {
 
 function resetActiveGuestShellState() {
   clearPartySessionPolling();
+  uiState.guestTray = null;
+  uiState.guestMenuActiveCategory = null;
   uiState.activeGuestView = null;
   uiState.activePartySessionId = null;
   uiState.partySessionMeta = null;
@@ -438,6 +446,8 @@ async function renderVenueLanding(slug) {
         venueId: venue.id,
         guestToken: entry.guestToken,
         otp: entry.otp,
+        flowRef: entry.flowRef || '',
+        lastKnownStatus: 'WAITING',
       });
       setFlash('green', `Joined queue. OTP ${entry.otp} issued with position #${entry.position}.`);
       navigate(`/v/${slug}/e/${entry.id}`);
@@ -452,6 +462,7 @@ async function renderVenueLanding(slug) {
 
 async function renderGuestEntry(slug, entryId) {
   const guestSession = getGuestSession(entryId);
+  const previousGuestStatus = guestSession?.lastKnownStatus || null;
   const venue = await apiRequest(`/venues/${slug}`);
 
   if (!guestSession?.guestToken) {
@@ -503,6 +514,8 @@ async function renderGuestEntry(slug, entryId) {
           venueId: venue.id,
           guestToken: session.guestToken,
           otp,
+          flowRef: guestSession?.flowRef || '',
+          lastKnownStatus: guestSession?.lastKnownStatus || null,
         });
         setFlash('green', 'Guest ordering session restored.');
         await renderGuestEntry(slug, entryId);
@@ -580,6 +593,12 @@ async function renderGuestEntry(slug, entryId) {
       guestToken: guestSession.guestToken,
     }).catch(() => null)
     : null;
+  const activeGuestSession = patchGuestSession(entryId, {
+    venueSlug: slug,
+    venueId: venue.id,
+    flowRef: entry.flowRef || guestSession?.flowRef || '',
+    lastKnownStatus: entry.status,
+  }) || guestSession;
 
   const hasDeposit = entry.depositPaid > 0;
   const activeStep = entry.status === 'COMPLETED'
@@ -594,14 +613,14 @@ async function renderGuestEntry(slug, entryId) {
     ? `
       ${renderStepBar(activeStep)}
       ${flash ? renderInlineFlash(flash) : ''}
-      ${renderSeatedGuestShell({ entry, venue, bill, guestSession })}
+      ${renderSeatedGuestShell({ entry, venue, bill, guestSession: activeGuestSession })}
     `
     : `
       ${entry.status === 'NOTIFIED' ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>` : ''}
       ${renderStepBar(activeStep)}
       ${flash ? renderInlineFlash(flash) : ''}
-      ${renderGuestStateHero(entry, guestSession)}
-      ${renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary })}
+      ${renderGuestStateHero(entry, activeGuestSession)}
+      ${renderGuestStateCards({ slug, entry, venue, bill, guestSession: activeGuestSession, tableCartSummary })}
     `;
 
   const showShareAction = ['WAITING', 'NOTIFIED', 'SEATED'].includes(entry.status)
@@ -624,14 +643,16 @@ async function renderGuestEntry(slug, entryId) {
   }
 
   if (entry.status === 'SEATED') {
-    if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
-      uiState.guestTray = 'ordered';
-    }
     const seatedDraftSummary = buildCartSummary(venue.menuCategories || [], BucketStore.getDraftCart());
-    if (!getBucketItemCount(seatedDraftSummary)) {
-      uiState.guestTray = (entry.orders.length || (bill?.summary?.balanceDue || 0) > 0) ? 'ordered' : 'menu';
+    const hasDraftItems = getBucketItemCount(seatedDraftSummary) > 0;
+    const hasExplicitTray = ['menu', 'bucket', 'ordered'].includes(uiState.guestTray);
+    const hasOutstandingOrderedState = entry.orders.length || (bill?.summary?.balanceDue || 0) > 0;
+    if (previousGuestStatus !== 'SEATED') {
+      uiState.guestTray = 'menu';
+    } else if (!hasExplicitTray) {
+      uiState.guestTray = hasDraftItems ? 'bucket' : (hasOutstandingOrderedState ? 'ordered' : 'menu');
     }
-    mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession });
+    mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession: activeGuestSession });
     return;
   }
 
@@ -706,6 +727,8 @@ async function renderGuestEntry(slug, entryId) {
         venueId: venue.id,
         guestToken: session.guestToken,
         otp: guestSession?.otp || otp,
+        flowRef: guestSession?.flowRef || '',
+        lastKnownStatus: guestSession?.lastKnownStatus || null,
       });
       setFlash('green', 'Guest ordering session restored.');
       await renderGuestEntry(slug, entryId);
@@ -795,6 +818,8 @@ async function renderGuestSessionJoin(slug, joinToken) {
         isPartyJoiner: true,
         partySessionId: payload.sessionId,
         participantId: payload.participant?.id || null,
+        flowRef: existingSession?.flowRef || '',
+        lastKnownStatus: existingSession?.lastKnownStatus || null,
       });
       setFlash('green', `Joined ${venue.name}.`);
       navigate(`/v/${slug}/e/${payload.queueEntryId}`);
@@ -1159,7 +1184,7 @@ async function renderPreorder(slug, entryId) {
       });
 
       setCart(entryId, {});
-      setFlash('green', 'Deposit captured. Your pre-order is now locked in.');
+      setFlash('green', `Deposit captured. Pre-order ${order.orderRef || order.id} is now locked in.`);
       navigate(`/v/${slug}/e/${entryId}`);
     } catch (error) {
       setFlash('red', error.message);
@@ -1599,7 +1624,7 @@ async function renderStaffDashboard() {
         body: { otp, tableId },
       });
       resetStaffSeatState();
-      uiState.staffSeat.success = `Guest seated. Pre-order sync: ${result.preOrderSync.status}.`;
+      uiState.staffSeat.success = `Guest seated (${result.flowRef || result.entryId}). Pre-order sync: ${result.preOrderSync.status}.`;
       uiState.staffTab = 'seat';
       await renderStaffDashboard();
     } catch (error) {
@@ -1709,6 +1734,30 @@ async function renderStaffDashboard() {
       await renderStaffDashboard();
     } catch (error) {
       setFlash('red', error.message);
+      await renderStaffDashboard();
+    }
+  }));
+
+  document.getElementById('flow-lookup-form')?.addEventListener('submit', guardedAction('flow-lookup', async (event) => {
+    event.preventDefault();
+    const query = document.getElementById('flow-lookup-query').value.trim();
+    uiState.flowLookup.query = query;
+    uiState.flowLookup.error = '';
+    uiState.flowLookup.result = null;
+    if (!query) {
+      uiState.flowLookup.error = 'Enter a flow ref, order ref, payment ref, session token, or queue entry ID.';
+      await renderStaffDashboard();
+      return;
+    }
+
+    uiState.flowLookup.isLoading = true;
+    await renderStaffDashboard();
+    try {
+      uiState.flowLookup.result = await apiRequest(`/queue/flow/lookup?q=${encodeURIComponent(query)}`, { auth: true });
+    } catch (error) {
+      uiState.flowLookup.error = error.message;
+    } finally {
+      uiState.flowLookup.isLoading = false;
       await renderStaffDashboard();
     }
   }));
@@ -1910,11 +1959,13 @@ function renderQueueTab(waiting, tables) {
           ${entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
         </div>
         <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span></div>
+        <div class="q-row-meta">Flow ref <span class="mono">${escapeHtml(entry.flowRef || entry.id)}</span></div>
         <div class="q-row-orders">
           ${entry.estimatedWaitMin ? `ETA ~${entry.estimatedWaitMin} mins` : 'Awaiting table match'}
           ${entry.table?.label ? ` · Reserved ${escapeHtml(entry.table.label)}` : ''}
         </div>
         ${entry.orders?.length ? `<div class="q-row-orders">Pre-order: ${escapeHtml(renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) || 'Locked items on file')}</div>` : ''}
+        ${entry.orders?.length ? `<div class="q-row-orders">Order refs: ${entry.orders.map((order) => `<span class="mono">${escapeHtml(order.orderRef || order.id)}</span>`).join(' · ')}</div>` : ''}
       </div>
       <div class="q-row-actions">
         <button class="btn btn-secondary btn-sm" data-prefill-seat="${escapeHtml(entry.otp)}" data-entry-id="${entry.id}" data-suggested-table="${getSuggestedTableId(entry, tables)}">Seat</button>
@@ -1937,6 +1988,7 @@ function renderSeatedTab(seated, seatedBills) {
             ${entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           </div>
           <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax${entry.table?.section ? ` · ${escapeHtml(entry.table.section)}` : ''}</div>
+          <div class="q-row-meta">Flow ref <span class="mono">${escapeHtml(entry.flowRef || entry.id)}</span></div>
           <div class="q-row-orders">${entry.orders?.length ? renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) : 'No orders posted yet.'}</div>
         </div>
         <div class="q-row-actions" style="align-items:flex-end;">
@@ -2087,6 +2139,95 @@ function renderManagerTab({ auth, venue, queue }) {
             <button class="btn btn-danger btn-full" type="submit">Refund deposit</button>
           </form>
         ` : ''}
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">Flow lookup</div>
+      <div class="card-sub">Search by flow ref, order ref, payment txn ref, queue entry ID, party session ID, or join token.</div>
+      ${!isManager ? `
+        <div class="alert alert-blue" style="margin-top:14px;"><div>Manager or owner access is required to inspect session timelines.</div></div>
+      ` : `
+        <form id="flow-lookup-form" style="margin-top:14px;">
+          <div class="form-row">
+            <div class="form-group" style="flex:1 1 280px;">
+              <label class="form-label" for="flow-lookup-query">Lookup value</label>
+              <input class="form-input mono" id="flow-lookup-query" value="${escapeHtml(uiState.flowLookup.query || '')}" placeholder="FLW-20260308-0007 / ORD-20260308-0014 / TXN / UUID">
+            </div>
+            <div class="form-group" style="align-self:flex-end;">
+              <button class="btn btn-primary" type="submit">${uiState.flowLookup.isLoading ? 'Looking up...' : 'Inspect flow'}</button>
+            </div>
+          </div>
+        </form>
+        ${uiState.flowLookup.error ? renderInlineFlash({ kind: 'red', message: uiState.flowLookup.error }) : ''}
+        ${renderFlowLookupResult(uiState.flowLookup.result)}
+      `}
+    </div>
+  `;
+}
+
+function renderFlowLookupResult(result) {
+  if (!result) {
+    return '<div class="empty-state" style="margin-top:16px;">Look up a guest flow to inspect the queue, session, order, payment, and bill trail.</div>';
+  }
+
+  const queueEntry = result.queueEntry;
+  const billSummary = result.billSummary;
+  const partySession = result.partySession;
+
+  return `
+    <div style="margin-top:16px;">
+      <div class="grid grid-2">
+        <div class="card" style="background:rgba(255,255,255,0.02);">
+          <div class="card-title">Matched flow</div>
+          <div class="card-sub">Matched by ${escapeHtml(result.matchedBy)}</div>
+          <div class="muted">Flow ref: <span class="mono">${escapeHtml(queueEntry.flowRef)}</span></div>
+          <div class="muted">Queue entry: <span class="mono">${escapeHtml(queueEntry.id)}</span></div>
+          <div class="muted">${escapeHtml(queueEntry.guestName)} · ${queueEntry.partySize} pax · ${escapeHtml(queueEntry.status)}</div>
+          <div class="muted">Joined ${formatEventStamp(queueEntry.joinedAt)}${queueEntry.seatedAt ? ` · seated ${formatEventStamp(queueEntry.seatedAt)}` : ''}</div>
+          ${queueEntry.table?.label ? `<div class="muted">Table ${escapeHtml(queueEntry.table.label)}${queueEntry.table.section ? ` · ${escapeHtml(queueEntry.table.section)}` : ''}</div>` : ''}
+          ${queueEntry.depositTxnRef ? `<div class="muted">Deposit txn: <span class="mono">${escapeHtml(queueEntry.depositTxnRef)}</span></div>` : ''}
+          ${partySession ? `<div class="muted">Party session: <span class="mono">${escapeHtml(partySession.id)}</span> · ${partySession.participantCount} guests</div>` : ''}
+          ${partySession ? `<div class="muted">Join token: <span class="mono">${escapeHtml(partySession.joinToken)}</span></div>` : ''}
+        </div>
+        <div class="card" style="background:rgba(255,255,255,0.02);">
+          <div class="card-title">Bill snapshot</div>
+          <div class="card-sub">Current financial state for this flow.</div>
+          <div class="order-line"><div class="order-line-name">Total</div><div class="order-line-price">${formatMoney(billSummary.totalIncGst)}</div></div>
+          <div class="order-line"><div class="order-line-name">Deposit paid</div><div class="order-line-price">${formatMoney(billSummary.depositPaid)}</div></div>
+          <div class="order-total">
+            <div class="order-total-label">Balance due</div>
+            <div class="order-total-val">${formatMoney(billSummary.balanceDue)}</div>
+          </div>
+        </div>
+      </div>
+      <div class="grid grid-2" style="margin-top:16px;">
+        <div class="card">
+          <div class="card-title">Orders</div>
+          <div class="card-sub">Human-friendly order refs and payment linkage.</div>
+          ${result.orders.length ? result.orders.map((order) => `
+            <div class="order-line" style="display:block; padding:14px 0;">
+              <div class="order-line-name">${escapeHtml(order.orderRef)} · ${escapeHtml(order.type)} · ${escapeHtml(order.status)}</div>
+              <div class="order-line-qty"><span class="mono">${escapeHtml(order.id)}</span>${order.posOrderId ? ` · POS ${escapeHtml(order.posOrderId)}` : ''}${order.isBillable ? ' · Billable' : ' · Superseded'}</div>
+              <div class="order-line-qty">${renderGuestOrderItems(order.items)}</div>
+              ${order.payments.length ? order.payments.map((payment) => `
+                <div class="muted">Payment ${escapeHtml(payment.type)} · <span class="mono">${escapeHtml(payment.txnRef)}</span> · ${escapeHtml(payment.status)} · ${formatMoney(payment.amount)}</div>
+              `).join('') : '<div class="muted">No payments linked yet.</div>'}
+            </div>
+          `).join('') : '<div class="empty-state">No orders found on this flow.</div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Timeline</div>
+          <div class="card-sub">Chronological trace for debugging.</div>
+          ${result.timeline.length ? result.timeline.map((event) => `
+            <div class="order-line">
+              <div>
+                <div class="order-line-name">${escapeHtml(event.label)}</div>
+                <div class="order-line-qty">${escapeHtml(event.detail)}</div>
+              </div>
+              <div class="order-line-price">${formatEventStamp(event.at)}</div>
+            </div>
+          `).join('') : '<div class="empty-state">No timeline events were assembled for this flow.</div>'}
+        </div>
       </div>
     </div>
   `;
@@ -2242,6 +2383,11 @@ function renderGuestBottomNav(activeTray, itemCount) {
       `).join('')}
     </nav>
   `;
+}
+
+function renderSessionRefLine(label, value) {
+  if (!value) return '';
+  return `<div class="muted">${escapeHtml(label)}: <span class="mono">${escapeHtml(value)}</span></div>`;
 }
 
 function renderFloatingPayButton(balanceDue) {
@@ -2411,11 +2557,12 @@ function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
         <div class="guest-shell-sub">Add to your next round from Menu, review live totals in Ordered, and only pay the remaining balance when ready.</div>
         <div class="guest-shell-meta">${participantCount} guest${participantCount === 1 ? '' : 's'} in this table session</div>
         ${entry.table?.section ? `<div class="guest-shell-meta">Section: ${escapeHtml(entry.table.section)}</div>` : ''}
+        ${guestSession?.flowRef || entry.flowRef ? `<div class="guest-shell-meta">Flow ref <span class="mono">${escapeHtml(guestSession?.flowRef || entry.flowRef)}</span></div>` : ''}
       </div>
       <div id="guest-tray-host"></div>
       <div id="guest-floating-pay-host">${renderFloatingPayButton(bill?.summary?.balanceDue || 0)}</div>
       <div id="guest-bucket-toast-host"></div>
-      <div id="guest-bottom-nav-host">${renderGuestBottomNav(uiState.guestTray, bucketItemCount)}</div>
+      <div id="guest-bottom-nav-host">${renderGuestBottomNav(uiState.guestTray || 'menu', bucketItemCount)}</div>
     </div>
   `;
 }
@@ -2489,7 +2636,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
       refreshSeatedShell: renderTrayShell,
     };
 
-    navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount);
+    navHost.innerHTML = renderGuestBottomNav(uiState.guestTray || 'menu', bucketCount);
 
     const showFloatingPay = uiState.guestTray !== 'ordered';
     payHost.innerHTML = showFloatingPay ? renderFloatingPayButton(liveBill?.summary?.balanceDue || 0) : '';
@@ -2598,8 +2745,8 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
           setFlash(
             order.posSync?.status === 'manual_fallback' ? 'amber' : 'green',
             order.posSync?.status === 'manual_fallback'
-              ? 'Order recorded. Venue is using manual kitchen sync right now.'
-              : 'Table order sent to the venue.'
+              ? `Order ${order.orderRef || order.id} recorded. Venue is using manual kitchen sync right now.`
+              : `Table order ${order.orderRef || order.id} sent to the venue.`
           );
           await renderGuestEntry(slug, liveEntry.id);
         } catch (error) {
@@ -2711,6 +2858,7 @@ function renderGuestStateHero(entry, guestSession) {
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'Active'}</div>
         <div class="otp-label">${guestOtp ? 'Show this OTP when called' : 'Your seating code is active on this device'}</div>
       </div>
+      ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
     `;
   }
 
@@ -2725,6 +2873,7 @@ function renderGuestStateHero(entry, guestSession) {
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'Active'}</div>
         <div class="otp-label">${guestOtp ? 'Your reserved table is waiting' : 'Use your active seating code when you arrive'}</div>
       </div>
+      ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
     `;
   }
 
@@ -2735,6 +2884,7 @@ function renderGuestStateHero(entry, guestSession) {
         <div class="queue-pos-label">Now seated</div>
         <div class="queue-pos-sub">Your table is live. Add more items from your phone and clear the balance when ready.</div>
       </div>
+      ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
     `;
   }
 
@@ -2745,6 +2895,7 @@ function renderGuestStateHero(entry, guestSession) {
         <div class="queue-pos-label">Service complete</div>
         <div class="queue-pos-sub">Payment is captured and the table can move into the next turn.</div>
       </div>
+      ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
     `;
   }
 
@@ -2777,6 +2928,7 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
         <div class="card">
           <div class="card-title">Venue</div>
           <div class="card-sub">${escapeHtml(venue.name)} · ${escapeHtml(venue.city)}</div>
+          ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
           <div class="muted">Default deposit policy: ${venue.depositPercent}%</div>
           <div class="muted">Queue open: ${venue.isQueueOpen ? 'Yes' : 'No'}</div>
         </div>
@@ -2800,6 +2952,7 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
         </div>
         <div class="card">
           <div class="card-title">Guest snapshot</div>
+          ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
           <div class="muted">${entry.partySize} pax</div>
           <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
           <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
@@ -2817,6 +2970,7 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
         <div class="card">
           <div class="card-title">Table ${entry.table?.label ? escapeHtml(entry.table.label) : 'assigned'}</div>
           <div class="card-sub">${entry.status === 'COMPLETED' ? 'Service is complete. Ordering is closed and the table can turn over cleanly.' : 'Pre-orders stay locked. Add more items from your phone while seated and settle only the balance due.'}</div>
+          ${renderSessionRefLine('Flow ref', guestSession?.flowRef || entry.flowRef)}
           ${entry.table?.section ? `<div class="muted" style="margin-bottom:14px;">Section: ${escapeHtml(entry.table.section)}</div>` : ''}
           ${preOrders.length ? `
             <div class="alert alert-blue" style="margin-bottom:14px;"><div>Locked pre-order</div></div>
@@ -2906,6 +3060,7 @@ function renderGuestOrderBlock(order, label, tagLabel = '') {
         <div>
           <div class="order-line-name">${escapeHtml(label)}${tagLabel ? ` <span class="pre-tag">${escapeHtml(tagLabel)}</span>` : ''}</div>
           <div class="order-line-qty">${order.items.length} items · ${escapeHtml(order.status)}</div>
+          ${order.orderRef ? `<div class="muted">Order ref: <span class="mono">${escapeHtml(order.orderRef)}</span></div>` : ''}
         </div>
         <div class="order-line-price">${formatMoney(order.totalIncGst || order.total || 0)}</div>
       </div>
@@ -3287,6 +3442,19 @@ function formatMoney(paise) {
   }).format((paise || 0) / 100);
 }
 
+function formatEventStamp(value) {
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return 'unknown time';
+  }
+  return date.toLocaleString('en-IN', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 function menuItemTotal(item) {
   const base = item.priceExGst || 0;
   const total = base + Math.round(base * ((item.gstPercent || 0) / 100));
@@ -3320,6 +3488,14 @@ function getGuestSession(entryId) {
 
 function setGuestSession(session) {
   localStorage.setItem(`${GUEST_SESSION_PREFIX}${session.entryId}`, JSON.stringify(session));
+}
+
+function patchGuestSession(entryId, updates) {
+  const existing = getGuestSession(entryId);
+  if (!existing) return null;
+  const nextSession = { ...existing, ...updates };
+  setGuestSession(nextSession);
+  return nextSession;
 }
 
 function clearGuestSession(entryId) {

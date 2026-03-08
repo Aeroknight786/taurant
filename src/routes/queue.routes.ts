@@ -5,6 +5,7 @@ import { guestPollReadLimiter, operatorReadLimiter, operatorWriteLimiter, otpVer
 const router = Router();
 router.post('/',                     Queue.joinQueue);         // guest — no auth
 router.get ('/live',                 requireAuth, operatorReadLimiter, Queue.getVenueQueue);
+router.get ('/flow/lookup',          requireAuth, requireRole('OWNER','MANAGER'), operatorReadLimiter, Queue.lookupFlowState);
 router.post('/:entryId/session',     otpVerifyLimiter, Queue.reissueGuestSession);
 router.get ('/:entryId',             requireGuestAuth, guestPollReadLimiter, Queue.getQueueEntry);
 router.post('/seat',                 requireAuth, operatorWriteLimiter, Queue.seatGuest);

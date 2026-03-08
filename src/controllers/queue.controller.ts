@@ -2,6 +2,7 @@ import { Request, Response, NextFunction } from 'express';
 import { z } from 'zod';
 import { AuthenticatedRequest } from '../types';
 import * as QueueService from '../services/queue.service';
+import * as FlowDebugService from '../services/flowDebug.service';
 import { ok, created } from '../utils/response';
 
 const JoinSchema = z.object({
@@ -20,6 +21,10 @@ const SessionSchema = z.object({
   otp: z.string().length(6),
 });
 
+const FlowLookupSchema = z.object({
+  q: z.string().trim().min(1),
+});
+
 export async function joinQueue(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await QueueService.joinQueue(JoinSchema.parse(req.body));
@@ -31,6 +36,14 @@ export async function getVenueQueue(req: AuthenticatedRequest, res: Response, ne
   try {
     const entries = await QueueService.getVenueQueue(req.venue!.id);
     ok(res, entries, { count: entries.length });
+  } catch (e) { next(e); }
+}
+
+export async function lookupFlowState(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { q } = FlowLookupSchema.parse(req.query);
+    const data = await FlowDebugService.lookupFlowState(req.venue!.id, q);
+    ok(res, data);
   } catch (e) { next(e); }
 }
 

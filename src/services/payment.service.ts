@@ -49,6 +49,8 @@ export async function initiateDeposit(params: {
     return {
       paymentId: existingPending.id,
       txnRef: existingPending.txnRef,
+      flowRef: entry.flowRef,
+      orderRef: order.orderRef,
       amount: existingPending.amount,
       depositPercent: venue.depositPercent,
       totalOrderValue: order.totalIncGst,
@@ -91,6 +93,8 @@ export async function initiateDeposit(params: {
   return {
     paymentId:      payment.id,
     txnRef,
+    flowRef:        entry.flowRef,
+    orderRef:       order.orderRef,
     amount:         depositAmount,
     depositPercent: venue.depositPercent,
     totalOrderValue: order.totalIncGst,
@@ -132,6 +136,11 @@ export async function initiateFinalPayment(params: {
   const billableOrders = selectBillableOrders(orders);
   const mainOrder = billableOrders[0];
   if (!mainOrder) throw new AppError('No orders found for this entry', 404);
+  const entry = await prisma.queueEntry.findFirst({
+    where: { id: params.queueEntryId, venueId: params.venueId },
+    select: { flowRef: true },
+  });
+  if (!entry) throw new AppError('Queue entry not found', 404);
 
   const existingCaptured = await prisma.payment.findFirst({
     where: {
@@ -155,6 +164,8 @@ export async function initiateFinalPayment(params: {
     return {
       paymentId: existingPending.id,
       txnRef: existingPending.txnRef,
+      flowRef: entry.flowRef,
+      orderRef: mainOrder.orderRef,
       amount: existingPending.amount,
       razorpayOrderId: existingPending.razorpayOrderId,
       currency: 'INR',
@@ -189,6 +200,8 @@ export async function initiateFinalPayment(params: {
   return {
     paymentId: payment.id,
     txnRef,
+    flowRef: entry.flowRef,
+    orderRef: mainOrder.orderRef,
     amount: bill.balanceDue,
     razorpayOrderId: rzpOrder.id,
     currency: 'INR',
@@ -247,10 +260,17 @@ export async function refundDeposit(params: { paymentId: string; venueId: string
 
 export async function settleFinalOffline(params: { venueId: string; queueEntryId: string; staffId: string }) {
   const bill = await getBillSummary(params.queueEntryId);
-  const orders = await prisma.order.findMany({
-    where: { queueEntryId: params.queueEntryId },
-    orderBy: { createdAt: 'asc' },
-  });
+  const [entry, orders] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: params.queueEntryId, venueId: params.venueId },
+      select: { flowRef: true },
+    }),
+    prisma.order.findMany({
+      where: { queueEntryId: params.queueEntryId },
+      orderBy: { createdAt: 'asc' },
+    }),
+  ]);
+  if (!entry) throw new AppError('Queue entry not found', 404);
   const billableOrders = selectBillableOrders(orders);
   const mainOrder = billableOrders[0];
   if (!mainOrder) throw new AppError('No orders found for this entry', 404);
@@ -290,6 +310,7 @@ export async function settleFinalOffline(params: { venueId: string; queueEntryId
     mode: 'offline',
     amount: bill.balanceDue,
     queueEntryId: params.queueEntryId,
+    flowRef: entry.flowRef,
     settledBy: params.staffId,
   };
 }

@@ -1,6 +1,6 @@
 # Flock Orchestration Ledger
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 Status: active
 
 ## Purpose
@@ -235,6 +235,52 @@ Validation run (local):
 
 - `node --check web/app.js` passed.
 - `npm run build` passed.
+
+## 2026-03-08 Flow Traceability + Seated Landing Fix Writeback
+
+Implemented in code (local repo):
+
+- added persistent human-readable flow/session refs on queue entries:
+  - `QueueEntry.flowRef`
+- added persistent human-readable order refs on orders:
+  - `Order.orderRef`
+- added per-venue sequences to support those refs safely:
+  - `Venue.flowSequence`
+  - `Venue.orderSequence`
+- added manager-only flow inspection route:
+  - `GET /api/v1/queue/flow/lookup?q=...`
+  - supports queue entry ID, flow ref, order ID, order ref, party session ID, join token, payment ID, txn ref, and Razorpay refs
+  - returns:
+    - queue/session snapshot
+    - bill summary
+    - order/payment refs
+    - timeline for debugging
+- surfaced the new refs in the product:
+  - guest flow now shows `flowRef`
+  - guest ordered cards show `orderRef`
+  - staff queue/seated rows show `flowRef` and order refs
+  - manager tab now includes a visible flow-lookup card
+- fixed the seated guest UX regression:
+  - first transition into `SEATED` now opens `Menu`
+  - revisits can still default to `Ordered`/`Bucket` based on prior state and draft contents
+
+Validation run (local):
+
+- `npm run build` passed.
+- `node --check web/app.js` passed.
+
+Runtime blocker in this cloud session:
+
+- local Prisma CLI and fresh dev-server boots resolve `DATABASE_URL` to `localhost:5432`
+- no reachable local Postgres exists in this session
+- attempted remediations:
+  - `npx prisma migrate deploy`
+  - fresh `npm run dev`
+  - `pg_isready -h localhost -p 5432`
+  - `service postgresql start`
+- result:
+  - migration could not be applied here
+  - browser/runtime verification of the new refs and manager lookup remains blocked until a working Postgres connection is available
 
 ## Completed Work
 

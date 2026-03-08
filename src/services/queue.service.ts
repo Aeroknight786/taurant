@@ -10,6 +10,7 @@ import { syncPendingPreOrderForSeating } from './order.service';
 import { signGuestToken } from '../utils/jwt';
 import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
+import { buildFlowRef } from '../utils/flowRef';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 
@@ -20,7 +21,7 @@ export async function joinQueue(params: {
   guestName:  string;
   guestPhone: string;
   partySize:  number;
-}): Promise<{ id: string; otp: string; position: number; estimatedWaitMin: number; guestToken: string }> {
+}): Promise<{ id: string; flowRef: string; otp: string; position: number; estimatedWaitMin: number; guestToken: string }> {
   const venue = await prisma.venue.findUnique({ where: { id: params.venueId } });
   if (!venue) throw new AppError('Venue not found', 404);
   if (!venue.isQueueOpen) throw new AppError('Queue is currently closed', 400, 'QUEUE_CLOSED');
@@ -41,16 +42,25 @@ export async function joinQueue(params: {
   const estimatedWaitMin = estimateWait(params.venueId, position);
   const otp = generateSeatingOtp();
 
-  const entry = await prisma.queueEntry.create({
-    data: {
-      venueId:         params.venueId,
-      guestName:       params.guestName,
-      guestPhone:      params.guestPhone,
-      partySize:       params.partySize,
-      position,
-      otp,
-      estimatedWaitMin,
-    },
+  const entry = await prisma.$transaction(async (tx) => {
+    const sequenceState = await tx.venue.update({
+      where: { id: params.venueId },
+      data: { flowSequence: { increment: 1 } },
+      select: { flowSequence: true },
+    });
+
+    return tx.queueEntry.create({
+      data: {
+        venueId:         params.venueId,
+        flowRef:         buildFlowRef(sequenceState.flowSequence),
+        guestName:       params.guestName,
+        guestPhone:      params.guestPhone,
+        partySize:       params.partySize,
+        position,
+        otp,
+        estimatedWaitMin,
+      },
+    });
   });
 
   const { session, hostParticipant } = await ensurePartySessionForQueueEntry({
@@ -78,6 +88,7 @@ export async function joinQueue(params: {
 
   return {
     id: entry.id,
+    flowRef: entry.flowRef,
     otp,
     position,
     estimatedWaitMin,
@@ -109,6 +120,7 @@ export async function getVenueQueue(venueId: string) {
         where: { status: { notIn: ['CANCELLED'] } },
         select: {
           id: true,
+          orderRef: true,
           type: true,
           status: true,
           totalIncGst: true,
@@ -196,7 +208,7 @@ export async function seatGuest(params: {
   venueId: string;
   otp:     string;
   tableId: string;
-}): Promise<{ entryId: string; guestName: string; preOrderSync: { attempted: boolean; status: string; posOrderId?: string } }> {
+}): Promise<{ entryId: string; flowRef: string; guestName: string; preOrderSync: { attempted: boolean; status: string; posOrderId?: string } }> {
   const entry = await prisma.queueEntry.findFirst({
     where: { otp: params.otp, venueId: params.venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
   });
@@ -253,7 +265,7 @@ export async function seatGuest(params: {
     preOrderSync = { attempted: true, status: 'manual_fallback' };
   }
 
-  return { entryId: entry.id, guestName: entry.guestName, preOrderSync };
+  return { entryId: entry.id, flowRef: entry.flowRef, guestName: entry.guestName, preOrderSync };
 }
 
 // ── Cancel entry ──────────────────────────────────────────────────

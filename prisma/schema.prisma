@@ -130,6 +130,8 @@ model Venue {
   posPlatform         String?
   posOutletId         String?
   monthlyCoversUsed   Int            @default(0)
+  flowSequence        Int            @default(0)
+  orderSequence       Int            @default(0)
   invoiceSequence     Int            @default(0)
   billingCycleStart   DateTime       @default(now())
   createdAt           DateTime       @default(now())
@@ -251,6 +253,7 @@ model MenuItem {
 model QueueEntry {
   id               String           @id @default(uuid())
   venueId          String
+  flowRef          String           @unique
   guestName        String
   guestPhone       String
   partySize        Int
@@ -279,12 +282,14 @@ model QueueEntry {
   @@index([status, tableReadyDeadlineAt])
   @@index([otp])
   @@index([guestPhone])
+  @@index([venueId, flowRef])
 }
 
 model Order {
   id            String      @id @default(uuid())
   venueId       String
   queueEntryId  String
+  orderRef      String      @unique
   type          OrderType
   status        OrderStatus @default(PENDING)
   subtotalExGst Int         @default(0)
@@ -303,6 +308,7 @@ model Order {
   invoice       Invoice?
   @@index([venueId, status])
   @@index([queueEntryId])
+  @@index([venueId, orderRef])
 }
 
 model OrderItem {

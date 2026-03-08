@@ -3,6 +3,7 @@ import { aggregateGst, calcGstBreakdown } from '../utils/gst';
 import { pushOrderToPos } from '../integrations/urbanpiper';
 import { AppError } from '../middleware/errorHandler';
 import { OrderType, PaymentStatus, PaymentType, QueueEntryStatus } from '@prisma/client';
+import { buildOrderRef } from '../utils/flowRef';
 
 export interface OrderItemInput {
   menuItemId: string;
@@ -170,9 +171,11 @@ export async function getGuestBill(queueEntryId: string) {
 
   return {
     queueEntryId: entry.id,
+    flowRef: entry.flowRef,
     guestName:    entry.guestName,
     orders: billableOrders.map(o => ({
       id:     o.id,
+      orderRef: o.orderRef,
       type:   o.type,
       status: o.status,
       total:  o.totalIncGst,
@@ -223,35 +226,44 @@ async function buildOrder(
     })
   );
 
-  return prisma.order.create({
-    data: {
-      venueId,
-      queueEntryId,
-      type,
-      status:       'CONFIRMED',
-      subtotalExGst: gst.subtotalExGst,
-      cgstAmount:    gst.cgstAmount,
-      sgstAmount:    gst.sgstAmount,
-      totalIncGst:   gst.totalIncGst,
-      notes,
-      items: {
-        create: items.map(i => {
-          const m  = itemMap.get(i.menuItemId)!;
-          const lc = calcGstBreakdown(m.priceExGst, i.quantity, m.gstPercent);
-          return {
-            menuItemId: i.menuItemId,
-            name:       m.name,
-            priceExGst: m.priceExGst,
-            gstPercent: m.gstPercent,
-            quantity:   i.quantity,
-            subtotal:   lc.subtotal,
-            gstAmount:  lc.gstAmount,
-            totalIncGst: lc.totalIncGst,
-          };
-        }),
+  return prisma.$transaction(async (tx) => {
+    const sequenceState = await tx.venue.update({
+      where: { id: venueId },
+      data: { orderSequence: { increment: 1 } },
+      select: { orderSequence: true },
+    });
+
+    return tx.order.create({
+      data: {
+        venueId,
+        queueEntryId,
+        orderRef: buildOrderRef(sequenceState.orderSequence),
+        type,
+        status:       'CONFIRMED',
+        subtotalExGst: gst.subtotalExGst,
+        cgstAmount:    gst.cgstAmount,
+        sgstAmount:    gst.sgstAmount,
+        totalIncGst:   gst.totalIncGst,
+        notes,
+        items: {
+          create: items.map(i => {
+            const m  = itemMap.get(i.menuItemId)!;
+            const lc = calcGstBreakdown(m.priceExGst, i.quantity, m.gstPercent);
+            return {
+              menuItemId: i.menuItemId,
+              name:       m.name,
+              priceExGst: m.priceExGst,
+              gstPercent: m.gstPercent,
+              quantity:   i.quantity,
+              subtotal:   lc.subtotal,
+              gstAmount:  lc.gstAmount,
+              totalIncGst: lc.totalIncGst,
+            };
+          }),
+        },
       },
-    },
-    include: { items: true },
+      include: { items: true },
+    });
   });
 }
 

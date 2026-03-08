@@ -1,6 +1,6 @@
 # Flock Implementation State
 
-Last updated: 2026-03-07
+Last updated: 2026-03-08
 
 ## Purpose
 
@@ -359,6 +359,59 @@ Detailed evidence is captured in:
 
 - `node --check web/app.js` passed.
 - `npm run build` passed.
+
+## 2026-03-08 Flow Traceability + Seated Landing (Implemented Locally)
+
+Backend additions:
+
+- `QueueEntry` now carries a persistent human-readable `flowRef`.
+- `Order` now carries a persistent human-readable `orderRef`.
+- `Venue` now tracks:
+  - `flowSequence`
+  - `orderSequence`
+- new manager-only lookup endpoint:
+  - `GET /api/v1/queue/flow/lookup?q=...`
+- lookup accepts:
+  - queue entry ID
+  - flow ref
+  - order ID
+  - order ref
+  - party session ID
+  - join token
+  - payment ID
+  - `txnRef`
+  - Razorpay order/payment refs
+- lookup response includes:
+  - queue/session state
+  - bill summary
+  - orders with `orderRef`
+  - payments with `txnRef`
+  - chronological timeline
+
+Frontend additions:
+
+- guest queue/seated views now surface the active `flowRef`.
+- guest ordered/pre-order cards now surface `orderRef`.
+- staff queue and seated rows now surface `flowRef` and order refs.
+- manager tab now includes a visible flow-inspector form and timeline card.
+- first transition into `SEATED` now opens the `Menu` tray instead of `Ordered`.
+- later seated revisits still preserve useful default behavior:
+  - existing draft round can land on `Your Bucket`
+  - prior seated revisit without draft can still land on `Ordered`
+
+Validation:
+
+- `npm run build` succeeded.
+- `node --check web/app.js` succeeded.
+
+Environment limitation during runtime validation:
+
+- local cloud `.env` currently points Prisma at `localhost:5432`
+- local Postgres is not reachable in this session
+- because of that:
+  - `npx prisma migrate deploy` fails with `P1001`
+  - fresh `npm run dev` fails with `P1001`
+  - end-to-end browser validation of the new lookup flow is blocked until DB connectivity is restored
 
 Backend additions:
 
