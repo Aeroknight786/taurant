@@ -83,6 +83,7 @@ Set all to `false` and add real API keys to go live.
 | POST | `/queue` | None | Guest joins queue |
 | GET | `/queue/live` | Staff | Live queue for the venue |
 | GET | `/queue/:entryId` | None | Guest polls own entry |
+| GET | `/queue/:entryId/flow` | Staff | Timeline trace for queue/session/order/payment debugging |
 | POST | `/queue/seat` | Staff | Verify OTP → seat guest |
 | DELETE | `/queue/:entryId` | Staff | Remove from queue |
 

@@ -30,7 +30,8 @@ const uiState = {
   tableOrderSubmitting: false,
   paymentSubmitting: false,
   guestSessionRestoring: false,
-  guestTray: 'ordered',
+  guestTray: 'menu',
+  guestTrayEntryId: null,
   guestMenuActiveCategory: null,
   activeGuestView: null,
   activePartySessionId: null,
@@ -624,16 +625,21 @@ async function renderGuestEntry(slug, entryId) {
   }
 
   if (entry.status === 'SEATED') {
+    if (uiState.guestTrayEntryId !== entry.id) {
+      uiState.guestTray = 'menu';
+      uiState.guestTrayEntryId = entry.id;
+    }
     if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
-      uiState.guestTray = 'ordered';
+      uiState.guestTray = 'menu';
     }
     const seatedDraftSummary = buildCartSummary(venue.menuCategories || [], BucketStore.getDraftCart());
-    if (!getBucketItemCount(seatedDraftSummary)) {
-      uiState.guestTray = (entry.orders.length || (bill?.summary?.balanceDue || 0) > 0) ? 'ordered' : 'menu';
+    if (!getBucketItemCount(seatedDraftSummary) && uiState.guestTray === 'bucket') {
+      uiState.guestTray = 'menu';
     }
     mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession });
     return;
   }
+  uiState.guestTrayEntryId = null;
 
   document.getElementById('preorder-cta')?.addEventListener('click', () => {
     navigate(`/v/${slug}/e/${entryId}/preorder`);

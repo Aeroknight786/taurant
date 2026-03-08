@@ -45,6 +45,16 @@ export async function getQueueEntry(req: AuthenticatedRequest, res: Response, ne
   } catch (e) { next(e); }
 }
 
+export async function getQueueEntryFlow(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const flow = await QueueService.getQueueEntryFlow({
+      entryId: req.params.entryId,
+      venueId: req.venue!.id,
+    });
+    ok(res, flow);
+  } catch (e) { next(e); }
+}
+
 export async function reissueGuestSession(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const { otp } = SessionSchema.parse(req.body);

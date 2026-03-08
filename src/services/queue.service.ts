@@ -6,12 +6,29 @@ import { AppError } from '../middleware/errorHandler';
 import { PaymentStatus, PaymentType, QueueEntryStatus, TableStatus } from '@prisma/client';
 import { QueuePositionInfo } from '../types';
 import { logger } from '../config/logger';
-import { syncPendingPreOrderForSeating } from './order.service';
+import { selectBillableOrders, syncPendingPreOrderForSeating } from './order.service';
 import { signGuestToken } from '../utils/jwt';
 import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
+
+type QueueFlowEventType =
+  | 'QUEUE_JOINED'
+  | 'TABLE_READY_NOTIFIED'
+  | 'GUEST_SEATED'
+  | 'ORDER_CREATED'
+  | 'PAYMENT_INITIATED'
+  | 'PAYMENT_CAPTURED'
+  | 'PAYMENT_FAILED'
+  | 'PAYMENT_REFUNDED'
+  | 'QUEUE_COMPLETED';
+
+interface QueueFlowEvent {
+  at: Date;
+  type: QueueFlowEventType;
+  details: Record<string, unknown>;
+}
 
 // ── Join queue ────────────────────────────────────────────────────
 
@@ -151,6 +168,225 @@ export async function getQueueEntry(entryId: string) {
 
   const { otp: _otp, ...safeEntry } = entry;
   return safeEntry;
+}
+
+export async function getQueueEntryFlow(params: { entryId: string; venueId: string }) {
+  const entry = await prisma.queueEntry.findFirst({
+    where: { id: params.entryId, venueId: params.venueId },
+    include: {
+      table: {
+        select: {
+          id: true,
+          label: true,
+          section: true,
+        },
+      },
+      partySession: {
+        select: {
+          id: true,
+          status: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      },
+      orders: {
+        orderBy: { createdAt: 'asc' },
+        include: {
+          items: {
+            select: {
+              id: true,
+              menuItemId: true,
+              name: true,
+              quantity: true,
+              totalIncGst: true,
+            },
+          },
+          payments: {
+            orderBy: { createdAt: 'asc' },
+            select: {
+              id: true,
+              type: true,
+              status: true,
+              amount: true,
+              txnRef: true,
+              razorpayOrderId: true,
+              razorpayPaymentId: true,
+              failureReason: true,
+              createdAt: true,
+              capturedAt: true,
+              refundedAt: true,
+              updatedAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!entry) throw new AppError('Queue entry not found', 404);
+
+  const allOrders = [...entry.orders].sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  const allOrderRefById = new Map<string, string>();
+  allOrders.forEach((order, index) => {
+    allOrderRefById.set(order.id, `ORD-${String(index + 1).padStart(3, '0')}`);
+  });
+
+  const billableOrders = selectBillableOrders(entry.orders);
+  const billableOrderIds = new Set(billableOrders.map((order) => order.id));
+  const totalIncGst = billableOrders.reduce((sum, order) => sum + order.totalIncGst, 0);
+  const balanceDue = Math.max(0, totalIncGst - entry.depositPaid);
+
+  const events: QueueFlowEvent[] = [];
+  const pushEvent = (type: QueueFlowEventType, at: Date | null | undefined, details: Record<string, unknown>) => {
+    if (!at) return;
+    events.push({ type, at, details });
+  };
+
+  pushEvent('QUEUE_JOINED', entry.joinedAt, {
+    queueEntryId: entry.id,
+    position: entry.position,
+    estimatedWaitMin: entry.estimatedWaitMin,
+  });
+  pushEvent('TABLE_READY_NOTIFIED', entry.notifiedAt, {
+    tableReadyDeadlineAt: entry.tableReadyDeadlineAt,
+  });
+  pushEvent('GUEST_SEATED', entry.seatedAt, {
+    tableId: entry.table?.id ?? entry.tableId,
+    tableLabel: entry.table?.label ?? null,
+    tableSection: entry.table?.section ?? null,
+  });
+
+  for (const order of allOrders) {
+    const orderRef = allOrderRefById.get(order.id) ?? order.id;
+    pushEvent('ORDER_CREATED', order.createdAt, {
+      orderId: order.id,
+      orderRef,
+      orderType: order.type,
+      orderStatus: order.status,
+      totalIncGst: order.totalIncGst,
+      itemCount: order.items.reduce((sum, item) => sum + item.quantity, 0),
+      includedInBill: billableOrderIds.has(order.id),
+    });
+
+    for (const payment of order.payments) {
+      pushEvent('PAYMENT_INITIATED', payment.createdAt, {
+        paymentId: payment.id,
+        paymentType: payment.type,
+        paymentStatus: payment.status,
+        amount: payment.amount,
+        txnRef: payment.txnRef,
+        orderId: order.id,
+        orderRef,
+      });
+
+      pushEvent('PAYMENT_CAPTURED', payment.capturedAt, {
+        paymentId: payment.id,
+        paymentType: payment.type,
+        amount: payment.amount,
+        txnRef: payment.txnRef,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        orderId: order.id,
+        orderRef,
+      });
+
+      if (payment.status === PaymentStatus.FAILED) {
+        pushEvent('PAYMENT_FAILED', payment.updatedAt, {
+          paymentId: payment.id,
+          paymentType: payment.type,
+          amount: payment.amount,
+          txnRef: payment.txnRef,
+          failureReason: payment.failureReason ?? null,
+          orderId: order.id,
+          orderRef,
+        });
+      }
+
+      pushEvent('PAYMENT_REFUNDED', payment.refundedAt, {
+        paymentId: payment.id,
+        paymentType: payment.type,
+        amount: payment.amount,
+        txnRef: payment.txnRef,
+        orderId: order.id,
+        orderRef,
+      });
+    }
+  }
+
+  pushEvent('QUEUE_COMPLETED', entry.completedAt, {
+    queueEntryId: entry.id,
+  });
+
+  const timeline = events
+    .sort((a, b) => a.at.getTime() - b.at.getTime())
+    .map((event, index) => ({
+      sequence: index + 1,
+      at: event.at,
+      type: event.type,
+      details: event.details,
+    }));
+
+  return {
+    queueEntry: {
+      id: entry.id,
+      guestName: entry.guestName,
+      guestPhone: entry.guestPhone,
+      status: entry.status,
+      joinedAt: entry.joinedAt,
+      notifiedAt: entry.notifiedAt,
+      seatedAt: entry.seatedAt,
+      completedAt: entry.completedAt,
+      table: entry.table
+        ? {
+            id: entry.table.id,
+            label: entry.table.label,
+            section: entry.table.section,
+          }
+        : null,
+      partySession: entry.partySession
+        ? {
+            id: entry.partySession.id,
+            status: entry.partySession.status,
+            createdAt: entry.partySession.createdAt,
+            updatedAt: entry.partySession.updatedAt,
+          }
+        : null,
+    },
+    financials: {
+      totalIncGst,
+      depositPaid: entry.depositPaid,
+      balanceDue,
+    },
+    orders: allOrders.map((order) => ({
+      id: order.id,
+      orderRef: allOrderRefById.get(order.id) ?? order.id,
+      type: order.type,
+      status: order.status,
+      totalIncGst: order.totalIncGst,
+      includedInBill: billableOrderIds.has(order.id),
+      createdAt: order.createdAt,
+      items: order.items.map((item) => ({
+        id: item.id,
+        menuItemId: item.menuItemId,
+        name: item.name,
+        quantity: item.quantity,
+        totalIncGst: item.totalIncGst,
+      })),
+      payments: order.payments.map((payment) => ({
+        id: payment.id,
+        type: payment.type,
+        status: payment.status,
+        amount: payment.amount,
+        txnRef: payment.txnRef,
+        razorpayOrderId: payment.razorpayOrderId,
+        razorpayPaymentId: payment.razorpayPaymentId,
+        failureReason: payment.failureReason,
+        createdAt: payment.createdAt,
+        capturedAt: payment.capturedAt,
+        refundedAt: payment.refundedAt,
+      })),
+    })),
+    timeline,
+  };
 }
 
 export async function reissueGuestSession(entryId: string, otp: string) {
