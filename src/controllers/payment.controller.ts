@@ -101,7 +101,12 @@ export async function razorpayWebhook(req: Request, res: Response, next: NextFun
           await PaymentService.capturePaymentFromWebhook({
             razorpayOrderId: p.order_id,
             razorpayPaymentId: p.id,
-          }).catch(() => {}); // may already be captured via client callback
+          }).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg.includes('already') && !msg.includes('CAPTURED')) {
+              console.error('[webhook] payment.captured handling failed:', msg);
+            }
+          });
         }
         break;
       }
@@ -112,7 +117,12 @@ export async function razorpayWebhook(req: Request, res: Response, next: NextFun
           await PaymentService.capturePaymentFromWebhook({
             razorpayOrderId: orderEntity.id,
             razorpayPaymentId: paymentEntity.id,
-          }).catch(() => {}); // may already be captured via client callback
+          }).catch((err: unknown) => {
+            const msg = err instanceof Error ? err.message : String(err);
+            if (!msg.includes('already') && !msg.includes('CAPTURED')) {
+              console.error('[webhook] order.paid handling failed:', msg);
+            }
+          });
         }
         break;
       }

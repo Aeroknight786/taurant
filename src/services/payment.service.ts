@@ -246,6 +246,11 @@ export async function refundDeposit(params: { paymentId: string; venueId: string
 }
 
 export async function settleFinalOffline(params: { venueId: string; queueEntryId: string; staffId: string }) {
+  const entry = await prisma.queueEntry.findFirst({
+    where: { id: params.queueEntryId, venueId: params.venueId },
+  });
+  if (!entry) throw new AppError('Queue entry not found or does not belong to this venue', 404);
+
   const bill = await getBillSummary(params.queueEntryId);
   const orders = await prisma.order.findMany({
     where: { queueEntryId: params.queueEntryId },

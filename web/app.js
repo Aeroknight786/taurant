@@ -2416,7 +2416,14 @@ function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
   `;
 }
 
+let _guestCategoryObserver = null;
+
 function mountGuestCategoryTracking() {
+  if (_guestCategoryObserver) {
+    _guestCategoryObserver.disconnect();
+    _guestCategoryObserver = null;
+  }
+
   const sections = [...document.querySelectorAll('[data-guest-category-section]')];
   const buttons = [...document.querySelectorAll('[data-category-jump]')];
   if (!sections.length || !buttons.length || !window.IntersectionObserver) {
@@ -2441,6 +2448,7 @@ function mountGuestCategoryTracking() {
   });
 
   sections.forEach((section) => observer.observe(section));
+  _guestCategoryObserver = observer;
 }
 
 function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) {
