@@ -625,11 +625,7 @@ async function renderGuestEntry(slug, entryId) {
 
   if (entry.status === 'SEATED') {
     if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
-      uiState.guestTray = 'ordered';
-    }
-    const seatedDraftSummary = buildCartSummary(venue.menuCategories || [], BucketStore.getDraftCart());
-    if (!getBucketItemCount(seatedDraftSummary)) {
-      uiState.guestTray = (entry.orders.length || (bill?.summary?.balanceDue || 0) > 0) ? 'ordered' : 'menu';
+      uiState.guestTray = 'menu';
     }
     mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession });
     return;
@@ -2770,7 +2766,8 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
           ${entry.depositPaid > 0
             ? isPartyJoiner
               ? `<div class="alert alert-blue"><div>The host has already placed a pre-order (${formatMoney(entry.preOrderTotal || 0)}). You can add more items once seated.</div></div>`
-              : `<div class="alert alert-green"><div>Deposit captured: ${formatMoney(entry.depositPaid)}. Pre-order total: ${formatMoney(entry.preOrderTotal || 0)}.</div></div>`
+              : `<div class="alert alert-green"><div>Deposit captured: ${formatMoney(entry.depositPaid)}. Pre-order total: ${formatMoney(entry.preOrderTotal || 0)}.</div></div>
+                 <div class="alert alert-blue"><div>Balance due at table: ${formatMoney(Math.max(0, (entry.preOrderTotal || 0) - entry.depositPaid))}. This will be collected after you are seated.</div></div>`
             : `<button class="btn btn-primary" id="preorder-cta">Pre-order now</button>`
           }
         </div>
@@ -2794,7 +2791,8 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
           ${entry.depositPaid > 0
             ? isPartyJoiner
               ? `<div class="alert alert-blue"><div>The host locked a pre-order before seating. You'll be able to add items once seated.</div></div>`
-              : `<div class="muted">Deposit secured: ${formatMoney(entry.depositPaid)}</div>`
+              : `<div class="muted">Deposit secured: ${formatMoney(entry.depositPaid)}</div>
+                 <div class="muted">Balance due at table: ${formatMoney(Math.max(0, (entry.preOrderTotal || 0) - entry.depositPaid))}</div>`
             : '<button class="btn btn-primary" id="preorder-cta">Add a pre-order before seating</button>'
           }
         </div>
