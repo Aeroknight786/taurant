@@ -47,4 +47,13 @@ Two MCP servers are configured in `.cursor/mcp.json`:
 
 - **Supabase** (hosted at `https://mcp.supabase.com/mcp`): Remote URL-based, scoped to project `dcoixzkyrvfzytelvael`. Provides tools for database queries, migrations, and type generation. Uses Supabase's built-in OAuth — no API key secret needed.
 
-- **Render** (via `mcp-remote` bridge to `https://mcp.render.com/mcp`): Uses `sh -c` to expand `$RENDER_API_KEY` from the environment before passing it as an Authorization header. Provides tools for managing Render services, deployments, logs, and databases. Requires user to add `RENDER_API_KEY` (a Render API key from dashboard.render.com/settings#api-keys) as a Cursor secret.
+- **Render** (via `mcp-remote` bridge to `https://mcp.render.com/mcp`): Uses `sh -c` to expand `$RENDER_API_KEY` from the environment before passing it as an Authorization header. Provides tools for managing Render services, deployments, logs, and databases. `RENDER_API_KEY` is configured as a Cursor secret.
+
+### Cursor secrets
+
+The following secrets are configured and injected as environment variables:
+
+| Secret name | Purpose |
+|---|---|
+| `RENDER_API_KEY` | Authenticates the Render MCP server |
+| `SUPABASE_SECRET_KEY` | Supabase service key, available for direct API/DB access |
