@@ -7,7 +7,7 @@
       "command": "sh",
       "args": [
         "-c",
-        "npx -y mcp-remote https://mcp.render.com/mcp --header \"Authorization: Bearer $RENDER_API_KEY\""
+        ". \"/Users/adsaha/Desktop/Pricing Engine/C/Flock/.codex/mcp.secrets.env\" && exec npx -y mcp-remote https://mcp.render.com/mcp --header \"Authorization: Bearer $RENDER_API_KEY\""
       ]
     }
   }

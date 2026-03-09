@@ -1,6 +1,6 @@
 # Flock Implementation State
 
-Last updated: 2026-03-07
+Last updated: 2026-03-09
 
 ## Purpose
 
@@ -250,14 +250,68 @@ Current database state includes:
 
 ## 10. Security Baseline Applied
 
-RLS was enabled on all public tables in Supabase.
+RLS is now enabled on all public tables currently used by the pilot, including the newer shared-session and flow-log tables.
 
-Important limitation:
+Applied hardening includes restrictive deny policies for `anon` and `authenticated` on:
 
-- RLS is enabled, but there are currently no explicit policies
-- this is safer than fully open tables, but still incomplete production hardening
+- `Venue`
+- `Staff`
+- `OtpCode`
+- `Table`
+- `TableEvent`
+- `MenuCategory`
+- `MenuItem`
+- `QueueEntry`
+- `Order`
+- `OrderItem`
+- `Payment`
+- `Invoice`
+- `Notification`
+- `PartySession`
+- `PartyParticipant`
+- `PartyBucketItem`
+- `OrderFlowEvent`
+
+Validation from Supabase advisor on 2026-03-09:
+
+- security advisor returned no lints
+- remaining database advisor findings are performance/info only
 
 ## 11. Deployment Prep Added
+
+## 12. MCP And Deployment Validation State
+
+Validated on 2026-03-09:
+
+- Render MCP is configured and reachable for the active Render workspace
+- Supabase MCP is configured and authenticated for project `dcoixzkyrvfzytelvael`
+- repo bootstrap now exists for MCP sync:
+  - `npm run mcp:setup`
+- live Render health returns:
+  - `db: ok`
+  - `redis: degraded`
+- live Render frontend bundle includes the recent staff-history and `displayRef` UI
+- live queue-history endpoint is responding
+- flow-log endpoint works in both modes:
+  - persisted rows when `OrderFlowEvent` records exist
+  - reconstructed fallback when older entries have no flow rows
+
+## 13. Recent Migration Validation
+
+Recent schema/runtime validation completed against live Supabase + Render:
+
+- `OrderFlowEvent` table exists
+- `QueueEntry.displayRef` column exists
+- older queue rows still mostly have `displayRef = null`
+- newly created queue rows do populate `displayRef`
+- a temporary live queue entry was created and cancelled to verify:
+  - `displayRef` generation
+  - persisted `OrderFlowEvent` writes
+
+Implication:
+
+- schema additions are deployed and working for new traffic
+- historical data backfill for `displayRef` has not been performed
 
 Deployment-prep artifacts were added so the project can move from local-only runtime toward a stable pilot host.
 
@@ -1045,19 +1099,25 @@ Because the currently validated live behavior matches `6ddc5c1`, production incl
 
 ## Still uncertain
 
-One important infrastructure item remains unverified from this session:
+One important infrastructure item was unverified from that 2026-03-04 session and is now resolved by the 2026-03-09 MCP validation pass:
 
 - whether the `20260303093000_v2_feedback_hardening` migration was applied to Supabase
 
-Reason:
+Reason at that time:
 
-- Supabase MCP is not currently usable in this session (`Auth required`)
+- Supabase MCP was not usable in that session (`Auth required`)
 - direct DB verification from this shell failed because the Supabase session-pool host was unreachable from this environment
 
-So the correct documentation stance is:
+Resolved on 2026-03-09:
+
+- Supabase MCP is configured and authenticated for project `dcoixzkyrvfzytelvael`
+- direct Supabase verification succeeded
+- later validation also confirmed the newer `OrderFlowEvent` and `QueueEntry.displayRef` schema paths on live infrastructure
+
+So the corrected documentation stance is:
 
 - share/join frontend deployment status: verified by Render commit lineage
-- `20260303093000_v2_feedback_hardening` database application status: still not independently re-verified here
+- `20260303093000_v2_feedback_hardening` database application status: was not independently re-verified in that 2026-03-04 session
 - no payer-role gating yet
 - local browser verification in two tabs/devices is still the next practical check before relying on the share/join flow for pilot operations
 
@@ -1268,9 +1328,9 @@ Deployment note:
 
 ## Local-only internal verification route added (2026-03-04)
 
-To work around the current environment limitation where:
+To work around the then-current environment limitation where:
 
-- Supabase MCP is not usable for direct queries in this session
+- Supabase MCP was not usable for direct queries in that session
 - direct DB connectivity from this shell is failing
 
 a guarded read-only verification route now exists in code:
@@ -1339,5 +1399,9 @@ Evidence classification for DB/migration state in this session:
   - runtime DB connectivity from production app itself (Prisma connected in service logs)
 - inferred:
   - Phase 6 data model paths used by seated+shared-session flow are operational because their live endpoints returned valid data
-- unverified:
-  - migration `20260303093000_v2_feedback_hardening` remains unverified from this session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from this shell
+- historical limitation in that 2026-03-07 session:
+  - migration `20260303093000_v2_feedback_hardening` was still unverified then due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from that shell
+- resolved on 2026-03-09:
+  - Supabase MCP authentication completed
+  - direct Supabase validation succeeded
+  - newer RLS hardening migration was applied and verified

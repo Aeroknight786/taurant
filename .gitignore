@@ -5,3 +5,4 @@ node_modules
 tests/results
 tests/**/*-snapshots
 playwright-report
+.codex/mcp.secrets.env

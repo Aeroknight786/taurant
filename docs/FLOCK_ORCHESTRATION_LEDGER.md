@@ -1,6 +1,6 @@
 # Flock Orchestration Ledger
 
-Last updated: 2026-03-07
+Last updated: 2026-03-09
 Status: active
 
 ## Purpose
@@ -128,7 +128,9 @@ The current open work is no longer “backend-first only.” The remaining work 
 - Supabase schema is applied
 - Seeded venue exists
 - RLS enabled across public tables
-- RLS policies still missing
+- Restrictive deny policies are now applied across the newer public shared-session and flow-log tables too
+- Security advisor is now clean
+- Performance/info advisor findings still remain for indexing hygiene
 
 ## Integrations
 
@@ -151,6 +153,69 @@ The current open work is no longer “backend-first only.” The remaining work 
   - unverified from this session (no direct release-id -> git-sha assertion from app response)
 - Production parity caveat:
   - deployment identity should be treated as inferred from manual deploy history unless explicitly verified by release metadata
+
+## 2026-03-09 MCP And Migration Validation Writeback
+
+MCP setup and validation are now complete for the active machine and repo workflow.
+
+Configured and verified:
+
+- Codex global MCP config in `~/.codex/config.toml`
+- repo bootstrap command:
+  - `npm run mcp:setup`
+- repo Cursor MCP config:
+  - `.cursor/mcp.json`
+- Supabase MCP OAuth login completed successfully
+- Render MCP reachable and bound to workspace:
+  - `tea-d6imr3hr0fns73be3ft0`
+
+Runtime and schema evidence collected:
+
+- Supabase MCP confirmed:
+  - `OrderFlowEvent` exists
+  - `QueueEntry.displayRef` exists
+- Live Render checks confirmed:
+  - `/api/v1/health` returns `200`
+  - `db: ok`
+  - `redis: degraded`
+  - `/api/v1/queue/history/recent` returns `200`
+  - `/api/v1/queue/:entryId/flow` returns `200`
+- Live frontend bundle on Render includes:
+  - staff `History` tab
+  - `displayRef` rendering logic
+  - reconstructed flow-log UI handling
+
+Important nuance discovered:
+
+- historical queue rows largely still have `displayRef = null`
+- a newly created live queue entry did receive a non-null `displayRef`
+- a temporary live queue entry was created and cancelled to verify:
+  - new `displayRef` write path
+  - native `OrderFlowEvent` persistence
+
+New hardening migration applied to Supabase:
+
+- `harden_party_session_and_flow_rls`
+
+That migration enabled RLS and restrictive deny policies on:
+
+- `PartySession`
+- `PartyParticipant`
+- `PartyBucketItem`
+- `OrderFlowEvent`
+
+Post-apply validation:
+
+- Supabase security advisor returned zero lints
+- remaining advisor findings are INFO-only performance items
+
+## Current Objective
+
+Current objective has shifted from MCP/bootstrap uncertainty to operational refinement:
+
+- keep live schema and deployment parity stable
+- resolve remaining performance/index hygiene
+- continue live-flow validation and deployment hardening using active Render + Supabase MCP access
 
 ## 2026-03-07 Production DevTools Audit Writeback
 
@@ -198,7 +263,7 @@ Primary evidence file:
 
 ### Explicit Uncertainty
 
-- Database migration state remains unverified from this session due environment limitations previously observed for Supabase MCP resource exposure and direct DB connectivity paths.
+- Database migration state was unverified in that 2026-03-07 session due environment limitations then observed for Supabase MCP resource exposure and direct DB connectivity paths. This was resolved by the 2026-03-09 MCP validation pass.
 
 ## 2026-03-07 Reliability Hardening Implementation Writeback
 
@@ -378,10 +443,14 @@ Any future substantive work on Flock should:
 - Remaining deployment uncertainty:
   - local changes made after `4af4271` are **not** guaranteed live until manually redeployed on Render
   - this includes later local-only UX refinements unless explicitly confirmed by a newer live deploy
-- Remaining database uncertainty:
-  - the `20260303093000_v2_feedback_hardening` migration is still not re-verified from this session
-  - Supabase MCP is currently unavailable in this session (`Auth required`)
-  - direct DB verification from this shell is blocked by network reachability to the Supabase pooler
+- Remaining database uncertainty at that time:
+  - the `20260303093000_v2_feedback_hardening` migration was not re-verified in that session
+  - Supabase MCP was unavailable in that session (`Auth required`)
+  - direct DB verification from that shell was blocked by network reachability to the Supabase pooler
+- Resolved on 2026-03-09:
+  - Supabase MCP OAuth login completed successfully
+  - live Supabase verification succeeded
+  - newer RLS hardening was applied and verified cleanly
 - Verified database fact still held from prior work:
   - the Phase 6A `party_sessions_phase6a` schema was applied directly to the database earlier so `PartySession`, `PartyParticipant`, and `PartyBucketItem` exist for current multi-user work
 - Current recommended operating assumption:
@@ -769,5 +838,9 @@ Any future substantive work on Flock should:
   - bill endpoint reflected expected totals
   - final payment initiation succeeded (capture intentionally skipped)
   - admin menu read + reversible availability toggle succeeded
-- Remaining uncertainty explicitly retained:
-  - migration `20260303093000_v2_feedback_hardening` remains unverified from this session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from this shell
+- Remaining uncertainty explicitly retained in that session:
+  - migration `20260303093000_v2_feedback_hardening` remained unverified in that session due Supabase MCP startup/auth handshake failure and direct DB connectivity failure from that shell
+- Resolved on 2026-03-09:
+  - Supabase MCP startup/auth succeeded
+  - direct Supabase validation succeeded
+  - subsequent migration hardening was applied and verified

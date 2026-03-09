@@ -32,6 +32,26 @@ cp .env.example .env
 # Edit .env — at minimum set DATABASE_URL, REDIS_URL, JWT_SECRET
 ```
 
+### 3b. MCP setup for Codex / Cursor
+```bash
+npm run mcp:setup
+codex mcp login supabase
+```
+
+This repo bootstraps:
+
+- Render MCP via local `RENDER_API_KEY`
+- Supabase MCP via project ref `dcoixzkyrvfzytelvael`
+
+The bootstrap syncs:
+
+- `.cursor/mcp.json`
+- `~/.codex/config.toml`
+
+Local secret source:
+
+- `.codex/mcp.secrets.env`
+
 ### 4. Database
 ```bash
 npm run db:generate   # generate Prisma client
@@ -195,6 +215,26 @@ prisma/
 - [ ] Set strong `JWT_SECRET` (32+ chars, random)
 - [ ] Add `RAZORPAY_WEBHOOK_SECRET` and point Razorpay dashboard to `/payments/webhook/razorpay`
 - [ ] Set up Cloudflare in front of the API (DDoS, WAF, caching)
+
+## Current deployment and migration notes
+
+Validated on 2026-03-09:
+
+- Live Render service: `https://taurant.onrender.com`
+- Render MCP is active and reachable
+- Supabase MCP is active and reachable
+- `OrderFlowEvent` table exists in production data
+- `QueueEntry.displayRef` exists and new queue joins populate it
+- Security hardening migration `harden_party_session_and_flow_rls` was applied to enable RLS on:
+  - `PartySession`
+  - `PartyParticipant`
+  - `PartyBucketItem`
+  - `OrderFlowEvent`
+
+Residual DB lint state after hardening:
+
+- security advisor: clean
+- performance advisor: INFO-only findings remain for unindexed foreign keys and unused indexes
 
 ---
 

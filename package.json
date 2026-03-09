@@ -11,6 +11,7 @@
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
     "db:studio": "prisma studio",
+    "mcp:setup": "bash scripts/setup-mcp.sh",
     "test:visual": "npx playwright test",
     "test:visual:update": "npx playwright test --update-snapshots"
   },

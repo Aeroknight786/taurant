@@ -15,6 +15,7 @@ See `README.md` for full quick-start. Summary of `package.json` scripts:
 | Dev server | `npm run dev` (port 3000) |
 | Build | `npm run build` |
 | Type check (lint) | `npx tsc --noEmit` |
+| MCP bootstrap | `npm run mcp:setup` |
 | Prisma generate | `npm run db:generate` |
 | Prisma migrate | `npm run db:migrate` |
 | Seed database | `npm run db:seed` |
@@ -43,8 +44,35 @@ No ESLint is configured; `tsc --noEmit` is the lint check.
 
 ### MCP servers
 
-Two MCP servers are configured in `.cursor/mcp.json`:
+Two MCP servers are configured for this project:
+
+- Repo-local bootstrap source:
+  - `.codex/mcp.secrets.env`
+  - `scripts/setup-mcp.sh`
+- Repo-local consumer config:
+  - `.cursor/mcp.json`
+- Machine-level Codex config:
+  - `~/.codex/config.toml`
+
+Bootstrap/re-sync command:
+
+```bash
+npm run mcp:setup
+```
+
+Current expected MCP state:
 
 - **Supabase** (hosted at `https://mcp.supabase.com/mcp`): Remote URL-based, scoped to project `dcoixzkyrvfzytelvael`. Provides tools for database queries, migrations, and type generation. Uses Supabase's built-in OAuth — no API key secret needed.
+- Supabase login command for Codex:
+  ```bash
+  codex mcp login supabase
+  ```
 
 - **Render** (via `mcp-remote` bridge to `https://mcp.render.com/mcp`): Uses `sh -c` to expand `$RENDER_API_KEY` from the environment before passing it as an Authorization header. Provides tools for managing Render services, deployments, logs, and databases. Requires user to add `RENDER_API_KEY` (a Render API key from dashboard.render.com/settings#api-keys) as a Cursor secret.
+
+Validated on 2026-03-09:
+
+- Render MCP reachable and bound to workspace `tea-d6imr3hr0fns73be3ft0`
+- Supabase MCP reachable and authenticated for project `dcoixzkyrvfzytelvael`
+- Latest schema hardening migration applied through MCP:
+  - `harden_party_session_and_flow_rls`
