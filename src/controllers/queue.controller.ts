@@ -89,3 +89,10 @@ export async function getRecentHistory(req: AuthenticatedRequest, res: Response,
     ok(res, entries, { count: entries.length });
   } catch (e) { next(e); }
 }
+
+export async function clearAllEntries(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.clearAllQueueEntries(req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}

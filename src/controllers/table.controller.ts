@@ -55,3 +55,10 @@ export async function getTableEvents(req: AuthenticatedRequest, res: Response, n
     ok(res, events);
   } catch (e) { next(e); }
 }
+
+export async function resetAllTables(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await TableService.resetAllTables(req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
