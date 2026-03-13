@@ -8,4 +8,5 @@ router.post ('/',                  requireAuth, requireRole('OWNER','MANAGER'), 
 router.get  ('/events/recent',     requireAuth, operatorReadLimiter, Table.getRecentTableEvents);
 router.patch('/:tableId/status',   requireAuth, operatorWriteLimiter, Table.updateTableStatus);
 router.get  ('/:tableId/events',   requireAuth, operatorReadLimiter, Table.getTableEvents);
+router.post ('/reset-all',         requireAuth, requireRole('OWNER','MANAGER'), operatorWriteLimiter, Table.resetAllTables);
 export default router;

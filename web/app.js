@@ -1778,6 +1778,30 @@ async function renderStaffDashboard() {
     }
   }));
 
+  document.getElementById('clear-queue-btn')?.addEventListener('click', guardedAction('clear-queue', async () => {
+    if (!confirm('Cancel all waiting entries and check out all seated guests?')) return;
+    try {
+      const result = await apiRequest('/queue/clear-all', { method: 'POST', auth: true });
+      setFlash('green', `Cleared ${result.cleared} queue entries.`);
+      await renderStaffDashboard();
+    } catch (error) {
+      setFlash('red', error.message);
+      await renderStaffDashboard();
+    }
+  }));
+
+  document.getElementById('reset-tables-btn')?.addEventListener('click', guardedAction('reset-tables', async () => {
+    if (!confirm('Reset all tables to FREE?')) return;
+    try {
+      const result = await apiRequest('/tables/reset-all', { method: 'POST', auth: true });
+      setFlash('green', `Reset ${result.reset} tables to FREE.`);
+      await renderStaffDashboard();
+    } catch (error) {
+      setFlash('red', error.message);
+      await renderStaffDashboard();
+    }
+  }));
+
   if (currentTab !== 'seat' && currentTab !== 'manager' && !uiState.staffSeat.isSubmitting) {
     const refreshMs = resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings });
     scheduleRefresh(() => renderStaffDashboard(), refreshMs);
@@ -2185,6 +2209,16 @@ function renderManagerTab({ auth, venue, queue }) {
           </form>
         ` : ''}
       </div>
+      ${isManager ? `
+        <div class="card">
+          <div class="card-title">Reset floor</div>
+          <div class="card-sub">Cancel all waiting entries, check out all seated guests, and free all tables. Use at end of service or to reset test data.</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button class="btn btn-danger btn-sm" id="clear-queue-btn">Clear all queue entries</button>
+            <button class="btn btn-danger btn-sm" id="reset-tables-btn">Reset all tables to FREE</button>
+          </div>
+        </div>
+      ` : ''}
     </div>
   `;
 }

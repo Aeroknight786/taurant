@@ -88,6 +88,23 @@ export async function updateTableStatus(params: {
   }
 }
 
+// ── Bulk reset ───────────────────────────────────────────────────
+
+export async function resetAllTables(venueId: string): Promise<{ reset: number }> {
+  const nonFree = await prisma.table.findMany({
+    where: { venueId, status: { not: TableStatus.FREE } },
+    select: { id: true },
+  });
+  if (!nonFree.length) return { reset: 0 };
+
+  await prisma.table.updateMany({
+    where: { venueId },
+    data: { status: TableStatus.FREE, occupiedSince: null, estimatedFreeAt: null },
+  });
+
+  return { reset: nonFree.length };
+}
+
 // ── Core auto-advance logic ───────────────────────────────────────
 
 export async function tryAdvanceQueue(venueId: string, tableId: string): Promise<void> {

@@ -460,6 +460,38 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
   });
 }
 
+// ── Bulk clear ───────────────────────────────────────────────────
+
+export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: number }> {
+  const active = await prisma.queueEntry.findMany({
+    where: { venueId, status: { in: ['WAITING', 'NOTIFIED', 'SEATED'] } },
+    select: { id: true, tableId: true, status: true },
+  });
+
+  if (!active.length) return { cleared: 0 };
+
+  const tableIds = active.filter(e => e.tableId).map(e => e.tableId!);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.queueEntry.updateMany({
+      where: { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+      data: { status: QueueEntryStatus.CANCELLED, tableId: null, tableReadyDeadlineAt: null },
+    });
+    await tx.queueEntry.updateMany({
+      where: { venueId, status: QueueEntryStatus.SEATED },
+      data: { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null },
+    });
+    if (tableIds.length) {
+      await tx.table.updateMany({
+        where: { id: { in: tableIds } },
+        data: { status: TableStatus.FREE, occupiedSince: null },
+      });
+    }
+  });
+
+  return { cleared: active.length };
+}
+
 // ── Internal helpers ──────────────────────────────────────────────
 
 async function recompactPositions(venueId: string): Promise<void> {
