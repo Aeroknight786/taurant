@@ -92,12 +92,6 @@ const webDir = path.join(process.cwd(), 'web');
 if (fs.existsSync(webDir)) {
   app.use(express.static(webDir));
 
-  // Venue-specific SPA shells
-  // /subko and /subko/* → subko.html (The Craftery by Subko theme)
-  app.get(['/subko', '/subko/*'], (_req, res) => {
-    res.sendFile(path.join(webDir, 'subko.html'));
-  });
-
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) {
       next();
