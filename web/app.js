@@ -58,6 +58,63 @@ import {
   updateTableCart,
 } from './modules/storage.js';
 
+
+// ── Venue theme map ───────────────────────────────────────────────────────────
+// Add an entry here for each venue that needs a custom theme.
+// The slug is matched against the URL path (/v/:slug or /v/:slug/...).
+const VENUE_THEMES = {
+  'the-craftery-koramangala': {
+    stylesheet: '/craftery-styles.css',
+    fonts: 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Serif+Text:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap',
+    themeColor: '#1E1A16',
+    title: 'The Craftery by Subko',
+  },
+};
+
+function applyVenueTheme() {
+  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  // Match /v/:slug or /staff/... or /admin/... (staff/admin use the stored venueSlug)
+  let slug = null;
+  if (segments[0] === 'v' && segments[1]) {
+    slug = segments[1];
+  }
+  // Also check stored staff auth for staff/admin routes
+  if (!slug) {
+    try {
+      const auth = JSON.parse(localStorage.getItem('flock_staff_auth') || 'null');
+      if (auth?.venueSlug) slug = auth.venueSlug;
+    } catch (_) {}
+  }
+
+  const theme = slug ? VENUE_THEMES[slug] : null;
+  if (!theme) return;
+
+  // Fonts
+  if (theme.fonts && !document.querySelector(`link[href="${theme.fonts}"]`)) {
+    const fontLink = document.createElement('link');
+    fontLink.rel = 'stylesheet';
+    fontLink.href = theme.fonts;
+    document.head.prepend(fontLink);
+  }
+
+  // Theme stylesheet — injected after the default styles.css so it wins
+  if (theme.stylesheet && !document.querySelector(`link[href="${theme.stylesheet}"]`)) {
+    const styleLink = document.createElement('link');
+    styleLink.rel = 'stylesheet';
+    styleLink.href = theme.stylesheet;
+    document.head.appendChild(styleLink);
+  }
+
+  // Theme color meta
+  const themeMeta = document.querySelector('meta[name="theme-color"]');
+  if (themeMeta && theme.themeColor) themeMeta.content = theme.themeColor;
+
+  // Default title
+  if (theme.title && document.title === 'Flock') document.title = theme.title;
+}
+
+applyVenueTheme();
+
 const appRoot = document.getElementById('app');
 const uiState = {
   timerId: null,
@@ -201,6 +258,7 @@ function navigate(path) {
   }
   uiState.nextRenderResetScroll = true;
   history.pushState({}, '', path);
+  applyVenueTheme();
   renderRoute().catch(handleFatalError);
 }
 
