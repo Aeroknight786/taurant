@@ -115,6 +115,17 @@ function applyVenueTheme() {
 
 applyVenueTheme();
 
+// Resolve the active venue slug — from URL first, then stored staff auth, then default
+function getActiveVenueSlug() {
+  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  if (segments[0] === 'v' && segments[1]) return segments[1];
+  try {
+    const auth = JSON.parse(localStorage.getItem(STAFF_AUTH_KEY) || 'null');
+    if (auth?.venueSlug) return auth.venueSlug;
+  } catch (_) {}
+  return DEFAULT_VENUE_SLUG;
+}
+
 const appRoot = document.getElementById('app');
 const uiState = {
   timerId: null,
@@ -1251,7 +1262,7 @@ async function renderPreorder(slug, entryId) {
 }
 
 async function renderStaffLogin() {
-  const venue = await apiRequest(`/venues/${DEFAULT_VENUE_SLUG}`);
+  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
   const pendingPhone = sessionStorage.getItem(STAFF_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
@@ -1331,7 +1342,7 @@ async function renderStaffLogin() {
         method: 'POST',
         body: { phone, code, venueId: venue.id },
       });
-      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: DEFAULT_VENUE_SLUG, venueId: venue.id }));
+      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(STAFF_PENDING_PHONE_KEY);
       navigate('/staff/dashboard');
     } catch (error) {
@@ -1342,7 +1353,7 @@ async function renderStaffLogin() {
 }
 
 async function renderAdminLogin() {
-  const venue = await apiRequest(`/venues/${DEFAULT_VENUE_SLUG}`);
+  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
   const pendingPhone = sessionStorage.getItem(ADMIN_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
@@ -1430,7 +1441,7 @@ async function renderAdminLogin() {
         return;
       }
 
-      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: DEFAULT_VENUE_SLUG, venueId: venue.id }));
+      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(ADMIN_PENDING_PHONE_KEY);
       navigate('/admin/dashboard');
     } catch (error) {
