@@ -10,7 +10,7 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:seed": "ts-node prisma/seed.ts",
-    "db:seed:craftery": "ts-node scripts/seed-craftery.ts",
+    "db:seed:craftery": "node scripts/seed-craftery.js",
     "db:studio": "prisma studio",
     "mcp:setup": "bash scripts/setup-mcp.sh",
     "test:unit": "vitest run --config vitest.config.ts --project unit",
