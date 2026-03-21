@@ -1,4 +1,5 @@
 import {
+  ACTIVE_VENUE_KEY,
   ADMIN_PENDING_PHONE_KEY,
   API_BASE,
   createDefaultPartyPollState,
@@ -118,12 +119,15 @@ applyVenueTheme();
 // Resolve the active venue slug — from URL first, then stored staff auth, then default
 function getActiveVenueSlug() {
   const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-  if (segments[0] === 'v' && segments[1]) return segments[1];
+  if (segments[0] === 'v' && segments[1]) {
+    sessionStorage.setItem(ACTIVE_VENUE_KEY, segments[1]);
+    return segments[1];
+  }
   try {
     const auth = JSON.parse(localStorage.getItem(STAFF_AUTH_KEY) || 'null');
     if (auth?.venueSlug) return auth.venueSlug;
   } catch (_) {}
-  return DEFAULT_VENUE_SLUG;
+  return sessionStorage.getItem(ACTIVE_VENUE_KEY) || DEFAULT_VENUE_SLUG;
 }
 
 const appRoot = document.getElementById('app');
