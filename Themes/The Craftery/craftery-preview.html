@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>The Craftery by Subko — Flock Theme Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Serif+Text:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+/*
+ * The Craftery by Subko — Theme Override for Flock
+ * v1 — industrial warehouse · warm craft edition
+ *
+ * Aesthetic reference:
+ *   The Craftery is a 1925-era converted warehouse in Byculla. Exposed brick,
+ *   concrete, teakwood, Indian spotted marble, crafted metal, textured glass.
+ *   "Hues of brown and biscotti, interspersed with splashes of blue."
+ *   Kerala green exterior. Copper + teak bar inlay. South Asian typographic
+ *   heritage woven into every surface.
+ *
+ * Palette:
+ *   Biscotti     #C8A882  — warm cream/tan, primary brand accent
+ *   Copper       #B5703A  — copper inlay, hover states
+ *   Teak         #6B3F22  — deep teakwood brown, borders + depth
+ *   Kerala Green #3D6B4F  — secondary accent, success states
+ *   Concrete     #1E1A16  — page background, warehouse floor
+ *   Brick        #2A1F17  — elevated surfaces
+ *   Plaster      #342820  — cards, panels
+ *   Plaster 2    #3E3028  — tabs, inputs
+ *
+ *   Text         #EDE0C8  — warm off-white, like aged paper
+ *   Text mid     #8C7A60  — secondary text
+ *   Text muted   #5A4A38  — muted / placeholder
+ *
+ * Fonts:
+ *   Playfair Display — display / headings (editorial, South Asian press heritage)
+ *   DM Serif Text    — body serif (warm, readable, artisanal)
+ *   JetBrains Mono   — mono / OTP (craft precision)
+ *
+ * Drop-in replacement for web/styles.css. Zero class-name changes.
+ */
+
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Serif+Text:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap');
+
+/* ── Variables ─────────────────────────────────────────────────── */
+:root {
+  /* backgrounds — industrial warehouse */
+  --bg:       #1E1A16;
+  --surface:  #2A1F17;
+  --surface2: #342820;
+  --surface3: #3E3028;
+
+  /* borders — teak + brick */
+  --border:  #4A3628;
+  --border2: #5E4838;
+
+  /* Biscotti — primary brand accent (warm tan, like aged parchment) */
+  --amber:        #C8A882;
+  --amber-light:  #DCC09A;
+  --amber-dim:    rgba(200, 168, 130, 0.12);
+  --amber-border: rgba(200, 168, 130, 0.28);
+
+  /* Copper — hover states, depth accents */
+  --copper:        #B5703A;
+  --copper-tint:   rgba(181, 112, 58, 0.12);
+  --copper-border: rgba(181, 112, 58, 0.30);
+
+  /* text — warm aged paper */
+  --cream:        #EDE0C8;
+  --cream-dim:    #8C7A60;
+  --cream-dimmer: #5A4A38;
+
+  /* Kerala green — success, secondary accent */
+  --green:        #3D6B4F;
+  --green-dim:    rgba(61, 107, 79, 0.15);
+  --green-border: rgba(61, 107, 79, 0.35);
+
+  /* danger */
+  --red:        #B54040;
+  --red-dim:    rgba(181, 64, 64, 0.12);
+  --red-border: rgba(181, 64, 64, 0.30);
+
+  /* info — slate blue (like Byculla twilight) */
+  --blue:        #4A6E96;
+  --blue-dim:    rgba(74, 110, 150, 0.12);
+  --blue-border: rgba(74, 110, 150, 0.30);
+
+  --r:      8px;
+  --r-sm:   5px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.45), 0 6px 24px rgba(0,0,0,0.40);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.55), 0 12px 48px rgba(0,0,0,0.50);
+}
+
+/* ── Reset ─────────────────────────────────────────────────────── */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { min-height: 100%; overflow-x: hidden; }
+
+/* ── Body — concrete floor with grain texture ───────────────────── */
+body {
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 70% 45% at 20% 70%, rgba(200,168,130,0.06) 0%, transparent 65%),
+    radial-gradient(ellipse 55% 40% at 80% 25%, rgba(181,112,58,0.04) 0%, transparent 60%),
+    var(--bg);
+  color: var(--cream);
+  font-family: "DM Serif Text", Georgia, serif;
+  font-size: 14px;
+  line-height: 1.65;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button, input, select { font: inherit; }
+#app { min-height: 100vh; }
+.hidden { display: none !important; }
+
+/* ── Landing ─────────────────────────────────────────────────── */
+#landing {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 56px 24px;
+  gap: 56px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='300' height='300' filter='url(%23n)' opacity='0.038'/%3E%3C/svg%3E"),
+    radial-gradient(ellipse 60% 40% at 25% 75%, rgba(200,168,130,0.09) 0%, transparent 65%),
+    radial-gradient(ellipse 45% 35% at 78% 22%, rgba(61,107,79,0.06) 0%, transparent 60%),
+    var(--bg);
+}
+
+/* ── Brand — Playfair, editorial press feel ─────────────────── */
+.brand { text-align: center; }
+
+.brand-name {
+  font-family: "Playfair Display", Georgia, serif;
+  font-size: clamp(52px, 11vw, 88px);
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  color: var(--amber);
+  letter-spacing: -0.01em;
+  text-shadow: 0 2px 0 rgba(100, 68, 28, 0.30);
+}
+
+.brand-name em {
+  color: var(--copper);
+  font-style: normal;
+}
+
+.brand-tag {
+  margin-top: 12px;
+  font-family: "DM Serif Text", serif;
+  font-size: 12px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  font-style: italic;
+}
+
+/* ── Role cards — teakwood panels ───────────────────────────── */
+.role-cards {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+  justify-content: center;
+  max-width: 860px;
+  width: 100%;
+}
+
+.role-card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-top: 3px solid var(--border2);
+  border-radius: var(--r);
+  padding: 28px 22px 36px;
+  flex: 1;
+  min-width: 224px;
+  max-width: 268px;
+  cursor: pointer;
+  transition: border-color 0.2s, transform 0.18s, box-shadow 0.2s;
+  position: relative;
+  box-shadow: var(--shadow);
+}
+
+.role-card:hover {
+  border-color: var(--amber-border);
+  border-top-color: var(--amber);
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+}
+
+.role-card-icon  { font-size: 22px; margin-bottom: 14px; display: block; }
+.role-card-title {
+  font-family: "Playfair Display", serif;
+  font-size: 20px;
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: var(--cream);
+  letter-spacing: 0.01em;
+}
+.role-card-desc  { font-size: 13px; color: var(--cream-dim); line-height: 1.65; font-style: italic; }
+.role-card-cta   { position: absolute; bottom: 14px; right: 18px; font-size: 18px; color: var(--border2); transition: color 0.18s; }
+.role-card:hover .role-card-cta { color: var(--copper); }
+
+/* ── App shell ──────────────────────────────────────────────── */
+.app-shell { min-height: 100vh; display: flex; flex-direction: column; background: var(--bg); }
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 0 24px;
+  height: 60px;
+  border-bottom: 1.5px solid var(--border);
+  background: var(--surface);
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 1px 0 var(--border), 0 2px 12px rgba(0,0,0,0.3);
+}
+
+.header-left, .header-right { display: flex; align-items: center; gap: 10px; }
+
+.header-logo {
+  font-family: "Playfair Display", serif;
+  font-size: 22px;
+  font-weight: 800;
+  font-style: italic;
+  color: var(--amber);
+  letter-spacing: -0.01em;
+}
+
+.header-logo em {
+  color: var(--copper);
+  font-style: normal;
+}
+
+.header-pill, .pill {
+  display: inline-flex;
+  align-items: center;
+  font-family: "DM Serif Text", serif;
+  font-size: 10px;
+  font-style: italic;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--amber);
+  background: var(--amber-dim);
+  border: 1.5px solid var(--amber-border);
+  border-radius: 999px;
+  padding: 3px 12px;
+}
+
+.tms-indicator { display: flex; align-items: center; gap: 6px; font-size: 11px; color: var(--cream-dimmer); font-style: italic; }
+.tms-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); animation: pulse 2.5s infinite; }
+.tms-dot.syncing { background: var(--amber); }
+.tms-dot.error   { background: var(--red); animation: none; }
+
+@keyframes pulse {
+  0%   { box-shadow: 0 0 0 0   rgba(61, 107, 79, 0.6); }
+  60%  { box-shadow: 0 0 0 5px rgba(61, 107, 79, 0); }
+  100% { box-shadow: 0 0 0 0   rgba(61, 107, 79, 0); }
+}
+
+/* ── App body ───────────────────────────────────────────────── */
+.app-body {
+  flex: 1;
+  max-width: 1040px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 30px 24px 60px;
+}
+
+/* ── Grid ───────────────────────────────────────────────────── */
+.grid   { display: grid; gap: 14px; }
+.grid-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.grid-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+
+/* ── Cards — plaster panels with subtle brick edge ─────────── */
+.card {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-top: 2px solid var(--border2);
+  border-radius: var(--r);
+  padding: 20px;
+  box-shadow: var(--shadow);
+}
+
+.card-title {
+  font-family: "Playfair Display", serif;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--cream);
+  margin-bottom: 5px;
+  letter-spacing: 0.01em;
+}
+
+.card-sub {
+  font-size: 13px;
+  color: var(--cream-dim);
+  line-height: 1.65;
+  margin-bottom: 16px;
+  font-style: italic;
+}
+
+.section-head { margin-bottom: 24px; }
+
+.section-title {
+  font-family: "Playfair Display", serif;
+  font-size: 30px;
+  font-weight: 700;
+  color: var(--cream);
+  letter-spacing: -0.01em;
+  line-height: 1.1;
+}
+
+.section-sub {
+  font-size: 13px;
+  color: var(--cream-dim);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* ── Buttons ────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  padding: 11px 20px;
+  border-radius: var(--r-sm);
+  font-family: "DM Serif Text", serif;
+  font-size: 13px;
+  font-weight: 400;
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s;
+  letter-spacing: 0.04em;
+}
+
+.btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary         { background: var(--amber);      color: var(--bg); font-weight: 400; }
+.btn-primary:hover   { background: var(--amber-light); }
+.btn-secondary       { background: var(--surface);    border: 1.5px solid var(--border2); color: var(--cream-dim); }
+.btn-secondary:hover { border-color: var(--amber-border); color: var(--amber); }
+.btn-success         { background: var(--green);      color: var(--cream); }
+.btn-danger          { background: var(--red);        color: var(--cream); }
+.btn-sm              { padding: 7px 13px; font-size: 12px; }
+.btn-full            { width: 100%; }
+.btn-ghost           { background: transparent; border: 1.5px solid var(--border); color: var(--cream-dim); }
+
+/* ── Forms ──────────────────────────────────────────────────── */
+.form-group  { margin-bottom: 14px; }
+.form-row    { display: grid; gap: 12px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  font-family: "DM Serif Text", serif;
+  font-size: 11px;
+  font-style: italic;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+}
+
+.form-input, .form-select {
+  width: 100%;
+  padding: 11px 14px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border);
+  background: var(--surface2);
+  color: var(--cream);
+  outline: none;
+  transition: border-color 0.15s;
+  font-family: "DM Serif Text", serif;
+}
+
+.form-input:focus, .form-select:focus { border-color: var(--amber-border); }
+.form-input::placeholder { color: var(--cream-dimmer); font-style: italic; }
+
+.checkbox-row { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--cream-dim); }
+.checkbox-row input { accent-color: var(--copper); }
+
+/* ── OTP grid — monospaced, precision craft ──────────────────── */
+.otp-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 8px; }
+.otp-digit {
+  text-align: center;
+  font-family: "JetBrains Mono", monospace;
+  font-size: 22px;
+  font-weight: 600;
+  padding: 12px 6px;
+  background: var(--surface2);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r-sm);
+  color: var(--cream);
+}
+.otp-digit:focus { border-color: var(--amber-border); outline: none; }
+
+/* ── Steps ──────────────────────────────────────────────────── */
+.steps { display: flex; align-items: flex-start; margin-bottom: 24px; }
+.step { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; }
+.step::after { content: ""; position: absolute; top: 11px; left: calc(50% + 12px); right: calc(-50% + 12px); height: 1.5px; background: var(--border); }
+.step:last-child::after { display: none; }
+
+.step-dot {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--surface); border: 1.5px solid var(--border2);
+  display: flex; align-items: center; justify-content: center;
+  font-family: "JetBrains Mono", monospace; font-size: 10px; font-weight: 600; color: var(--cream-dimmer);
+}
+.step-label {
+  margin-top: 5px; font-family: "DM Serif Text", serif;
+  font-size: 10px; letter-spacing: 0.12em; text-transform: uppercase;
+  color: var(--cream-dimmer); font-style: italic;
+}
+
+.step.active .step-dot  { background: var(--amber);  border-color: var(--amber);  color: var(--bg); }
+.step.active .step-label { color: var(--amber); }
+.step.done .step-dot    { background: var(--green);  border-color: var(--green);  color: var(--cream); }
+.step.done::after        { background: var(--green); }
+.step.done .step-label  { color: var(--green); }
+
+/* ── Queue hero — large Playfair number ─────────────────────── */
+.queue-hero {
+  background: var(--surface);
+  border: 1.5px solid var(--amber-border);
+  border-top: 3px solid var(--copper);
+  border-radius: var(--r);
+  padding: 40px 28px;
+  text-align: center;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  position: relative;
+  overflow: hidden;
+}
+
+.queue-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 120%, rgba(181,112,58,0.08) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.queue-pos-num {
+  font-family: "Playfair Display", serif;
+  font-size: clamp(88px, 18vw, 130px);
+  font-weight: 800;
+  font-style: italic;
+  line-height: 1;
+  color: var(--amber);
+  letter-spacing: -0.02em;
+  text-shadow: 0 4px 0 rgba(100, 68, 28, 0.20);
+  position: relative;
+}
+
+.queue-pos-label {
+  font-family: "DM Serif Text", serif;
+  font-size: 11px;
+  letter-spacing: 0.26em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  margin-top: 8px;
+  font-style: italic;
+  position: relative;
+}
+
+.queue-pos-sub {
+  font-size: 14px;
+  color: var(--cream-dim);
+  margin-top: 10px;
+  font-style: italic;
+  position: relative;
+}
+
+/* ── Wait estimate ──────────────────────────────────────────── */
+.wait-strip {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--r);
+  padding: 14px 18px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+}
+
+.wait-strip-ring {
+  width: 44px; height: 44px; border-radius: 50%; flex-shrink: 0;
+  background: conic-gradient(var(--copper) var(--pct, 50%), var(--border) 0);
+  display: grid; place-items: center;
+}
+.wait-strip-ring::after {
+  content: ""; width: 36px; height: 36px; border-radius: 50%; background: var(--surface);
+}
+
+.wait-strip-val {
+  font-family: "Playfair Display", serif;
+  font-size: 34px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--amber);
+  line-height: 1;
+}
+.wait-strip-unit {
+  font-family: "DM Serif Text", serif;
+  font-size: 12px;
+  color: var(--cream-dim);
+  font-style: italic;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ── OTP block ──────────────────────────────────────────────── */
+.otp-block {
+  background: var(--amber-dim);
+  border: 1.5px solid var(--amber-border);
+  border-radius: var(--r);
+  padding: 24px;
+  text-align: center;
+  margin-bottom: 12px;
+}
+
+.otp-num {
+  font-family: "JetBrains Mono", monospace;
+  font-size: clamp(40px, 8vw, 56px);
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  color: var(--amber);
+}
+
+.otp-label {
+  font-family: "DM Serif Text", serif;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  margin-top: 6px;
+  font-style: italic;
+}
+
+/* ── Alerts ─────────────────────────────────────────────────── */
+.alert { display: flex; gap: 9px; align-items: flex-start; padding: 12px 15px; border-radius: var(--r-sm); margin-bottom: 12px; line-height: 1.6; font-size: 13px; font-style: italic; }
+
+.alert-amber { background: var(--amber-dim);  border: 1.5px solid var(--amber-border); color: var(--amber-light); }
+.alert-green { background: var(--green-dim);  border: 1.5px solid var(--green-border); color: var(--green); filter: brightness(1.4); }
+.alert-red   { background: var(--red-dim);    border: 1.5px solid var(--red-border);   color: var(--red); filter: brightness(1.3); }
+.alert-blue  { background: var(--blue-dim);   border: 1.5px solid var(--blue-border);  color: var(--blue); filter: brightness(1.4); }
+
+/* ── Banner ─────────────────────────────────────────────────── */
+.banner {
+  background: var(--copper);
+  color: var(--cream);
+  border-radius: var(--r);
+  padding: 13px 22px;
+  font-family: "Playfair Display", serif;
+  font-size: 14px;
+  font-weight: 600;
+  font-style: italic;
+  margin-bottom: 14px;
+  letter-spacing: 0.03em;
+}
+
+/* ── Category header ────────────────────────────────────────── */
+.cat-header { display: flex; align-items: center; gap: 12px; margin: 22px 0 10px; }
+.cat-header-name {
+  font-family: "Playfair Display", serif;
+  font-size: 13px;
+  font-weight: 600;
+  font-style: italic;
+  color: var(--amber);
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.cat-header-line { flex: 1; height: 1px; background: linear-gradient(to right, var(--border), transparent); }
+
+/* ── Menu items ─────────────────────────────────────────────── */
+.menu-item { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r); padding: 14px; margin-bottom: 8px; transition: border-color 0.15s, box-shadow 0.15s; }
+.menu-item:hover { border-color: var(--amber-border); }
+.menu-item.selected { border-color: var(--copper); background: var(--copper-tint); }
+.menu-item-name  { font-family: "Playfair Display", serif; font-size: 15px; font-weight: 600; margin-bottom: 3px; color: var(--cream); }
+.menu-item-desc  { font-size: 12px; color: var(--cream-dim); margin-bottom: 10px; font-style: italic; }
+.menu-item-body  { flex: 1; }
+.menu-item-foot  { display: flex; justify-content: space-between; align-items: center; }
+.menu-item-price {
+  font-family: "Playfair Display", serif;
+  font-size: 19px;
+  font-weight: 700;
+  font-style: italic;
+  color: var(--amber);
+}
+.qty-ctrl { display: flex; align-items: center; gap: 9px; }
+.qty-btn  { width: 28px; height: 28px; border-radius: var(--r-sm); border: 1.5px solid var(--border); background: var(--surface2); color: var(--cream-dim); cursor: pointer; font-weight: 600; transition: all 0.12s; font-size: 15px; }
+.qty-btn:hover { border-color: var(--copper-border); color: var(--copper); }
+.qty-num  { font-family: "JetBrains Mono", monospace; font-size: 14px; min-width: 16px; text-align: center; }
+.qty-num.active { color: var(--amber); font-weight: 600; }
+.pre-tag { display: inline-block; padding: 2px 8px; border-radius: 3px; background: var(--copper-tint); border: 1px solid var(--copper-border); color: var(--amber-light); font-size: 9px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; margin-left: 5px; font-family: "DM Serif Text", serif; font-style: italic; }
+
+/* ── Order lines ────────────────────────────────────────────── */
+.order-line { display: flex; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--border); }
+.order-line:last-child { border-bottom: none; }
+.order-line-name  { font-size: 13px; color: var(--cream); font-style: italic; }
+.order-line-qty   { font-size: 11px; color: var(--cream-dimmer); margin-top: 3px; }
+.order-line-price { font-family: "Playfair Display", serif; font-size: 15px; font-weight: 600; color: var(--cream); }
+.bucket-line-actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.order-total { display: flex; justify-content: space-between; align-items: baseline; padding-top: 14px; gap: 12px; }
+.order-total-label { font-family: "DM Serif Text", serif; font-size: 11px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--cream-dimmer); font-style: italic; }
+.order-total-val {
+  font-family: "Playfair Display", serif;
+  font-size: 40px;
+  font-weight: 800;
+  font-style: italic;
+  color: var(--amber);
+  letter-spacing: -0.01em;
+  line-height: 1;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────── */
+.tabs { display: flex; gap: 3px; background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--r); padding: 4px; margin-bottom: 22px; flex-wrap: wrap; }
+.tab {
+  flex: 1; min-width: 110px; padding: 9px 10px;
+  background: none; border: none; color: var(--cream-dim);
+  font-family: "DM Serif Text", serif; font-size: 12px; font-style: italic;
+  letter-spacing: 0.08em; border-radius: var(--r-sm); cursor: pointer; transition: all 0.15s;
+}
+.tab.active { background: var(--surface3); border: 1.5px solid var(--amber-border); color: var(--amber); }
+.tab:hover:not(.active) { color: var(--cream); background: var(--surface3); }
+
+/* ── Queue rows ─────────────────────────────────────────────── */
+.q-row { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r); padding: 14px 16px; margin-bottom: 8px; display: flex; align-items: center; gap: 14px; box-shadow: var(--shadow); }
+.q-row.highlight { border-color: var(--copper-border); background: var(--copper-tint); }
+.q-row-num {
+  font-family: "Playfair Display", serif; font-size: 46px; font-weight: 800;
+  font-style: italic; color: var(--amber); min-width: 52px; line-height: 1;
+}
+.q-row-info { flex: 1; min-width: 0; }
+.q-row-name { font-size: 14px; font-weight: 400; display: flex; align-items: center; gap: 7px; flex-wrap: wrap; color: var(--cream); font-style: italic; }
+.q-row-meta, .q-row-orders, .muted { font-size: 12px; color: var(--cream-dim); margin-top: 2px; font-style: italic; }
+.q-row-actions, .row { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
+
+/* ── Badges ─────────────────────────────────────────────────── */
+.badge { display: inline-flex; align-items: center; padding: 2px 9px; border-radius: 3px; font-family: "DM Serif Text", serif; font-size: 10px; letter-spacing: 0.07em; font-style: italic; }
+.badge-waiting { background: var(--amber-dim);    color: var(--amber-light); border: 1px solid var(--amber-border); }
+.badge-ready   { background: var(--green-dim);    color: var(--green); border: 1px solid var(--green-border); filter: brightness(1.5); }
+.badge-seated  { background: var(--copper-tint);  color: var(--amber-light); border: 1px solid var(--copper-border); }
+.badge-neutral { background: var(--surface2);     color: var(--cream-dimmer); border: 1px solid var(--border2); }
+.badge-danger  { background: var(--red-dim);      color: var(--red); border: 1px solid var(--red-border); filter: brightness(1.3); }
+
+/* ── Stats ──────────────────────────────────────────────────── */
+.stats-grid { display: grid; gap: 10px; grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.stat-tile { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 16px; box-shadow: var(--shadow); }
+.stat-label { font-family: "DM Serif Text", serif; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: var(--cream-dimmer); margin-bottom: 5px; font-style: italic; }
+.stat-value { font-family: "Playfair Display", serif; font-size: 36px; font-weight: 700; font-style: italic; color: var(--amber); line-height: 1; }
+
+/* ── Floor plan / tables ────────────────────────────────────── */
+.floor-plan-header { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+.floor-legend { display: flex; gap: 12px; flex-wrap: wrap; }
+.legend-item { display: flex; gap: 5px; align-items: center; font-size: 12px; color: var(--cream-dim); font-style: italic; }
+.legend-dot { width: 10px; height: 10px; border-radius: 2px; }
+.legend-dot.free     { background: var(--green); }
+.legend-dot.occupied { background: var(--border2); }
+.legend-dot.clearing { background: var(--copper); }
+.legend-dot.reserved { background: var(--amber); }
+
+.tables-grid { display: grid; gap: 8px; grid-template-columns: repeat(auto-fill, minmax(152px, 1fr)); }
+.table-card { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r); padding: 14px; box-shadow: var(--shadow); }
+.table-card.free     { border-color: var(--green-border);   background: var(--green-dim);    border-top: 3px solid var(--green); }
+.table-card.occupied { border-color: var(--border2);         border-top: 3px solid var(--border2); }
+.table-card.clearing { border-color: var(--copper-border);  background: var(--copper-tint);  border-top: 3px solid var(--copper); }
+.table-card.reserved { border-color: var(--amber-border);   background: var(--amber-dim);    border-top: 3px solid var(--amber); }
+
+.table-num { font-family: "Playfair Display", serif; font-size: 32px; font-weight: 700; font-style: italic; line-height: 1; color: var(--cream); }
+.table-cap { font-size: 11px; color: var(--cream-dimmer); margin-top: 3px; font-style: italic; }
+.table-status-label { font-family: "DM Serif Text", serif; font-size: 10px; letter-spacing: 0.14em; text-transform: uppercase; margin: 8px 0 10px; font-style: italic; color: var(--cream-dim); }
+.table-actions { display: grid; gap: 6px; }
+
+/* ── Empty state ────────────────────────────────────────────── */
+.empty-state { border: 1.5px dashed var(--border2); border-radius: var(--r); padding: 22px; color: var(--cream-dimmer); text-align: center; font-style: italic; }
+.mono { font-family: "JetBrains Mono", monospace; font-size: 0.95em; }
+
+/* ── Category pills ─────────────────────────────────────────── */
+.category-pills { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+.category-pill {
+  padding: 7px 18px; border-radius: 999px; font-family: "DM Serif Text", serif;
+  font-size: 12px; font-style: italic; border: 1.5px solid var(--border);
+  background: var(--surface); color: var(--cream-dim); cursor: pointer; transition: all 0.15s;
+  letter-spacing: 0.06em;
+}
+.category-pill.active { background: var(--copper-tint); border-color: var(--copper-border); color: var(--amber); }
+.category-pill:hover:not(.active) { border-color: var(--amber-border); color: var(--amber); }
+
+/* ── Guest seated shell ─────────────────────────────────────── */
+.guest-seated-shell { padding-bottom: 80px; }
+.guest-shell-top { margin-bottom: 16px; }
+.guest-shell-eyebrow { font-family: "DM Serif Text", serif; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: var(--cream-dimmer); margin-bottom: 4px; font-style: italic; }
+.guest-shell-title {
+  font-family: "Playfair Display", serif;
+  font-size: 88px;
+  font-weight: 800;
+  font-style: italic;
+  line-height: 0.9;
+  color: var(--amber);
+  letter-spacing: -0.02em;
+  text-shadow: 0 4px 0 rgba(100,68,28,0.18);
+}
+.guest-shell-sub { font-size: 14px; color: var(--cream-dim); margin-top: 10px; font-style: italic; }
+.guest-shell-meta { font-size: 12px; color: var(--cream-dimmer); margin-top: 4px; font-style: italic; }
+
+/* ── Bottom nav ─────────────────────────────────────────────── */
+.guest-bottom-nav {
+  position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;
+  background: var(--surface); border-top: 1.5px solid var(--border);
+  display: flex; gap: 4px; padding: 6px;
+  box-shadow: 0 -2px 16px rgba(0,0,0,0.55);
+}
+.guest-bottom-nav-btn {
+  flex: 1; padding: 11px 8px; min-height: 48px; border-radius: var(--r-sm);
+  font-family: "DM Serif Text", serif; font-size: 12px; font-style: italic;
+  letter-spacing: 0.06em; background: var(--surface2); border: 1.5px solid var(--border);
+  color: var(--cream-dim); cursor: pointer; transition: all 0.15s; position: relative;
+}
+.guest-bottom-nav-btn.active { background: var(--surface3); border-color: var(--amber-border); color: var(--amber); }
+.guest-bottom-badge {
+  position: absolute; top: 5px; right: 8px; background: var(--copper);
+  color: var(--cream); font-family: "JetBrains Mono", monospace; font-size: 9px;
+  font-weight: 600; width: 16px; height: 16px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* ── Floating pay button ────────────────────────────────────── */
+.floating-pay-wrap {
+  position: fixed;
+  bottom: calc(68px + env(safe-area-inset-bottom, 0px));
+  left: 50%; transform: translateX(-50%);
+  z-index: 60; width: calc(100% - 28px); max-width: 480px;
+}
+.floating-pay-btn {
+  width: 100%; min-height: 52px;
+  background: var(--copper); color: var(--cream); border: none;
+  border-radius: var(--r); font-family: "Playfair Display", serif;
+  font-size: 15px; font-weight: 700; font-style: italic; cursor: pointer;
+  box-shadow: 0 4px 22px rgba(181,112,58,0.45); transition: background 0.15s;
+  letter-spacing: 0.02em;
+}
+.floating-pay-btn:hover { background: var(--amber); }
+
+/* ── Share sheet ────────────────────────────────────────────── */
+.share-sheet-backdrop { position: fixed; inset: 0; z-index: 300; background: rgba(20,16,12,0.6); display: flex; align-items: flex-end; justify-content: center; }
+.share-sheet-panel { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r) var(--r) 0 0; padding: 24px 20px 36px; width: 100%; max-width: 480px; box-shadow: 0 -4px 40px rgba(0,0,0,0.6); }
+.share-sheet-handle { width: 36px; height: 4px; background: var(--border2); border-radius: 2px; margin: 0 auto 20px; }
+.share-sheet-head .section-title { font-size: 22px; }
+.share-link-row { display: flex; gap: 8px; align-items: center; margin-bottom: 16px; }
+.share-link-preview { flex: 1; font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--cream-dimmer); background: var(--surface2); border: 1.5px solid var(--border); border-radius: var(--r-sm); padding: 8px 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.share-qr-panel { display: flex; justify-content: center; margin-bottom: 16px; }
+.share-qr-frame { min-height: 80px; }
+.share-qr-image { border-radius: var(--r-sm); border: 1.5px solid var(--border); }
+.share-qr-loading { font-size: 12px; color: var(--cream-dimmer); font-style: italic; padding: 24px; }
+
+/* ── Pre-order layout ───────────────────────────────────────── */
+.preorder-page-shell { width: 100%; }
+.preorder-grid { align-items: start; }
+.preorder-summary-card { position: sticky; top: 76px; }
+.mobile-order-dock { display: none; position: fixed; bottom: 0; left: 0; right: 0; z-index: 50; padding: 10px 14px; background: var(--surface); border-top: 1.5px solid var(--border); gap: 10px; align-items: center; justify-content: space-between; box-shadow: 0 -2px 12px rgba(0,0,0,0.5); }
+.mobile-order-dock-meta { font-size: 12px; color: var(--cream-dim); font-style: italic; }
+.mobile-order-dock-total { font-family: "Playfair Display", serif; font-size: 20px; font-weight: 700; font-style: italic; color: var(--amber); }
+
+/* ── Bucket toast ───────────────────────────────────────────── */
+.bucket-toast { position: fixed; bottom: calc(72px + env(safe-area-inset-bottom, 0px)); left: 50%; transform: translateX(-50%); z-index: 55; background: var(--surface); border: 1.5px solid var(--amber-border); border-radius: var(--r); padding: 10px 16px; display: flex; align-items: center; gap: 12px; box-shadow: var(--shadow-md); white-space: nowrap; }
+.bucket-toast-text { font-size: 13px; color: var(--cream-dim); font-style: italic; }
+
+/* ── Guest tray ─────────────────────────────────────────────── */
+.guest-tray-panel { padding-bottom: 8px; }
+.guest-bottom-badge { font-style: normal; }
+
+/* ── Flow log modal ─────────────────────────────────────────── */
+.flow-log-overlay { position: fixed; inset: 0; z-index: 400; background: rgba(20,16,12,0.65); display: flex; align-items: flex-end; justify-content: center; padding: 0; }
+.flow-log-panel { background: var(--surface); border: 1.5px solid var(--border); border-radius: var(--r) var(--r) 0 0; padding: 24px 20px 32px; width: 100%; max-width: 560px; max-height: 72vh; display: flex; flex-direction: column; box-shadow: 0 -4px 40px rgba(0,0,0,0.6); }
+.flow-log-header { display: flex; flex-direction: column; gap: 2px; margin-bottom: 16px; position: relative; padding-right: 80px; }
+.flow-log-close { position: absolute; top: 0; right: 0; }
+.flow-log-body { overflow-y: auto; flex: 1; }
+.flow-event-row { border-bottom: 1px solid var(--border); padding: 10px 0; }
+.flow-event-row:last-child { border-bottom: none; }
+.flow-event-type { font-family: "Playfair Display", serif; font-size: 14px; font-style: italic; color: var(--cream); }
+.flow-event-time { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--cream-dimmer); margin-top: 2px; }
+.flow-event-snap { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--cream-dimmer); margin-top: 4px; }
+
+/* ── Join session card ──────────────────────────────────────── */
+.join-session-card { max-width: 440px; margin: 0 auto; }
+
+/* ── Session ref ────────────────────────────────────────────── */
+.session-ref { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--cream-dimmer); margin-top: 8px; }
+
+/* ── Menu lock state ────────────────────────────────────────── */
+.menu-locked { opacity: 0.5; pointer-events: none; }
+.menu-item.locked { opacity: 0.55; }
+
+/* ── Preorder grid ──────────────────────────────────────────── */
+.preorder-menu-shell { min-width: 0; }
+
+/* ── Responsive ─────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .grid-2, .grid-3, .form-row, .stats-grid { grid-template-columns: 1fr; }
+  .tabs { flex-wrap: nowrap; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .tab  { flex: 0 0 auto; min-width: 120px; }
+  .preorder-summary-card { display: none; }
+  .mobile-order-dock     { display: flex; }
+  .preorder-grid { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 640px) {
+  .app-body   { padding: 20px 16px 68px; }
+  .app-header { padding: 0 16px; }
+  .q-row { flex-direction: column; align-items: flex-start; }
+  .guest-shell-title { font-size: 66px; }
+  .queue-pos-num { font-size: 90px; }
+  .stat-value { font-size: 28px; }
+}
+
+/* ── Preview chrome ── */
+.preview-header{background:var(--surface);border-bottom:1.5px solid var(--border);padding:12px 24px;display:flex;align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:9999;box-shadow:0 1px 0 var(--border)}
+.preview-title{font-family:"Playfair Display",serif;font-weight:800;font-style:italic;font-size:18px;color:var(--amber);white-space:nowrap}
+.preview-nav{display:flex;gap:3px;flex-wrap:wrap}
+.preview-nav a{font-family:"DM Serif Text",serif;font-size:11px;font-style:italic;color:var(--cream-dimmer);padding:4px 9px;border-radius:4px;text-decoration:none;white-space:nowrap;transition:all .15s}
+.preview-nav a:hover{color:var(--amber);background:var(--amber-dim)}
+.preview-section{padding:48px 28px 28px;border-bottom:1.5px solid var(--border);max-width:1200px;margin:0 auto}
+.preview-label{font-family:"JetBrains Mono",monospace;font-size:10px;color:var(--cream-dimmer);margin-bottom:20px;letter-spacing:0.04em}
+#landing{min-height:auto}
+.guest-bottom-nav{position:static!important;border-radius:var(--r);margin-top:20px}
+.floating-pay-wrap,.bucket-toast{position:static;transform:none;width:100%;max-width:100%;margin-top:12px}
+</style>
+</head>
+<body>
+
+<div class="preview-header">
+  <div class="preview-title">The Craftery by Subko — v3</div>
+  <nav class="preview-nav">
+    <a href="#s1">Landing</a><a href="#s2">Venue</a><a href="#s3">Waiting</a>
+    <a href="#s4">Notified</a><a href="#s5">Pre-order</a><a href="#s6">Seated</a>
+    <a href="#s7">Done</a><a href="#s8">Staff Login</a><a href="#s9">Queue</a>
+    <a href="#s10">Seated tab</a><a href="#s11">Tables</a><a href="#s12">Seat OTP</a>
+    <a href="#s13">Manager</a><a href="#s14">Admin Login</a><a href="#s15">Menu</a>
+    <a href="#s16">Add Item</a><a href="#s17">Share</a>
+  </nav>
+</div>
+
+<!-- 1 · Landing -->
+<section id="s1" class="preview-section">
+  <div class="preview-label">01 — renderHome() → /</div>
+  <main id="landing">
+    <div class="brand">
+      <div class="brand-name">The Craftery by Subko</div>
+      <div class="brand-tag">Craft Brewery · Bengaluru</div>
+    </div>
+    <div class="role-cards">
+      <a class="role-card"><span class="role-card-icon">🍺</span><div class="role-card-title">Guest Flow</div><div class="role-card-desc">Join the queue, pre-order craft brews and food, track your table, and settle your bill.</div><div class="role-card-cta">→</div></a>
+      <a class="role-card"><span class="role-card-icon">🍽</span><div class="role-card-title">Staff Console</div><div class="role-card-desc">Manage the live queue, seat guests, verify OTPs, and run the floor.</div><div class="role-card-cta">→</div></a>
+      <a class="role-card"><span class="role-card-icon">✦</span><div class="role-card-title">Admin Console</div><div class="role-card-desc">Manage the tap list, food menu, categories, and venue settings.</div><div class="role-card-cta">→</div></a>
+    </div>
+  </main>
+</section>
+
+<!-- 2 · Venue landing -->
+<section id="s2" class="preview-section">
+  <div class="preview-label">02 — renderVenueLanding() → /v/:slug</div>
+  <div class="app-shell">
+    <div class="app-body" style="padding-top:40px">
+      <main id="landing" style="min-height:auto;padding:0 0 28px">
+        <div class="brand" style="margin-bottom:32px">
+          <div class="brand-name" style="font-size:clamp(40px,8vw,60px)">The Craftery by Subko</div>
+          <div class="brand-tag">Lavelle Road, Bengaluru</div>
+        </div>
+        <div class="role-cards" style="max-width:660px">
+          <div class="role-card" style="cursor:default;min-width:200px"><span class="role-card-icon">📍</span><div class="role-card-title">Lavelle Road</div><div class="role-card-desc">20/2 Vittal Mallya Road, Bengaluru. Deposit: 30%.</div><div class="role-card-cta" style="color:var(--green)">Open ✓</div></div>
+          <div class="role-card" style="cursor:default;max-width:360px;min-width:260px">
+            <div class="role-card-title" style="margin-bottom:12px">Join the queue</div>
+            <div class="form-group"><label class="form-label">Your name</label><input class="form-input" placeholder="Arjun K."></div>
+            <div class="form-group"><label class="form-label">Phone</label><input class="form-input" type="tel" placeholder="+91 98765 43210"></div>
+            <div class="form-group"><label class="form-label">Party size</label><select class="form-select"><option>1</option><option selected>2</option><option>3</option><option>4+</option></select></div>
+            <button class="btn btn-primary btn-full">Join queue</button>
+          </div>
+        </div>
+      </main>
+    </div>
+  </div>
+</section>
+
+<!-- 3 · Waiting -->
+<section id="s3" class="preview-section">
+  <div class="preview-label">03 — renderGuestEntry() → WAITING</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Guest</span></div><div class="header-right"><button class="btn btn-secondary btn-sm">Invite others</button><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="steps"><div class="step done"><div class="step-dot">✓</div><div class="step-label">Join</div></div><div class="step active"><div class="step-dot">2</div><div class="step-label">Wait</div></div><div class="step"><div class="step-dot">3</div><div class="step-label">Pre-order</div></div><div class="step"><div class="step-dot">4</div><div class="step-label">Seated</div></div><div class="step"><div class="step-dot">5</div><div class="step-label">Pay</div></div></div>
+      <div class="queue-hero"><div class="queue-pos-num">3</div><div class="queue-pos-label">Queue position</div><div class="queue-pos-sub">We'll notify you when a table for 2 is ready.</div></div>
+      <div class="wait-estimate"><div class="wait-icon">⏱</div><div class="wait-text"><div class="wait-label">Estimated wait</div><div class="wait-value">22<span>mins</span></div></div><div class="progress-ring" style="--pct:60%"></div></div>
+      <div class="otp-block"><div class="otp-num">738 241</div><div class="otp-label">Show this OTP when called</div></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Waiting</div><div class="card-sub">Your OTP is active — present it to staff when called.</div><div class="alert alert-blue"><div>You'll get an SMS and WhatsApp when your table is ready.</div></div><button class="btn btn-primary">Pre-order from tap list</button></div>
+        <div class="card"><div class="card-title">Venue</div><div class="card-sub">The Craftery by Subko — Lavelle Road, Bengaluru</div><div class="muted">Deposit policy: 30%</div><div class="muted" style="margin-top:4px">Queue: Open · Craft brews always flowing</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 4 · Notified -->
+<section id="s4" class="preview-section">
+  <div class="preview-label">04 — renderGuestEntry() → NOTIFIED</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Guest</span></div><div class="header-right"><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="banner">🍺 Table T4 is ready — show your OTP to the host now</div>
+      <div class="steps"><div class="step done"><div class="step-dot">✓</div><div class="step-label">Join</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Wait</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Pre-order</div></div><div class="step active"><div class="step-dot">4</div><div class="step-label">Seated</div></div><div class="step"><div class="step-dot">5</div><div class="step-label">Pay</div></div></div>
+      <div class="queue-hero"><div class="queue-pos-num">T4</div><div class="queue-pos-label">Your table is ready</div><div class="queue-pos-sub">Head to the host stand and present your OTP.</div></div>
+      <div class="otp-block"><div class="otp-num">738 241</div><div class="otp-label">Table reserved — show to staff</div></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Notified</div><div class="card-sub">Your table is matched and held.</div><div class="alert alert-green"><div>Deposit captured: ₹384. Pre-order total: ₹1,280.</div></div></div>
+        <div class="card"><div class="card-title">Venue</div><div class="card-sub">The Craftery by Subko — Lavelle Road</div><div class="muted">Deposit: 30% · T4 (2 covers)</div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 · Pre-order -->
+<section id="s5" class="preview-section">
+  <div class="preview-label">05 — renderPreorder() → /v/:slug/e/:id/preorder</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Pre-order</span></div><div class="header-right"><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Pre-order while waiting</div><div class="section-sub">Pick craft brews and food — hits the bar and kitchen the moment you're seated.</div></div>
+      <div class="grid" style="grid-template-columns:1fr 310px;gap:18px;align-items:start">
+        <div>
+          <div class="category-pills"><div class="category-pill active">On Tap</div><div class="category-pill">Bottles</div><div class="category-pill">Starters</div><div class="category-pill">Mains</div><div class="category-pill">Desserts</div></div>
+          <div class="cat-header"><div class="cat-header-name">On Tap</div><div class="cat-header-line"></div></div>
+          <div class="menu-item selected"><div class="menu-item-name">Wheat Beer <span class="pre-tag">pre-ordered</span></div><div class="menu-item-desc">Cloudy unfiltered wheat ale — banana and clove esters, soft carbonation. 500 ml pint.</div><div class="menu-item-foot"><div class="menu-item-price">₹380</div><div class="qty-ctrl"><button class="qty-btn">−</button><span class="qty-num active">2</span><button class="qty-btn">+</button></div></div></div>
+          <div class="menu-item"><div class="menu-item-name">Stout</div><div class="menu-item-desc">Rich dark roast, espresso and chocolate notes, smooth dry finish. 500 ml pint.</div><div class="menu-item-foot"><div class="menu-item-price">₹380</div><div class="qty-ctrl"><button class="qty-btn">−</button><span class="qty-num">0</span><button class="qty-btn">+</button></div></div></div>
+          <div class="menu-item"><div class="menu-item-name">Ale</div><div class="menu-item-desc">Balanced copper ale — mild caramel malt, subtle hop bitterness. 500 ml pint.</div><div class="menu-item-foot"><div class="menu-item-price">₹360</div><div class="qty-ctrl"><button class="qty-btn">−</button><span class="qty-num">0</span><button class="qty-btn">+</button></div></div></div>
+          <div class="cat-header"><div class="cat-header-name">Starters</div><div class="cat-header-line"></div></div>
+          <div class="menu-item"><div class="menu-item-name">Korean Dip Wings</div><div class="menu-item-desc">Tossed in gochujang glaze, sesame, spring onion</div><div class="menu-item-foot"><div class="menu-item-price">₹420</div><div class="qty-ctrl"><button class="qty-btn">−</button><span class="qty-num">0</span><button class="qty-btn">+</button></div></div></div>
+        </div>
+        <div class="card" style="position:sticky;top:20px">
+          <div class="card-title">Summary</div>
+          <div class="card-sub">30% deposit locks your order in.</div>
+          <div class="order-line"><div><div class="order-line-name">Wheat Beer × 2</div><div class="order-line-qty">2 × ₹380</div></div><div class="order-line-price">₹760</div></div>
+          <div class="order-total"><div class="order-total-label">Total incl. GST</div><div class="order-total-val">₹894</div></div>
+          <div class="row" style="margin-top:14px"><a class="btn btn-secondary btn-sm">Back</a><button class="btn btn-primary">Lock in →</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 6 · Seated -->
+<section id="s6" class="preview-section">
+  <div class="preview-label">06 — renderGuestEntry() → SEATED</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Guest</span></div><div class="header-right"><button class="btn btn-secondary btn-sm">Invite others</button><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="steps"><div class="step done"><div class="step-dot">✓</div><div class="step-label">Join</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Wait</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Pre-order</div></div><div class="step active"><div class="step-dot">4</div><div class="step-label">Seated</div></div><div class="step"><div class="step-dot">5</div><div class="step-label">Pay</div></div></div>
+      <div class="card" style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:14px;border-top:4px solid var(--teal)">
+        <div><div class="guest-shell-eyebrow">Table T4 · The Craftery by Subko, Lavelle Road</div><div class="guest-shell-title">T4</div></div>
+        <div><div class="muted" style="margin-bottom:6px">2 guests · 1 participant</div><span class="badge badge-seated">Seated</span></div>
+      </div>
+      <div class="guest-bottom-nav"><button class="guest-bottom-nav-btn">Menu</button><button class="guest-bottom-nav-btn active">Ordered</button><button class="guest-bottom-nav-btn">Bucket</button></div>
+      <div class="grid grid-2" style="margin-top:16px">
+        <div class="card"><div class="card-title">Ordered so far</div><div class="card-sub">Pre-order and table rounds.</div><div style="font-family:'Oswald',sans-serif;font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--teal-dark);margin-bottom:6px">Pre-order · Locked</div><div class="order-line"><div><div class="order-line-name">Wheat Beer × 2</div></div><div class="order-line-price">₹760</div></div><div class="order-line" style="border:none"><div><div class="order-line-name">Korean Wings × 1</div></div><div class="order-line-price">₹420</div></div></div>
+        <div class="card"><div class="card-title">Bill</div><div class="card-sub">Live total for this session.</div><div class="order-line"><div class="order-line-name">Subtotal</div><div class="order-line-price">₹1,060</div></div><div class="order-line"><div class="order-line-name">GST</div><div class="order-line-price">₹106</div></div><div class="order-line"><div class="order-line-name">Deposit paid</div><div class="order-line-price">−₹349</div></div><div class="order-total"><div class="order-total-label">Balance due</div><div class="order-total-val">₹817</div></div><button class="btn btn-primary btn-full" style="margin-top:14px">Pay balance</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 7 · Completed -->
+<section id="s7" class="preview-section">
+  <div class="preview-label">07 — renderGuestEntry() → COMPLETED</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Guest</span></div><div class="header-right"><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="steps"><div class="step done"><div class="step-dot">✓</div><div class="step-label">Join</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Wait</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Pre-order</div></div><div class="step done"><div class="step-dot">✓</div><div class="step-label">Seated</div></div><div class="step active"><div class="step-dot">5</div><div class="step-label">Pay</div></div></div>
+      <div class="queue-hero"><div class="queue-pos-num" style="font-size:72px">Cheers!</div><div class="queue-pos-label">Service complete</div><div class="queue-pos-sub">Invoice TBC/2026-27/00088 issued. Come back soon!</div></div>
+      <div class="grid grid-2" style="margin-top:12px">
+        <div class="card"><div class="card-title">Completed</div><div class="card-sub">Session ended. Invoice generated.</div><div class="alert alert-green"><div>Payment captured. Great brewing with you tonight!</div></div><a class="btn btn-secondary">Return to venue</a></div>
+        <div class="card"><div class="card-title">Summary</div><div class="order-line"><div class="order-line-name">Total charged</div><div class="order-line-price">₹1,166</div></div><div class="order-line"><div class="order-line-name">Deposit used</div><div class="order-line-price">₹349</div></div><div class="order-total"><div class="order-total-label">Balance paid</div><div class="order-total-val">₹817</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 8 · Staff Login -->
+<section id="s8" class="preview-section">
+  <div class="preview-label">08 — renderStaffLogin() → /staff/login</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Staff login</div><div class="section-sub">The Craftery by Subko, Lavelle Road — pilot console.</div></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Send OTP</div><div class="card-sub">Use a seeded pilot staff number.</div><div class="form-group"><label class="form-label">Phone</label><input class="form-input" placeholder="9000000002"></div><button class="btn btn-primary btn-full">Send OTP</button></div>
+        <div class="card"><div class="card-title">Verify OTP</div><div class="card-sub">Enter the 6-digit code from SMS.</div><div class="form-group"><label class="form-label">OTP code</label><input class="form-input" maxlength="6" placeholder="123456"></div><button class="btn btn-secondary btn-full">Verify & enter</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 9 · Staff Queue -->
+<section id="s9" class="preview-section">
+  <div class="preview-label">09 — renderStaffDashboard() → Queue tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><div class="tms-indicator"><span class="tms-dot"></span>Manual floor</div><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Staff console</div><div class="section-sub">Ravi S. · SERVER · The Craftery by Subko, Lavelle Road</div></div>
+      <div class="stats-grid" style="margin-bottom:18px">
+        <div class="stat-tile"><div class="stat-label">Seated today</div><div class="stat-value">31</div></div>
+        <div class="stat-tile"><div class="stat-label">Revenue</div><div class="stat-value">₹46k</div></div>
+        <div class="stat-tile"><div class="stat-label">In queue</div><div class="stat-value">7</div></div>
+      </div>
+      <div class="tabs"><button class="tab active">Queue</button><button class="tab">Seated</button><button class="tab">Tables</button><button class="tab">Seat OTP</button><button class="tab">Manager</button></div>
+      <div class="q-row highlight"><div class="q-row-num">1</div><div class="q-row-info"><div class="q-row-name">Arjun K. <span class="badge badge-ready">Notified</span> <span class="badge badge-neutral">Deposit</span> <span class="badge badge-neutral">Pre-order</span></div><div class="q-row-meta">+91 98765 43210 · 2 pax · OTP <span class="mono">738241</span></div><div class="q-row-orders">Reserved T4 · Wheat Beer × 2, Wings × 1</div></div><div class="q-row-actions"><button class="btn btn-teal btn-sm">Seat</button><button class="btn btn-danger btn-sm">Cancel</button></div></div>
+      <div class="q-row"><div class="q-row-num">2</div><div class="q-row-info"><div class="q-row-name">Meera P. <span class="badge badge-waiting">Waiting</span></div><div class="q-row-meta">+91 87654 32109 · 4 pax · OTP <span class="mono">512089</span></div><div class="q-row-orders">ETA ~10 mins</div></div><div class="q-row-actions"><button class="btn btn-secondary btn-sm">Seat</button><button class="btn btn-danger btn-sm">Cancel</button></div></div>
+      <div class="q-row"><div class="q-row-num">3</div><div class="q-row-info"><div class="q-row-name">Dev R. <span class="badge badge-waiting">Waiting</span> <span class="badge badge-neutral">Deposit</span></div><div class="q-row-meta">+91 76543 21098 · 6 pax · OTP <span class="mono">903417</span></div><div class="q-row-orders">ETA ~25 mins</div></div><div class="q-row-actions"><button class="btn btn-secondary btn-sm">Seat</button><button class="btn btn-danger btn-sm">Cancel</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 10 · Seated tab -->
+<section id="s10" class="preview-section">
+  <div class="preview-label">10 — Staff dashboard → Seated tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><div class="tms-indicator"><span class="tms-dot"></span>Manual floor</div><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="tabs"><button class="tab">Queue</button><button class="tab active">Seated</button><button class="tab">Tables</button><button class="tab">Seat OTP</button><button class="tab">Manager</button></div>
+      <div class="q-row"><div class="q-row-num">T2</div><div class="q-row-info"><div class="q-row-name">Arjun K. <span class="badge badge-seated">Seated</span></div><div class="q-row-meta">+91 98765 43210 · 2 pax · 18 min ago</div><div class="q-row-orders">Pre-order + table round · <strong>₹1,640</strong> · Deposit paid</div></div><div class="q-row-actions"><button class="btn btn-secondary btn-sm">View bill</button><button class="btn btn-secondary btn-sm">Settle offline</button></div></div>
+      <div class="q-row"><div class="q-row-num">T5</div><div class="q-row-info"><div class="q-row-name">Meera P. <span class="badge badge-seated">Seated</span></div><div class="q-row-meta">+91 87654 32109 · 4 pax · 8 min ago</div><div class="q-row-orders">Table order only · <strong>₹2,380</strong> · No deposit</div></div><div class="q-row-actions"><button class="btn btn-secondary btn-sm">View bill</button><button class="btn btn-secondary btn-sm">Settle offline</button></div></div>
+    </div>
+  </div>
+</section>
+
+<!-- 11 · Tables -->
+<section id="s11" class="preview-section">
+  <div class="preview-label">11 — Staff dashboard → Tables tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><div class="tms-indicator"><span class="tms-dot"></span>Manual floor</div><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="tabs"><button class="tab">Queue</button><button class="tab">Seated</button><button class="tab active">Tables</button><button class="tab">Seat OTP</button><button class="tab">Manager</button></div>
+      <div class="floor-plan-header"><div class="section-title" style="font-size:20px">Floor plan</div><div class="floor-legend"><div class="legend-item"><div class="legend-dot free"></div>Free</div><div class="legend-item"><div class="legend-dot occupied"></div>Occupied</div><div class="legend-item"><div class="legend-dot clearing"></div>Clearing</div><div class="legend-item"><div class="legend-dot reserved"></div>Reserved</div></div></div>
+      <div class="tables-grid">
+        <div class="table-card free"><div class="table-num">T1</div><div class="table-cap">2 covers</div><div class="table-status-label" style="color:var(--green)">Free</div><div class="table-actions"><button class="btn btn-secondary btn-sm">Mark occupied</button></div></div>
+        <div class="table-card occupied"><div class="table-num">T2</div><div class="table-cap">4 covers</div><div class="table-status-label" style="color:var(--ink-mid)">Occupied</div><div class="table-actions"><button class="btn btn-secondary btn-sm">Mark clearing</button></div></div>
+        <div class="table-card occupied"><div class="table-num">T3</div><div class="table-cap">2 covers</div><div class="table-status-label" style="color:var(--ink-mid)">Occupied</div><div class="table-actions"><button class="btn btn-secondary btn-sm">Mark clearing</button></div></div>
+        <div class="table-card clearing"><div class="table-num">T4</div><div class="table-cap">4 covers</div><div class="table-status-label" style="color:var(--amber)">Clearing</div><div class="table-actions"><button class="btn btn-success btn-sm">Mark free</button></div></div>
+        <div class="table-card occupied"><div class="table-num">T5</div><div class="table-cap">6 covers</div><div class="table-status-label" style="color:var(--ink-mid)">Occupied</div><div class="table-actions"><button class="btn btn-secondary btn-sm">Mark clearing</button></div></div>
+        <div class="table-card free"><div class="table-num">T6</div><div class="table-cap">2 covers</div><div class="table-status-label" style="color:var(--green)">Free</div><div class="table-actions"><button class="btn btn-secondary btn-sm">Mark occupied</button></div></div>
+        <div class="table-card reserved"><div class="table-num">T7</div><div class="table-cap">8 covers</div><div class="table-status-label" style="color:var(--teal-dark)">Reserved</div><div class="table-actions"><button class="btn btn-success btn-sm">Mark free</button></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 12 · Seat OTP -->
+<section id="s12" class="preview-section">
+  <div class="preview-label">12 — Staff dashboard → Seat OTP tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><div class="tms-indicator"><span class="tms-dot"></span>Manual floor</div><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="tabs"><button class="tab">Queue</button><button class="tab">Seated</button><button class="tab">Tables</button><button class="tab active">Seat OTP</button><button class="tab">Manager</button></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Seat a guest</div><div class="card-sub">Enter the 6-digit OTP from the guest's phone.</div><div class="alert alert-amber"><div>Prefilled from queue row — Arjun K. · T4 suggested</div></div><div class="form-group"><label class="form-label">Guest OTP</label><div class="otp-grid"><input class="form-input otp-digit" value="7" maxlength="1"><input class="form-input otp-digit" value="3" maxlength="1"><input class="form-input otp-digit" value="8" maxlength="1"><input class="form-input otp-digit" value="2" maxlength="1"><input class="form-input otp-digit" value="4" maxlength="1"><input class="form-input otp-digit" value="1" maxlength="1"></div></div><div class="form-group"><label class="form-label">Table</label><select class="form-select"><option>Select a free or reserved table</option><option selected>T4 · FREE (4 covers)</option></select></div><button class="btn btn-primary btn-full">Seat guest</button></div>
+        <div class="card"><div class="card-title">Note</div><div class="card-sub">Quick seat preloads the OTP and best-fit table. Verification always required.</div><div class="alert alert-teal"><div>All pilot flows are deposit-backed. OTP cannot be bypassed.</div></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 13 · Manager -->
+<section id="s13" class="preview-section">
+  <div class="preview-label">13 — Staff dashboard → Manager tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Staff</span></div><div class="header-right"><div class="tms-indicator"><span class="tms-dot"></span>Manual floor</div><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="tabs"><button class="tab">Queue</button><button class="tab">Seated</button><button class="tab">Tables</button><button class="tab">Seat OTP</button><button class="tab active">Manager</button></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Queue control</div><div class="card-sub">Toggle access and deposit rate.</div><div class="row" style="margin-bottom:14px"><span class="badge badge-ready">Queue open</span><button class="btn btn-secondary btn-sm">Close queue</button></div><div class="form-group"><label class="form-label">Deposit %</label><input class="form-input" type="number" value="30"></div><div class="form-group"><label class="form-label">Table ready window (min)</label><input class="form-input" type="number" value="15"></div><button class="btn btn-primary btn-full">Save settings</button></div>
+        <div class="card"><div class="card-title">Fallbacks</div><div class="card-sub">Pilot-safe escape hatches.</div><div class="form-group"><label class="form-label">Queue entry ID</label><input class="form-input mono" placeholder="Queue entry UUID"></div><button class="btn btn-secondary btn-full" style="margin-bottom:10px">Mark settled offline</button><div class="form-group"><label class="form-label">Deposit payment ID</label><input class="form-input mono" placeholder="Payment UUID"></div><button class="btn btn-danger btn-full">Refund deposit</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 14 · Admin Login -->
+<section id="s14" class="preview-section">
+  <div class="preview-label">14 — renderAdminLogin() → /admin/login</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Admin</span></div><div class="header-right"><a class="btn btn-secondary btn-sm">Exit</a></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Admin login</div><div class="section-sub">Owner & manager only.</div></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Send OTP</div><div class="card-sub">Owner or manager numbers only.</div><div class="form-group"><label class="form-label">Phone</label><input class="form-input" placeholder="9000000001"></div><button class="btn btn-primary btn-full">Send OTP</button></div>
+        <div class="card"><div class="card-title">Verify OTP</div><div class="card-sub">Enter the code sent to your number.</div><div class="form-group"><label class="form-label">OTP code</label><input class="form-input" maxlength="6" placeholder="123456"></div><button class="btn btn-secondary btn-full">Verify & enter</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 15 · Admin Menu -->
+<section id="s15" class="preview-section">
+  <div class="preview-label">15 — renderAdminDashboard() → Menu tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Admin</span></div><div class="header-right"><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Admin console</div><div class="section-sub">Meenakshi A. · OWNER · The Craftery by Subko, Lavelle Road</div></div>
+      <div class="tabs"><button class="tab active">Menu</button><button class="tab">Add item</button></div>
+      <div class="card">
+        <div class="card-title">Live menu</div>
+        <div class="card-sub">Toggle tap availability and food items in real time.</div>
+        <div class="cat-header"><div class="cat-header-name">On Tap</div><div class="cat-header-line"></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1.5px solid var(--border)"><div><div class="order-line-name">Wheat Beer</div><div class="order-line-qty">₹340 ex-GST · Available</div></div><div class="row"><button class="btn btn-secondary btn-sm">Disable</button><button class="btn btn-danger btn-sm">✕</button></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1.5px solid var(--border)"><div><div class="order-line-name">Ale</div><div class="order-line-qty">₹320 ex-GST · Available</div></div><div class="row"><button class="btn btn-secondary btn-sm">Disable</button><button class="btn btn-danger btn-sm">✕</button></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1.5px solid var(--border);opacity:.5"><div><div class="order-line-name" style="text-decoration:line-through">Seasonal</div><div class="order-line-qty" style="color:var(--red)">₹380 ex-GST · Unavailable (tapped out)</div></div><div class="row"><button class="btn btn-success btn-sm">Enable</button><button class="btn btn-danger btn-sm">✕</button></div></div>
+        <div class="cat-header"><div class="cat-header-name">Starters</div><div class="cat-header-line"></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1.5px solid var(--border)"><div><div class="order-line-name">Korean Dip Wings</div><div class="order-line-qty">₹375 ex-GST · Available</div></div><div class="row"><button class="btn btn-secondary btn-sm">Disable</button><button class="btn btn-danger btn-sm">✕</button></div></div>
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:9px 0"><div><div class="order-line-name">Pepperoni Pizza</div><div class="order-line-qty">₹420 ex-GST · Available</div></div><div class="row"><button class="btn btn-secondary btn-sm">Disable</button><button class="btn btn-danger btn-sm">✕</button></div></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 16 · Admin Add item -->
+<section id="s16" class="preview-section">
+  <div class="preview-label">16 — renderAdminDashboard() → Add item tab</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Admin</span></div><div class="header-right"><button class="btn btn-secondary btn-sm">Logout</button></div></div>
+    <div class="app-body">
+      <div class="section-head"><div class="section-title">Admin console</div><div class="section-sub">Meenakshi A. · OWNER · The Craftery by Subko, Lavelle Road</div></div>
+      <div class="tabs"><button class="tab">Menu</button><button class="tab active">Add item</button></div>
+      <div class="grid grid-2">
+        <div class="card"><div class="card-title">Add category</div><div class="card-sub">Create a new category before adding items to it.</div><div class="form-group"><label class="form-label">Category name</label><input class="form-input" placeholder="e.g. Club Special"></div><button class="btn btn-secondary btn-full">Create category</button></div>
+        <div class="card"><div class="card-title">Add menu item</div><div class="card-sub">Item goes live immediately on the tap list.</div><div class="form-group"><label class="form-label">Category</label><select class="form-select"><option selected>On Tap</option><option>Bottles</option><option>Starters</option><option>Mains</option></select></div><div class="form-group"><label class="form-label">Item name</label><input class="form-input" placeholder="e.g. Lager"></div><div class="form-group"><label class="form-label">Description</label><input class="form-input" placeholder="Short description"></div><div class="form-row"><div class="form-group"><label class="form-label">Price ex-GST</label><input class="form-input" type="number" placeholder="320"></div><div class="form-group"><label class="form-label">GST %</label><input class="form-input" type="number" placeholder="18"></div></div><div class="row" style="margin-bottom:14px;gap:18px"><label class="checkbox-row"><input type="checkbox"> Veg</label><label class="checkbox-row"><input type="checkbox" checked> Alcohol</label></div><button class="btn btn-primary btn-full">Add to menu →</button></div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 17 · Share sheet -->
+<section id="s17" class="preview-section" style="padding-bottom:60px">
+  <div class="preview-label">17 — openShareSheet() — party invite</div>
+  <div class="app-shell">
+    <div class="app-header"><div class="header-left"><div class="header-logo">The Craftery by Subko</div><span class="pill">Guest</span></div><div class="header-right"><button class="btn btn-secondary btn-sm">Invite others</button></div></div>
+    <div class="app-body">
+      <div style="max-width:460px">
+        <div class="card">
+          <div class="card-title">Invite your party</div>
+          <div class="card-sub">Share the link so everyone can browse the tap list and add to the shared order before sitting down.</div>
+          <div style="background:var(--surface2);border:1.5px solid var(--border);border-radius:var(--r-sm);padding:20px;display:flex;align-items:center;justify-content:center;margin-bottom:14px;min-height:88px;color:var(--ink-light);font-size:13px">[ QR code renders here ]</div>
+          <div class="form-group"><label class="form-label">Invite link</label><input class="form-input mono" value="https://taurant.onrender.com/v/craftery-lavelle/session/def456" readonly></div>
+          <div class="row"><button class="btn btn-secondary btn-sm">Copy link</button><button class="btn btn-primary btn-sm">Share</button><button class="btn btn-secondary btn-sm">Close</button></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>
