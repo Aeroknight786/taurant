@@ -1,4 +1,5 @@
 import {
+  ACTIVE_VENUE_KEY,
   ADMIN_PENDING_PHONE_KEY,
   API_BASE,
   createDefaultPartyPollState,
@@ -115,6 +116,20 @@ function applyVenueTheme() {
 
 applyVenueTheme();
 
+// Resolve the active venue slug — from URL first, then stored staff auth, then default
+function getActiveVenueSlug() {
+  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  if (segments[0] === 'v' && segments[1]) {
+    sessionStorage.setItem(ACTIVE_VENUE_KEY, segments[1]);
+    return segments[1];
+  }
+  try {
+    const auth = JSON.parse(localStorage.getItem(STAFF_AUTH_KEY) || 'null');
+    if (auth?.venueSlug) return auth.venueSlug;
+  } catch (_) {}
+  return sessionStorage.getItem(ACTIVE_VENUE_KEY) || DEFAULT_VENUE_SLUG;
+}
+
 const appRoot = document.getElementById('app');
 const uiState = {
   timerId: null,
@@ -193,7 +208,11 @@ window.addEventListener('popstate', () => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && uiState.activePartySessionId && !uiState.partyPollerId) {
+    // Don't reset backoff here — only reset on a successful poll response
+    // This prevents a tab-switch from clearing failure backoff state
+    const savedDelay = uiState.partyPoll.nextDelayMs;
     startPartySessionPolling();
+    uiState.partyPoll.nextDelayMs = savedDelay;
   }
 });
 
@@ -1251,7 +1270,7 @@ async function renderPreorder(slug, entryId) {
 }
 
 async function renderStaffLogin() {
-  const venue = await apiRequest(`/venues/${DEFAULT_VENUE_SLUG}`);
+  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
   const pendingPhone = sessionStorage.getItem(STAFF_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
@@ -1331,7 +1350,7 @@ async function renderStaffLogin() {
         method: 'POST',
         body: { phone, code, venueId: venue.id },
       });
-      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: DEFAULT_VENUE_SLUG, venueId: venue.id }));
+      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(STAFF_PENDING_PHONE_KEY);
       navigate('/staff/dashboard');
     } catch (error) {
@@ -1342,7 +1361,7 @@ async function renderStaffLogin() {
 }
 
 async function renderAdminLogin() {
-  const venue = await apiRequest(`/venues/${DEFAULT_VENUE_SLUG}`);
+  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
   const pendingPhone = sessionStorage.getItem(ADMIN_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
@@ -1430,7 +1449,7 @@ async function renderAdminLogin() {
         return;
       }
 
-      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: DEFAULT_VENUE_SLUG, venueId: venue.id }));
+      localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(ADMIN_PENDING_PHONE_KEY);
       navigate('/admin/dashboard');
     } catch (error) {
@@ -1624,6 +1643,7 @@ async function renderStaffDashboard() {
 
   document.getElementById('staff-logout')?.addEventListener('click', () => {
     clearStaffAuth();
+    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
     navigate('/staff/login');
   });
 
@@ -1837,7 +1857,7 @@ async function renderStaffDashboard() {
   }));
 
   document.getElementById('clear-queue-btn')?.addEventListener('click', guardedAction('clear-queue', async () => {
-    if (!confirm('Cancel all waiting entries and check out all seated guests?')) return;
+    if (!confirm('Cancel all waiting entries and check out all seated guests?\n\n⚠️ WARNING: This does NOT automatically refund deposits. Refund any captured deposits manually before clearing.')) return;
     try {
       const result = await apiRequest('/queue/clear-all', { method: 'POST', auth: true });
       setFlash('green', `Cleared ${result.cleared} queue entries.`);
@@ -1967,6 +1987,7 @@ async function renderAdminDashboard() {
 
   document.getElementById('admin-logout')?.addEventListener('click', () => {
     clearStaffAuth();
+    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
     navigate('/admin/login');
   });
 

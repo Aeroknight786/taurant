@@ -41,7 +41,19 @@ export async function joinQueue(params: {
 
   const position = activeCount + 1;
   const estimatedWaitMin = estimateWait(params.venueId, position);
-  const otp = generateSeatingOtp();
+
+  // Generate OTP — retry on collision (rare but possible at high volume)
+  let otp = generateSeatingOtp();
+  let otpAttempts = 0;
+  while (otpAttempts < 5) {
+    const otpConflict = await prisma.queueEntry.findFirst({
+      where: { venueId: params.venueId, otp, status: { in: ['WAITING', 'NOTIFIED'] } },
+      select: { id: true },
+    });
+    if (!otpConflict) break;
+    otp = generateSeatingOtp();
+    otpAttempts++;
+  }
 
   const entry = await prisma.queueEntry.create({
     data: {
@@ -425,6 +437,8 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
 export async function completeQueueEntry(entryId: string): Promise<void> {
   const entry = await prisma.queueEntry.findUnique({ where: { id: entryId } });
   if (!entry) throw new AppError('Queue entry not found', 404);
+  // Idempotency guard — if already completed, skip silently
+  if (entry.status === QueueEntryStatus.COMPLETED) return;
 
   await prisma.$transaction(async (tx) => {
     await tx.queueEntry.update({

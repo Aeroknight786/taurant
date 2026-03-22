@@ -3,6 +3,7 @@ export const DEFAULT_VENUE_SLUG = 'the-barrel-room-koramangala';
 export const STAFF_AUTH_KEY = 'flock_staff_auth';
 export const STAFF_PENDING_PHONE_KEY = 'flock_staff_pending_phone';
 export const ADMIN_PENDING_PHONE_KEY = 'flock_admin_pending_phone';
+export const ACTIVE_VENUE_KEY = 'flock_active_venue';
 export const GUEST_SESSION_PREFIX = 'flock_guest_session:';
 export const GUEST_ENTRY_PREFIX = 'flock_guest_entry:';
 export const PREORDER_CART_PREFIX = 'flock_cart:';
