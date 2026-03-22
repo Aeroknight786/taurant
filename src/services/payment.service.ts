@@ -279,6 +279,15 @@ export async function refundDeposit(params: { paymentId: string; venueId: string
 }
 
 export async function settleFinalOffline(params: { venueId: string; queueEntryId: string; staffId: string }) {
+  const seatedCheck = await prisma.queueEntry.findFirst({
+    where: { id: params.queueEntryId, venueId: params.venueId },
+    select: { status: true },
+  });
+  if (!seatedCheck) throw new AppError('Queue entry not found', 404);
+  if (seatedCheck.status !== 'SEATED') {
+    throw new AppError('Can only settle offline for a currently seated guest', 400, 'ENTRY_NOT_SEATED');
+  }
+
   const bill = await getBillSummary(params.queueEntryId);
   const orders = await prisma.order.findMany({
     where: { queueEntryId: params.queueEntryId },
@@ -376,20 +385,26 @@ async function issueFinalInvoice(queueEntryId: string, venueId: string): Promise
     })),
   });
 
-  await prisma.invoice.create({
-    data: {
-      orderId:       primaryOrder.id,
-      venueId,
-      invoiceNumber,
-      irn:           result.irn,
-      qrCode:        result.qrCode,
-      cleartaxRef:   result.cleartaxRef,
-      subtotal, cgst, sgst, total,
-      guestName:     entry.guestName,
-      guestPhone:    entry.guestPhone,
-      venueGstin:    venue.gstin,
-    },
-  });
+  try {
+    await prisma.invoice.create({
+      data: {
+        orderId:       primaryOrder.id,
+        venueId,
+        invoiceNumber,
+        irn:           result.irn,
+        qrCode:        result.qrCode,
+        cleartaxRef:   result.cleartaxRef,
+        subtotal, cgst, sgst, total,
+        guestName:     entry.guestName,
+        guestPhone:    entry.guestPhone,
+        venueGstin:    venue.gstin,
+      },
+    });
+  } catch (err: unknown) {
+    // Unique constraint violation means a concurrent call already created the invoice — safe to ignore
+    const prismaErr = err as { code?: string };
+    if (prismaErr?.code !== 'P2002') throw err;
+  }
 }
 
 async function capturePaymentByOrder(params: {

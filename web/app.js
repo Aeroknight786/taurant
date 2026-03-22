@@ -208,7 +208,11 @@ window.addEventListener('popstate', () => {
 
 document.addEventListener('visibilitychange', () => {
   if (!document.hidden && uiState.activePartySessionId && !uiState.partyPollerId) {
+    // Don't reset backoff here — only reset on a successful poll response
+    // This prevents a tab-switch from clearing failure backoff state
+    const savedDelay = uiState.partyPoll.nextDelayMs;
     startPartySessionPolling();
+    uiState.partyPoll.nextDelayMs = savedDelay;
   }
 });
 
@@ -1639,6 +1643,7 @@ async function renderStaffDashboard() {
 
   document.getElementById('staff-logout')?.addEventListener('click', () => {
     clearStaffAuth();
+    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
     navigate('/staff/login');
   });
 
@@ -1852,7 +1857,7 @@ async function renderStaffDashboard() {
   }));
 
   document.getElementById('clear-queue-btn')?.addEventListener('click', guardedAction('clear-queue', async () => {
-    if (!confirm('Cancel all waiting entries and check out all seated guests?')) return;
+    if (!confirm('Cancel all waiting entries and check out all seated guests?\n\n⚠️ WARNING: This does NOT automatically refund deposits. Refund any captured deposits manually before clearing.')) return;
     try {
       const result = await apiRequest('/queue/clear-all', { method: 'POST', auth: true });
       setFlash('green', `Cleared ${result.cleared} queue entries.`);
@@ -1982,6 +1987,7 @@ async function renderAdminDashboard() {
 
   document.getElementById('admin-logout')?.addEventListener('click', () => {
     clearStaffAuth();
+    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
     navigate('/admin/login');
   });
 
