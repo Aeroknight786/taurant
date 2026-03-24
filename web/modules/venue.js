@@ -17,6 +17,10 @@ export const THEME_PRESETS = {
   },
 };
 
+function readVenueSection(venue, sectionKey) {
+  return venue?.config?.[sectionKey] || venue?.[sectionKey] || null;
+}
+
 export function resolveThemePreset(themeKey = DEFAULT_THEME_KEY) {
   return THEME_PRESETS[themeKey] || THEME_PRESETS.default;
 }
@@ -56,15 +60,15 @@ export function resolveLegacyVenueSlug(pathname = window.location.pathname) {
 }
 
 export function resolveVenueThemeKey(venue) {
-  return venue?.config?.brandConfig?.themeKey || DEFAULT_THEME_KEY;
+  return readVenueSection(venue, 'brandConfig')?.themeKey || DEFAULT_THEME_KEY;
 }
 
 export function resolveVenueDisplayName(venue) {
-  return venue?.config?.brandConfig?.displayName || venue?.name || 'Venue';
+  return readVenueSection(venue, 'brandConfig')?.displayName || venue?.name || 'Venue';
 }
 
 export function isVenueFeatureEnabled(venue, featureKey) {
-  return Boolean(venue?.config?.featureConfig?.[featureKey]);
+  return Boolean(readVenueSection(venue, 'featureConfig')?.[featureKey]);
 }
 
 export function isQueueOnlyGuestExperience(venue) {

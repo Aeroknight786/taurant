@@ -48,6 +48,14 @@ describe('frontend venue helpers', () => {
     expect(resolveVenueThemeKey(venue)).toBe('craftery');
     expect(isVenueFeatureEnabled(venue, 'staffConsole')).toBe(true);
     expect(isVenueFeatureEnabled(venue, 'preOrder')).toBe(false);
+
+    const publicVenueSummary = {
+      brandConfig: { themeKey: 'craftery', displayName: 'The Craftery by Subko' },
+      featureConfig: { guestQueue: true, staffConsole: true, adminConsole: true },
+    };
+
+    expect(resolveVenueThemeKey(publicVenueSummary)).toBe('craftery');
+    expect(isVenueFeatureEnabled(publicVenueSummary, 'guestQueue')).toBe(true);
   });
 
   it('identifies queue-only venues and hides commerce surfaces for them', () => {
