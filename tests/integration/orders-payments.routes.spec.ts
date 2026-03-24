@@ -1,6 +1,6 @@
 import { invokeApp } from '../helpers/invoke-app';
 
-const { orderServiceMock, paymentServiceMock } = vi.hoisted(() => ({
+const { orderServiceMock, paymentServiceMock, venueFeatureState } = vi.hoisted(() => ({
   orderServiceMock: {
     createPreOrder: vi.fn(),
     createTableOrder: vi.fn(),
@@ -16,10 +16,24 @@ const { orderServiceMock, paymentServiceMock } = vi.hoisted(() => ({
     settleFinalOffline: vi.fn(),
     refundDeposit: vi.fn(),
   },
+  venueFeatureState: {
+    disabledFeatures: new Set<string>(),
+  },
 }));
 
 vi.mock('../../src/services/order.service', () => orderServiceMock);
 vi.mock('../../src/services/payment.service', () => paymentServiceMock);
+vi.mock('../../src/middleware/venueFeature', () => ({
+  requireVenueFeature: (feature: string) => (_req: any, res: any, next: any) => {
+    if (venueFeatureState.disabledFeatures.has(feature)) {
+      res.status(403).json({ success: false, error: `${feature} disabled`, code: 'VENUE_FEATURE_DISABLED' });
+      return;
+    }
+    next();
+  },
+  resolveVenueIdFromQueueEntryParam: () => async () => 'venue_1',
+  resolveVenueIdFromPartyJoinToken: () => async () => 'venue_1',
+}));
 vi.mock('../../src/integrations/razorpay', async () => {
   const actual = await vi.importActual<typeof import('../../src/integrations/razorpay')>('../../src/integrations/razorpay');
   return {
@@ -66,6 +80,7 @@ vi.mock('../../src/middleware/auth', () => ({
 describe('order and payment routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    venueFeatureState.disabledFeatures.clear();
   });
 
   it('covers preorder, guest table order, and bill retrieval', async () => {
@@ -170,5 +185,66 @@ describe('order and payment routes', () => {
         },
       }),
     })).status).toBe(200);
+  });
+
+  it('rejects disabled preorder routes', async () => {
+    venueFeatureState.disabledFeatures.add('preOrder');
+    const app = (await import('../../src/app')).default;
+
+    const orderResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/orders/preorder',
+      headers: { authorization: 'Bearer guest-token' },
+      body: { queueEntryId: 'entry_1', items: [{ menuItemId: 'item_1', quantity: 1 }] },
+    });
+
+    const paymentResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/payments/deposit/initiate',
+      headers: { authorization: 'Bearer guest-token' },
+      body: { venueId: 'venue_1', queueEntryId: 'entry_1', orderId: 'order_1' },
+    });
+
+    expect(orderResponse.status).toBe(403);
+    expect(orderResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
+    expect(paymentResponse.status).toBe(403);
+    expect(paymentResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
+  });
+
+  it('rejects disabled final payment and recovery routes', async () => {
+    const app = (await import('../../src/app')).default;
+
+    venueFeatureState.disabledFeatures.add('finalPayment');
+    const finalPaymentResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/payments/final/initiate',
+      headers: { authorization: 'Bearer guest-token' },
+      body: { venueId: 'venue_1', queueEntryId: 'entry_1' },
+    });
+
+    venueFeatureState.disabledFeatures.clear();
+    venueFeatureState.disabledFeatures.add('offlineSettle');
+    const offlineSettleResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/payments/final/settle-offline',
+      headers: { authorization: 'Bearer staff-token' },
+      body: { queueEntryId: 'entry_1' },
+    });
+
+    venueFeatureState.disabledFeatures.clear();
+    venueFeatureState.disabledFeatures.add('refunds');
+    const refundResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/payments/refund',
+      headers: { authorization: 'Bearer staff-token' },
+      body: { paymentId: 'payment_1' },
+    });
+
+    expect(finalPaymentResponse.status).toBe(403);
+    expect(finalPaymentResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
+    expect(offlineSettleResponse.status).toBe(403);
+    expect(offlineSettleResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
+    expect(refundResponse.status).toBe(403);
+    expect(refundResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
   });
 });

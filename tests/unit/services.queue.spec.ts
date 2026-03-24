@@ -89,8 +89,12 @@ describe('queue service', () => {
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
       name: 'Flock',
+      slug: 'the-barrel-room-koramangala',
       isQueueOpen: true,
       maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
     });
     prismaMock.queueEntry.count.mockResolvedValue(2);
     prismaMock.queueEntry.findFirst.mockResolvedValue(null);
@@ -130,8 +134,12 @@ describe('queue service', () => {
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
       name: 'Flock',
+      slug: 'the-barrel-room-koramangala',
       isQueueOpen: true,
       maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
     });
     prismaMock.queueEntry.count.mockResolvedValue(1);
     prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_existing' });

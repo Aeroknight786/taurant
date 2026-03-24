@@ -1,5 +1,4 @@
 export const API_BASE = '/api/v1';
-export const DEFAULT_VENUE_SLUG = 'the-barrel-room-koramangala';
 export const STAFF_AUTH_KEY = 'flock_staff_auth';
 export const STAFF_PENDING_PHONE_KEY = 'flock_staff_pending_phone';
 export const ADMIN_PENDING_PHONE_KEY = 'flock_admin_pending_phone';

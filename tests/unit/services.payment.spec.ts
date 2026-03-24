@@ -69,7 +69,15 @@ describe('payment service', () => {
 
     prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_1', venueId: 'venue_1' });
     prismaMock.order.findFirst.mockResolvedValue({ id: 'order_1', totalIncGst: 32_450, venueId: 'venue_1', queueEntryId: 'entry_1' });
-    prismaMock.venue.findUnique.mockResolvedValue({ id: 'venue_1', depositPercent: 75 });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      depositPercent: 75,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
     prismaMock.payment.findFirst
       .mockResolvedValueOnce(null)
       .mockResolvedValueOnce({
@@ -100,7 +108,15 @@ describe('payment service', () => {
 
     prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_1', venueId: 'venue_1' });
     prismaMock.order.findFirst.mockResolvedValue({ id: 'order_1', totalIncGst: 32_450, venueId: 'venue_1', queueEntryId: 'entry_1' });
-    prismaMock.venue.findUnique.mockResolvedValue({ id: 'venue_1', depositPercent: 75 });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      depositPercent: 75,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
     prismaMock.payment.findFirst.mockResolvedValue(null);
     prismaMock.payment.create.mockResolvedValue({
       id: 'payment_1',
@@ -150,6 +166,14 @@ describe('payment service', () => {
         },
       },
     });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
     prismaMock.payment.updateMany.mockResolvedValue({ count: 1 });
 
     const result = await captureDeposit({
@@ -182,6 +206,14 @@ describe('payment service', () => {
       amount: 24_338,
       razorpayPaymentId: 'pay_1',
       order: { queueEntryId: 'entry_1' },
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
     });
     initiateRefundMock.mockResolvedValue({ id: 'refund_1', amount: 24_338, status: 'processed' });
 

@@ -19,6 +19,9 @@ describeIfContracts('database contract checks', () => {
           OR (table_name = 'PartySession' AND column_name = 'joinToken')
           OR (table_name = 'PartyParticipant' AND column_name = 'isPayer')
           OR (table_name = 'PartyBucketItem' AND column_name = 'updatedByParticipantId')
+          OR (table_name = 'Venue' AND column_name = 'brandConfig')
+          OR (table_name = 'Venue' AND column_name = 'featureConfig')
+          OR (table_name = 'Venue' AND column_name = 'uiConfig')
         )
     `;
 
@@ -28,6 +31,9 @@ describeIfContracts('database contract checks', () => {
       expect.objectContaining({ table_name: 'PartySession', column_name: 'joinToken' }),
       expect.objectContaining({ table_name: 'PartyParticipant', column_name: 'isPayer' }),
       expect.objectContaining({ table_name: 'PartyBucketItem', column_name: 'updatedByParticipantId' }),
+      expect.objectContaining({ table_name: 'Venue', column_name: 'brandConfig' }),
+      expect.objectContaining({ table_name: 'Venue', column_name: 'featureConfig' }),
+      expect.objectContaining({ table_name: 'Venue', column_name: 'uiConfig' }),
     ]));
   });
 

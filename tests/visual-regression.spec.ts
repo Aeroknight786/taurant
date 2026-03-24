@@ -1,6 +1,7 @@
 import { test, expect, Page } from '@playwright/test';
 
 const VENUE_SLUG = 'the-barrel-room-koramangala';
+const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
 
 async function noHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => {
@@ -29,20 +30,32 @@ test.describe('Guest venue landing', () => {
     await noHorizontalOverflow(page);
     await expect(page).toHaveScreenshot('venue-landing.png', { fullPage: true });
   });
+
+  test('Craftery keeps its dedicated theme preset', async ({ page }) => {
+    await page.goto(`/v/${CRAFTERY_VENUE_SLUG}`);
+    await page.waitForSelector('#join-form');
+    await noHorizontalOverflow(page);
+
+    const themeSheetHref = await page.locator('#flock-theme-stylesheet').getAttribute('href');
+    expect(themeSheetHref).toBe('/craftery-styles.css');
+
+    const fontHref = await page.locator('#flock-theme-fonts').getAttribute('href');
+    expect(fontHref).toContain('Playfair+Display');
+  });
 });
 
 // ─── Staff Login ──────────────────────────────────────────────────
 
 test.describe('Staff login', () => {
   test('OTP form renders cleanly', async ({ page }) => {
-    await page.goto('/staff/login');
+    await page.goto(`/v/${VENUE_SLUG}/staff/login`);
     await page.waitForSelector('#staff-send-form');
     await noHorizontalOverflow(page);
     await expect(page).toHaveScreenshot('staff-login.png', { fullPage: true });
   });
 
   test('mockOtp auto-fills after send', async ({ page }) => {
-    await page.goto('/staff/login');
+    await page.goto(`/v/${VENUE_SLUG}/staff/login`);
     await page.fill('#staff-phone', '9000000002');
     await page.click('#staff-send-form button[type="submit"]');
     await page.waitForTimeout(2000);
@@ -56,7 +69,7 @@ test.describe('Staff login', () => {
 
 test.describe('Staff dashboard', () => {
   async function loginStaff(page: Page) {
-    await page.goto('/staff/login');
+    await page.goto(`/v/${VENUE_SLUG}/staff/login`);
     await page.fill('#staff-phone', '9000000002');
     await page.click('#staff-send-form button[type="submit"]');
     await page.waitForTimeout(2000);
@@ -113,10 +126,17 @@ test.describe('Staff dashboard', () => {
 
 test.describe('Admin login', () => {
   test('renders cleanly', async ({ page }) => {
-    await page.goto('/admin/login');
+    await page.goto(`/v/${VENUE_SLUG}/admin/login`);
     await page.waitForSelector('#admin-send-form');
     await noHorizontalOverflow(page);
     await expect(page).toHaveScreenshot('admin-login.png', { fullPage: true });
+  });
+
+  test('Craftery admin fallback remains reachable', async ({ page }) => {
+    await page.goto(`/v/${CRAFTERY_VENUE_SLUG}/admin/login`);
+    await page.waitForSelector('#admin-send-form');
+    await noHorizontalOverflow(page);
+    await expect(page.locator('.brand-tag')).toContainText('Waitlist');
   });
 });
 
@@ -174,8 +194,8 @@ test.describe('Global defensive checks', () => {
   const pages = [
     { name: 'landing', path: '/' },
     { name: 'venue', path: `/v/${VENUE_SLUG}` },
-    { name: 'staff-login', path: '/staff/login' },
-    { name: 'admin-login', path: '/admin/login' },
+    { name: 'staff-login', path: `/v/${VENUE_SLUG}/staff/login` },
+    { name: 'admin-login', path: `/v/${VENUE_SLUG}/admin/login` },
   ];
 
   for (const pg of pages) {

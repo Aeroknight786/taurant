@@ -2,15 +2,16 @@ import { Router } from 'express';
 import * as Queue from '../controllers/queue.controller';
 import { requireAuth, requireGuestAuth, requireRole } from '../middleware/auth';
 import { guestMutationLimiter, guestPollReadLimiter, operatorReadLimiter, operatorWriteLimiter, otpVerifyLimiter } from '../middleware/rateLimiter';
+import { requireVenueFeature, resolveVenueIdFromQueueEntryParam } from '../middleware/venueFeature';
 const router = Router();
-router.post('/',                     guestMutationLimiter, Queue.joinQueue); // guest — rate limited, no auth
-router.get ('/live',                 requireAuth, operatorReadLimiter, Queue.getVenueQueue);
-router.post('/:entryId/session',     otpVerifyLimiter, Queue.reissueGuestSession);
-router.get ('/:entryId',             requireGuestAuth, guestPollReadLimiter, Queue.getQueueEntry);
-router.post('/seat',                 requireAuth, operatorWriteLimiter, Queue.seatGuest);
-router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), operatorWriteLimiter, Queue.cancelEntry);
-router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), operatorWriteLimiter, Queue.checkoutEntry);
-router.get   ('/history/recent',      requireAuth, requireRole('OWNER','MANAGER'), operatorReadLimiter, Queue.getRecentHistory);
-router.post  ('/clear-all',          requireAuth, requireRole('OWNER','MANAGER'), operatorWriteLimiter, Queue.clearAllEntries);
-router.get   ('/:entryId/flow',      requireAuth, requireRole('OWNER','MANAGER'), operatorReadLimiter, Queue.getEntryFlowEvents);
+router.post('/',                     guestMutationLimiter, requireVenueFeature('guestQueue'), Queue.joinQueue); // guest — rate limited, no auth
+router.get ('/live',                 requireAuth, requireVenueFeature('guestQueue'), operatorReadLimiter, Queue.getVenueQueue);
+router.post('/:entryId/session',     otpVerifyLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), Queue.reissueGuestSession);
+router.get ('/:entryId',             requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntry);
+router.post('/seat',                 requireAuth, requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.seatGuest);
+router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.cancelEntry);
+router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.checkoutEntry);
+router.get   ('/history/recent',     requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('historyTab'), operatorReadLimiter, Queue.getRecentHistory);
+router.post  ('/clear-all',          requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('bulkClear'), operatorWriteLimiter, Queue.clearAllEntries);
+router.get   ('/:entryId/flow',      requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('flowLog'), operatorReadLimiter, Queue.getEntryFlowEvents);
 export default router;

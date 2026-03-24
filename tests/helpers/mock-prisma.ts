@@ -4,6 +4,7 @@ export function createPrismaMock() {
   const prisma = {
     venue: {
       findUnique: vi.fn(),
+      findMany: vi.fn(),
       create: vi.fn(),
       update: vi.fn(),
       aggregate: vi.fn(),

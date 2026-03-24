@@ -17,6 +17,13 @@ export async function getVenueBySlug(req: Request, res: Response, next: NextFunc
   } catch (e) { next(e); }
 }
 
+export async function getPublicVenues(_req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const venues = await VenueService.getPublicVenues();
+    ok(res, venues, { count: venues.length });
+  } catch (e) { next(e); }
+}
+
 export async function updateVenueConfig(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const venue = await VenueService.updateVenueConfig(req.venue!.id, VenueService.UpdateVenueConfigSchema.parse(req.body));

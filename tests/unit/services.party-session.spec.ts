@@ -16,6 +16,14 @@ vi.mock('../../src/services/order.service', () => ({
 describe('party session service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
   });
 
   it('creates a host participant when a session does not yet exist', async () => {
@@ -43,6 +51,7 @@ describe('party session service', () => {
 
     prismaMock.partySession.findFirst.mockResolvedValue({
       id: 'session_1',
+      venueId: 'venue_1',
       status: PartySessionStatus.ACTIVE,
       queueEntry: {
         id: 'entry_1',

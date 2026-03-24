@@ -4,6 +4,7 @@ import { pushOrderToPos } from '../integrations/urbanpiper';
 import { AppError } from '../middleware/errorHandler';
 import { OrderType, PaymentStatus, PaymentType, QueueEntryStatus } from '@prisma/client';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
+import { assertVenueFeatureEnabled } from './venueConfig.service';
 
 export interface OrderItemInput {
   menuItemId: string;
@@ -19,6 +20,8 @@ export async function createPreOrder(params: {
   items:        OrderItemInput[];
   notes?:       string;
 }) {
+  await assertVenueFeatureEnabled(params.venueId, 'preOrder');
+
   const entry = await prisma.queueEntry.findFirst({
     where: {
       id: params.queueEntryId,
@@ -274,6 +277,8 @@ async function createTableOrderInternal(params: {
   notes?: string;
   initiatedBy: 'guest' | 'staff';
 }) {
+  await assertVenueFeatureEnabled(params.venueId, 'seatedOrdering');
+
   const entry = await prisma.queueEntry.findFirst({
     where: { id: params.queueEntryId, venueId: params.venueId, status: QueueEntryStatus.SEATED },
     select: {

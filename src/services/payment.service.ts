@@ -9,6 +9,7 @@ import { completeQueueEntry } from './queue.service';
 import { selectBillableOrders } from './order.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { env } from '../config/env';
+import { assertVenueFeatureEnabled } from './venueConfig.service';
 
 const paymentKeyId = env.USE_MOCK_PAYMENTS ? 'mock_key' : (env.RAZORPAY_KEY_ID || 'mock_key');
 
@@ -19,6 +20,8 @@ export async function initiateDeposit(params: {
   queueEntryId: string;
   orderId:      string;
 }) {
+  await assertVenueFeatureEnabled(params.venueId, 'preOrder');
+
   const [entry, order, venue] = await Promise.all([
     prisma.queueEntry.findFirst({ where: { id: params.queueEntryId, venueId: params.venueId } }),
     prisma.order.findFirst({ where: { id: params.orderId, venueId: params.venueId, queueEntryId: params.queueEntryId, type: OrderType.PRE_ORDER } }),
@@ -137,6 +140,8 @@ export async function initiateFinalPayment(params: {
   venueId:      string;
   queueEntryId: string;
 }) {
+  await assertVenueFeatureEnabled(params.venueId, 'finalPayment');
+
   const bill = await getBillSummary(params.queueEntryId);
   if (bill.balanceDue <= 0) throw new AppError('No balance due — bill already settled', 400);
 
@@ -253,6 +258,8 @@ export async function capturePaymentFromWebhook(params: {
 // ── Refund ────────────────────────────────────────────────────────
 
 export async function refundDeposit(params: { paymentId: string; venueId: string; reason?: string }) {
+  await assertVenueFeatureEnabled(params.venueId, 'refunds');
+
   const payment = await prisma.payment.findFirst({
     where: { id: params.paymentId, venueId: params.venueId, type: PaymentType.DEPOSIT, status: PaymentStatus.CAPTURED },
     include: { order: { select: { queueEntryId: true } } },
@@ -279,6 +286,8 @@ export async function refundDeposit(params: { paymentId: string; venueId: string
 }
 
 export async function settleFinalOffline(params: { venueId: string; queueEntryId: string; staffId: string }) {
+  await assertVenueFeatureEnabled(params.venueId, 'offlineSettle');
+
   const seatedCheck = await prisma.queueEntry.findFirst({
     where: { id: params.queueEntryId, venueId: params.venueId },
     select: { status: true },
@@ -419,6 +428,7 @@ async function capturePaymentByOrder(params: {
     include: { order: { include: { queueEntry: true } } },
   });
   if (!payment) throw new AppError('Payment record not found', 404);
+  await assertVenueFeatureEnabled(payment.venueId, payment.type === PaymentType.DEPOSIT ? 'preOrder' : 'finalPayment');
   if (payment.type !== params.expectedType) {
     throw new AppError('Payment type mismatch for capture path', 400, 'PAYMENT_TYPE_MISMATCH');
   }

@@ -4,6 +4,7 @@ import { requireAuth, requireRole } from '../middleware/auth';
 import { requireOnboardingToken } from '../middleware/onboarding';
 const router = Router();
 router.post ('/',            requireOnboardingToken, Venue.createVenue);
+router.get  ('/public',      Venue.getPublicVenues);
 router.get  ('/stats/today', requireAuth, Venue.getVenueStats);
 router.get  ('/:slug',       Venue.getVenueBySlug);
 router.patch('/config',      requireAuth, requireRole('OWNER', 'MANAGER'), Venue.updateVenueConfig);

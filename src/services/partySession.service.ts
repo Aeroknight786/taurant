@@ -5,6 +5,7 @@ import { GuestAuthContext } from '../types';
 import { signGuestToken } from '../utils/jwt';
 import { PartyParticipantRole, PartySessionStatus } from '@prisma/client';
 import * as OrderService from './order.service';
+import { assertVenueFeatureEnabled } from './venueConfig.service';
 
 function generateJoinToken(): string {
   return randomBytes(8).toString('hex');
@@ -79,6 +80,8 @@ async function resolveAccessibleParticipant(
   sessionId: string,
   guest: GuestAuthContext
 ) {
+  await assertVenueFeatureEnabled(guest.venueId, 'partyShare');
+
   if (guest.partySessionId && guest.participantId) {
     const participant = await prisma.partyParticipant.findFirst({
       where: {
@@ -200,6 +203,8 @@ export async function joinPartySessionByToken(params: {
   if (!session) {
     throw new AppError('Party session invite is invalid or expired', 404, 'PARTY_SESSION_JOIN_INVALID');
   }
+
+  await assertVenueFeatureEnabled(session.venueId, 'partyShare');
 
   const participant = await prisma.partyParticipant.create({
     data: {

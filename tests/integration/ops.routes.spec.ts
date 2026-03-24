@@ -4,6 +4,7 @@ const {
   prismaMock,
   venueServiceMock,
   tableServiceMock,
+  venueFeatureState,
 } = vi.hoisted(() => ({
   prismaMock: {
     venue: {
@@ -30,6 +31,7 @@ const {
   },
   venueServiceMock: {
     createVenue: vi.fn(),
+    getPublicVenues: vi.fn(),
     getVenueBySlug: vi.fn(),
     updateVenueConfig: vi.fn(),
     getVenueStats: vi.fn(),
@@ -38,6 +40,9 @@ const {
     getVenueTables: vi.fn(),
     getRecentVenueTableEvents: vi.fn(),
     updateTableStatus: vi.fn(),
+  },
+  venueFeatureState: {
+    disabledFeatures: new Set<string>(),
   },
 }));
 
@@ -50,12 +55,28 @@ vi.mock('../../src/services/venue.service', async () => {
   return {
     ...actual,
     createVenue: venueServiceMock.createVenue,
+    getPublicVenues: venueServiceMock.getPublicVenues,
     getVenueBySlug: venueServiceMock.getVenueBySlug,
     updateVenueConfig: venueServiceMock.updateVenueConfig,
     getVenueStats: venueServiceMock.getVenueStats,
   };
 });
 vi.mock('../../src/services/table.service', () => tableServiceMock);
+vi.mock('../../src/middleware/venueFeature', () => ({
+  requireVenueFeature: (feature: string) => (req: any, res: any, next: any) => {
+    if (venueFeatureState.disabledFeatures.has(feature)) {
+      res.status(403).json({
+        success: false,
+        error: `${feature} disabled`,
+        code: 'VENUE_FEATURE_DISABLED',
+      });
+      return;
+    }
+    next();
+  },
+  resolveVenueIdFromQueueEntryParam: () => async () => 'venue_1',
+  resolveVenueIdFromPartyJoinToken: () => async () => 'venue_1',
+}));
 
 vi.mock('../../src/middleware/auth', () => ({
   requireAuth: (req: any, res: any, next: any) => {
@@ -89,11 +110,21 @@ describe('venue, menu, and table routes', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    venueFeatureState.disabledFeatures.clear();
   });
 
   it('covers venue onboarding, guest venue read, stats, and config update', async () => {
     venueServiceMock.createVenue.mockResolvedValue({ id: 'venue_2', slug: 'new-venue' });
-    venueServiceMock.getVenueBySlug.mockResolvedValue({ id: 'venue_1', slug: 'the-barrel-room-koramangala' });
+    venueServiceMock.getPublicVenues.mockResolvedValue([{ id: 'venue_1', slug: 'the-barrel-room-koramangala' }]);
+    venueServiceMock.getVenueBySlug.mockResolvedValue({
+      id: 'venue_1',
+      slug: 'the-barrel-room-koramangala',
+      config: {
+        brandConfig: { themeKey: 'default' },
+        featureConfig: { guestQueue: true, adminConsole: true },
+        uiConfig: { landingMode: 'venue' },
+      },
+    });
     venueServiceMock.getVenueStats.mockResolvedValue({ today: { totalQueueJoins: 3 } });
     venueServiceMock.updateVenueConfig.mockResolvedValue({ id: 'venue_1', isQueueOpen: true });
 
@@ -113,6 +144,11 @@ describe('venue, menu, and table routes', () => {
         email: 'new@example.com',
       },
     })).status).toBe(201);
+
+    expect((await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/venues/public',
+    })).status).toBe(200);
 
     expect((await invokeApp(app, {
       method: 'GET',
@@ -191,6 +227,20 @@ describe('venue, menu, and table routes', () => {
       url: '/api/v1/menu/items/item_1',
       headers: authHeader('staff-menu-write-b'),
     })).status).toBe(200);
+  });
+
+  it('rejects disabled admin-console routes with a stable venue feature code', async () => {
+    venueFeatureState.disabledFeatures.add('adminConsole');
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/menu/admin/current',
+      headers: authHeader('staff-menu-read'),
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('VENUE_FEATURE_DISABLED');
   });
 
   it('covers table list, creation, event feeds, and status updates', async () => {

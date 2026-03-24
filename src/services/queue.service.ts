@@ -12,6 +12,7 @@ import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { generateDisplayRef } from '../utils/txnRef';
+import { resolveVenueConfig } from './venueConfig.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 
@@ -25,6 +26,7 @@ export async function joinQueue(params: {
 }): Promise<{ id: string; otp: string; position: number; estimatedWaitMin: number; guestToken: string }> {
   const venue = await prisma.venue.findUnique({ where: { id: params.venueId } });
   if (!venue) throw new AppError('Venue not found', 404);
+  const venueConfig = resolveVenueConfig(venue);
   if (!venue.isQueueOpen) throw new AppError('Queue is currently closed', 400, 'QUEUE_CLOSED');
 
   // Count active entries
@@ -68,12 +70,14 @@ export async function joinQueue(params: {
     },
   });
 
-  const { session, hostParticipant } = await ensurePartySessionForQueueEntry({
-    queueEntryId: entry.id,
-    venueId: entry.venueId,
-    guestName: entry.guestName,
-    guestPhone: entry.guestPhone,
-  });
+  const partySession = venueConfig.featureConfig.partyShare
+    ? await ensurePartySessionForQueueEntry({
+        queueEntryId: entry.id,
+        venueId: entry.venueId,
+        guestName: entry.guestName,
+        guestPhone: entry.guestPhone,
+      })
+    : null;
 
   // Cache in Redis for low-latency reads
   await safeRedisExec(() =>
@@ -107,8 +111,8 @@ export async function joinQueue(params: {
       queueEntryId: entry.id,
       venueId: entry.venueId,
       guestPhone: entry.guestPhone,
-      partySessionId: session.id,
-      participantId: hostParticipant.id,
+      partySessionId: partySession?.session.id,
+      participantId: partySession?.hostParticipant.id,
     }),
   };
 }
@@ -209,6 +213,16 @@ export async function reissueGuestSession(entryId: string, otp: string) {
       guestPhone: true,
       otp: true,
       status: true,
+      venue: {
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          brandConfig: true,
+          featureConfig: true,
+          uiConfig: true,
+        },
+      },
     },
   });
 
@@ -220,19 +234,22 @@ export async function reissueGuestSession(entryId: string, otp: string) {
     throw new AppError('Incorrect OTP', 400, 'OTP_INCORRECT');
   }
 
-  const { session, hostParticipant } = await ensurePartySessionForQueueEntry({
-    queueEntryId: entry.id,
-    venueId: entry.venueId,
-    guestPhone: entry.guestPhone,
-  });
+  const venueConfig = entry.venue ? resolveVenueConfig(entry.venue) : null;
+  const partySession = venueConfig?.featureConfig.partyShare
+    ? await ensurePartySessionForQueueEntry({
+        queueEntryId: entry.id,
+        venueId: entry.venueId,
+        guestPhone: entry.guestPhone,
+      })
+    : null;
 
   return {
     guestToken: issueGuestSessionToken({
       queueEntryId: entry.id,
       venueId: entry.venueId,
       guestPhone: entry.guestPhone,
-      partySessionId: session.id,
-      participantId: hostParticipant.id,
+      partySessionId: partySession?.session.id,
+      participantId: partySession?.hostParticipant.id,
     }),
   };
 }

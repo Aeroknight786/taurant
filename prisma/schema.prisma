@@ -146,6 +146,9 @@ model Venue {
   tmsVenueId          String?
   posPlatform         String?
   posOutletId         String?
+  brandConfig         Json?
+  featureConfig       Json?
+  uiConfig            Json?
   monthlyCoversUsed   Int            @default(0)
   invoiceSequence     Int            @default(0)
   billingCycleStart   DateTime       @default(now())

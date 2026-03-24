@@ -62,13 +62,13 @@ export async function resolveOtpFromInternalState(request: APIRequestContext, ph
 }
 
 async function loginOperator(page: Page, request: APIRequestContext, options: {
-  route: '/staff/login' | '/admin/login';
+  route: string;
   phone: string;
   sendFormSelector: '#staff-send-form' | '#admin-send-form';
   phoneSelector: '#staff-phone' | '#admin-phone';
   verifyFormSelector: '#staff-verify-form' | '#admin-verify-form';
   codeSelector: '#staff-code' | '#admin-code';
-  postLoginPath: '/staff/dashboard' | '/admin/dashboard';
+  postLoginPath: string;
 }) {
   const venue = await fetchVenue(request);
 
@@ -93,25 +93,25 @@ async function loginOperator(page: Page, request: APIRequestContext, options: {
 
 export async function loginStaff(page: Page, request: APIRequestContext) {
   return loginOperator(page, request, {
-    route: '/staff/login',
+    route: `/v/${fixtureConfig.venueSlug}/staff/login`,
     phone: fixtureConfig.staffPhone,
     sendFormSelector: '#staff-send-form',
     phoneSelector: '#staff-phone',
     verifyFormSelector: '#staff-verify-form',
     codeSelector: '#staff-code',
-    postLoginPath: '/staff/dashboard',
+    postLoginPath: `/v/${fixtureConfig.venueSlug}/staff/dashboard`,
   });
 }
 
 export async function loginAdmin(page: Page, request: APIRequestContext) {
   return loginOperator(page, request, {
-    route: '/admin/login',
+    route: `/v/${fixtureConfig.venueSlug}/admin/login`,
     phone: fixtureConfig.adminPhone,
     sendFormSelector: '#admin-send-form',
     phoneSelector: '#admin-phone',
     verifyFormSelector: '#admin-verify-form',
     codeSelector: '#admin-code',
-    postLoginPath: '/admin/dashboard',
+    postLoginPath: `/v/${fixtureConfig.venueSlug}/admin/dashboard`,
   });
 }
 

@@ -1,9 +1,7 @@
 import {
-  ACTIVE_VENUE_KEY,
   ADMIN_PENDING_PHONE_KEY,
   API_BASE,
   createDefaultPartyPollState,
-  DEFAULT_VENUE_SLUG,
   EMPTY_VENUE_STATS,
   STAFF_AUTH_KEY,
   STAFF_PENDING_PHONE_KEY,
@@ -58,77 +56,88 @@ import {
   updateCart,
   updateTableCart,
 } from './modules/storage.js';
+import {
+  buildAdminDashboardPath,
+  buildAdminLoginPath,
+  buildGuestEntryPath,
+  buildGuestPreorderPath,
+  buildGuestSessionJoinPath,
+  buildStaffDashboardPath,
+  buildStaffLoginPath,
+  buildVenuePath,
+  clearActiveVenueSlug,
+  getGuestJourneyStepLabels,
+  getRouteVenueSlug,
+  getStoredActiveVenueSlug,
+  getVenueStaffSurfaceFlags,
+  isQueueOnlyGuestExperience,
+  getVenueSlugFromStaffAuth,
+  isVenueFeatureEnabled,
+  resolveLegacyVenueSlug,
+  resolveThemePreset,
+  resolveVenueDisplayName,
+  resolveVenueThemeKey,
+  setActiveVenueSlug,
+  shouldLoadVenueBills,
+  shouldShowVenueDepositPolicy,
+} from './modules/venue.js';
 
+function applyThemePreset(themePreset) {
+  const fontLinkId = 'flock-theme-fonts';
+  const stylesheetId = 'flock-theme-stylesheet';
+  const existingFontLink = document.getElementById(fontLinkId);
+  const existingStylesheet = document.getElementById(stylesheetId);
 
-// ── Venue theme map ───────────────────────────────────────────────────────────
-// Add an entry here for each venue that needs a custom theme.
-// The slug is matched against the URL path (/v/:slug or /v/:slug/...).
-const VENUE_THEMES = {
-  'the-craftery-koramangala': {
-    stylesheet: '/craftery-styles.css',
-    fonts: 'https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400;1,600&family=DM+Serif+Text:ital@0;1&family=JetBrains+Mono:wght@400;600&display=swap',
-    themeColor: '#1E1A16',
-    title: 'The Craftery by Subko',
-  },
-};
-
-function applyVenueTheme() {
-  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-  // Match /v/:slug or /staff/... or /admin/... (staff/admin use the stored venueSlug)
-  let slug = null;
-  if (segments[0] === 'v' && segments[1]) {
-    slug = segments[1];
-  }
-  // Also check stored staff auth for staff/admin routes
-  if (!slug) {
-    try {
-      const auth = JSON.parse(localStorage.getItem('flock_staff_auth') || 'null');
-      if (auth?.venueSlug) slug = auth.venueSlug;
-    } catch (_) {}
-  }
-
-  const theme = slug ? VENUE_THEMES[slug] : null;
-  if (!theme) return;
-
-  // Fonts
-  if (theme.fonts && !document.querySelector(`link[href="${theme.fonts}"]`)) {
-    const fontLink = document.createElement('link');
-    fontLink.rel = 'stylesheet';
-    fontLink.href = theme.fonts;
-    document.head.prepend(fontLink);
-  }
-
-  // Theme stylesheet — injected after the default styles.css so it wins
-  if (theme.stylesheet && !document.querySelector(`link[href="${theme.stylesheet}"]`)) {
-    const styleLink = document.createElement('link');
-    styleLink.rel = 'stylesheet';
-    styleLink.href = theme.stylesheet;
-    document.head.appendChild(styleLink);
+  if (themePreset.fonts) {
+    if (existingFontLink) {
+      existingFontLink.href = themePreset.fonts;
+    } else {
+      const fontLink = document.createElement('link');
+      fontLink.id = fontLinkId;
+      fontLink.rel = 'stylesheet';
+      fontLink.href = themePreset.fonts;
+      document.head.prepend(fontLink);
+    }
+  } else {
+    existingFontLink?.remove();
   }
 
-  // Theme color meta
+  if (themePreset.stylesheet) {
+    if (existingStylesheet) {
+      existingStylesheet.href = themePreset.stylesheet;
+    } else {
+      const styleLink = document.createElement('link');
+      styleLink.id = stylesheetId;
+      styleLink.rel = 'stylesheet';
+      styleLink.href = themePreset.stylesheet;
+      document.head.appendChild(styleLink);
+    }
+  } else {
+    existingStylesheet?.remove();
+  }
+
   const themeMeta = document.querySelector('meta[name="theme-color"]');
-  if (themeMeta && theme.themeColor) themeMeta.content = theme.themeColor;
-
-  // Default title
-  if (theme.title && document.title === 'Flock') document.title = theme.title;
-}
-
-applyVenueTheme();
-
-// Resolve the active venue slug — from URL first, then stored staff auth, then default
-function getActiveVenueSlug() {
-  const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
-  if (segments[0] === 'v' && segments[1]) {
-    sessionStorage.setItem(ACTIVE_VENUE_KEY, segments[1]);
-    return segments[1];
+  if (themeMeta) {
+    themeMeta.content = themePreset.themeColor;
   }
-  try {
-    const auth = JSON.parse(localStorage.getItem(STAFF_AUTH_KEY) || 'null');
-    if (auth?.venueSlug) return auth.venueSlug;
-  } catch (_) {}
-  return sessionStorage.getItem(ACTIVE_VENUE_KEY) || DEFAULT_VENUE_SLUG;
 }
+
+function applyDefaultTheme() {
+  applyThemePreset(resolveThemePreset());
+}
+
+function applyVenueThemeForVenue(venue) {
+  applyThemePreset(resolveThemePreset(resolveVenueThemeKey(venue)));
+  if (venue?.slug) {
+    setActiveVenueSlug(venue.slug);
+  }
+}
+
+function resolveActiveVenueSlug() {
+  return getRouteVenueSlug() || getVenueSlugFromStaffAuth() || getStoredActiveVenueSlug() || null;
+}
+
+applyDefaultTheme();
 
 const appRoot = document.getElementById('app');
 const uiState = {
@@ -269,16 +278,55 @@ function scheduleRefresh(fn, delayMs) {
   }, delayMs);
 }
 
-function navigate(path) {
+function navigate(path, options = {}) {
   clearTimer();
   if (window.location.pathname === path) {
     renderRoute().catch(handleFatalError);
     return;
   }
   uiState.nextRenderResetScroll = true;
-  history.pushState({}, '', path);
-  applyVenueTheme();
+  if (options.replace) {
+    history.replaceState({}, '', path);
+  } else {
+    history.pushState({}, '', path);
+  }
   renderRoute().catch(handleFatalError);
+}
+
+function navigateToVenueSelector(options = {}) {
+  navigate('/', options);
+}
+
+function navigateToStaffLogin(slug, options = {}) {
+  if (!slug) {
+    navigateToVenueSelector(options);
+    return;
+  }
+  navigate(buildStaffLoginPath(slug), options);
+}
+
+function navigateToStaffDashboard(slug, options = {}) {
+  if (!slug) {
+    navigateToVenueSelector(options);
+    return;
+  }
+  navigate(buildStaffDashboardPath(slug), options);
+}
+
+function navigateToAdminLogin(slug, options = {}) {
+  if (!slug) {
+    navigateToVenueSelector(options);
+    return;
+  }
+  navigate(buildAdminLoginPath(slug), options);
+}
+
+function navigateToAdminDashboard(slug, options = {}) {
+  if (!slug) {
+    navigateToVenueSelector(options);
+    return;
+  }
+  navigate(buildAdminDashboardPath(slug), options);
 }
 
 function getCurrentGuestRouteContext() {
@@ -363,9 +411,13 @@ async function renderRoute() {
   closeShareSheet({ keepState: false });
   resetActiveGuestShellState();
   const segments = window.location.pathname.replace(/^\/+|\/+$/g, '').split('/').filter(Boolean);
+  const routeVenueSlug = getRouteVenueSlug(window.location.pathname);
+  if (routeVenueSlug) {
+    setActiveVenueSlug(routeVenueSlug);
+  }
 
   if (segments.length === 0) {
-    renderHome();
+    await renderHome();
     return;
   }
 
@@ -389,26 +441,47 @@ async function renderRoute() {
     return;
   }
 
+  if (segments[0] === 'v' && segments[1] && segments[2] === 'staff' && segments[3] === 'login' && segments.length === 4) {
+    await renderStaffLogin(segments[1]);
+    return;
+  }
+
+  if (segments[0] === 'v' && segments[1] && segments[2] === 'staff' && segments[3] === 'dashboard' && segments.length === 4) {
+    await renderStaffDashboard(segments[1]);
+    return;
+  }
+
+  if (segments[0] === 'v' && segments[1] && segments[2] === 'admin' && segments[3] === 'login' && segments.length === 4) {
+    await renderAdminLogin(segments[1]);
+    return;
+  }
+
+  if (segments[0] === 'v' && segments[1] && segments[2] === 'admin' && segments[3] === 'dashboard' && segments.length === 4) {
+    await renderAdminDashboard(segments[1]);
+    return;
+  }
+
   if (segments[0] === 'staff' && segments[1] === 'login') {
-    await renderStaffLogin();
+    redirectLegacyOperatorRoute('staff', 'login');
     return;
   }
 
   if (segments[0] === 'staff' && segments[1] === 'dashboard') {
-    await renderStaffDashboard();
+    redirectLegacyOperatorRoute('staff', 'dashboard');
     return;
   }
 
   if (segments[0] === 'admin' && segments[1] === 'login') {
-    await renderAdminLogin();
+    redirectLegacyOperatorRoute('admin', 'login');
     return;
   }
 
   if (segments[0] === 'admin' && segments[1] === 'dashboard') {
-    await renderAdminDashboard();
+    redirectLegacyOperatorRoute('admin', 'dashboard');
     return;
   }
 
+  applyDefaultTheme();
   renderPage(renderShell({
     pill: 'Flock',
     body: `
@@ -421,32 +494,66 @@ async function renderRoute() {
   }), 'Flock | Missing');
 }
 
-function renderHome() {
+function redirectLegacyOperatorRoute(kind, view) {
+  const slug = resolveLegacyVenueSlug();
+  if (!slug) {
+    navigate('/', { replace: true });
+    return;
+  }
+
+  if (kind === 'staff') {
+    navigate(view === 'dashboard' ? buildStaffDashboardPath(slug) : buildStaffLoginPath(slug), { replace: true });
+    return;
+  }
+
+  navigate(view === 'dashboard' ? buildAdminDashboardPath(slug) : buildAdminLoginPath(slug), { replace: true });
+}
+
+function renderVenueSelectorCard(venue) {
+  const actions = [];
+
+  if (isVenueFeatureEnabled(venue, 'guestQueue')) {
+    actions.push(`<a class="btn btn-primary btn-sm" data-nav href="${buildVenuePath(venue.slug)}">Guest flow</a>`);
+  }
+
+  if (isVenueFeatureEnabled(venue, 'staffConsole')) {
+    actions.push(`<a class="btn btn-secondary btn-sm" data-nav href="${buildStaffLoginPath(venue.slug)}">Staff</a>`);
+  }
+
+  if (isVenueFeatureEnabled(venue, 'adminConsole')) {
+    actions.push(`<a class="btn btn-secondary btn-sm" data-nav href="${buildAdminLoginPath(venue.slug)}">Admin</a>`);
+  }
+
+  return `
+    <div class="role-card" style="cursor:default">
+      <span class="role-card-icon">${escapeHtml(venue.city || 'Venue')}</span>
+      <div class="role-card-title">${escapeHtml(venue.brandConfig.displayName || venue.name)}</div>
+      <div class="role-card-desc">${escapeHtml(venue.brandConfig.tagline || 'Venue experience')}</div>
+      <div class="muted" style="margin-bottom:14px;">${escapeHtml(venue.name)}${venue.isQueueOpen ? ' · Queue open' : ' · Queue closed'}</div>
+      <div class="row" style="margin-top:auto; flex-wrap:wrap;">${actions.length ? actions.join('') : '<span class="muted">No public modules enabled.</span>'}</div>
+    </div>
+  `;
+}
+
+async function renderHome() {
+  applyDefaultTheme();
+  const venues = await apiRequest('/venues/public');
+
   renderPage(`
     <main id="landing">
       <div class="brand">
         <div class="brand-name">fl<em>o</em>ck</div>
-        <div class="brand-tag">Queue · Pre-order · Pay</div>
+        <div class="brand-tag">Select a venue and open only the modules that venue actually uses.</div>
       </div>
       <div class="role-cards">
-        <a class="role-card" data-nav href="/v/${DEFAULT_VENUE_SLUG}">
-          <span class="role-card-icon">Queue</span>
-          <div class="role-card-title">Guest Flow</div>
-          <div class="role-card-desc">Join the queue, pre-order, track the table-ready state, and complete the final payment.</div>
-          <div class="role-card-cta">+</div>
-        </a>
-        <a class="role-card" data-nav href="/staff/login">
-          <span class="role-card-icon">Floor</span>
-          <div class="role-card-title">Staff Console</div>
-          <div class="role-card-desc">Run live queue ops, free tables, verify OTPs, and manage the pilot venue in real time.</div>
-          <div class="role-card-cta">+</div>
-        </a>
-        <a class="role-card" data-nav href="/admin/login">
-          <span class="role-card-icon">Admin</span>
-          <div class="role-card-title">Admin Console</div>
-          <div class="role-card-desc">Run menu operations, enable or disable items, and manage category growth in the same visual system.</div>
-          <div class="role-card-cta">+</div>
-        </a>
+        ${venues.length ? venues.map((venue) => renderVenueSelectorCard(venue)).join('') : `
+          <div class="role-card" style="cursor:default">
+            <span class="role-card-icon">Setup</span>
+            <div class="role-card-title">No venues available</div>
+            <div class="role-card-desc">Create or seed a venue first, then the selector will expose the enabled modules here.</div>
+            <div class="role-card-cta">•</div>
+          </div>
+        `}
       </div>
     </main>
   `, 'Flock');
@@ -454,55 +561,75 @@ function renderHome() {
 
 async function renderVenueLanding(slug) {
   const venue = await apiRequest(`/venues/${slug}`);
+  applyVenueThemeForVenue(venue);
   const activeEntryId = getGuestEntryId(slug);
   const flash = consumeFlash();
+  const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
+  const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
+  const canContinueEntry = guestQueueEnabled && venue.config?.uiConfig?.showContinueEntry && activeEntryId;
+  const venueName = resolveVenueDisplayName(venue);
+  const venueSummary = shouldShowVenueDepositPolicy(venue)
+    ? `${venue.address}, ${venue.city}. Deposit default: ${venue.depositPercent}%.`
+    : `${venue.address}, ${venue.city}. Waitlist-first venue · ${venue.tableReadyWindowMin} min response window.`;
+  const guestJoinTitle = queueOnlyGuestExperience ? 'Join the waiting list' : 'Join the queue';
+  const guestJoinAction = queueOnlyGuestExperience ? 'Join waitlist' : 'Join queue';
 
   renderPage(`
     <main id="landing">
       <div class="brand">
         <div class="brand-name">fl<em>o</em>ck</div>
-        <div class="brand-tag">Queue · Pre-order · Pay</div>
+        <div class="brand-tag">${escapeHtml(venue.config?.brandConfig?.tagline || 'Queue · Pre-order · Pay')}</div>
       </div>
       <div class="role-cards">
         <div class="role-card" style="cursor:default">
           <span class="role-card-icon">Venue</span>
-          <div class="role-card-title">${escapeHtml(venue.name)}</div>
-          <div class="role-card-desc">${escapeHtml(venue.address)}, ${escapeHtml(venue.city)}. Deposit default: ${venue.depositPercent}%.</div>
+          <div class="role-card-title">${escapeHtml(venueName)}</div>
+          <div class="role-card-desc">${escapeHtml(venueSummary)}</div>
           <div class="role-card-cta">${venue.isQueueOpen ? 'Open' : 'Closed'}</div>
         </div>
         <div class="role-card" style="cursor:default; max-width:360px; min-width:300px;">
-          <div class="role-card-title">Join the queue</div>
-          <div class="role-card-desc" style="margin-bottom:16px;">No app download. Use your phone number as your queue identity and receive a seating OTP instantly.</div>
+          <div class="role-card-title">${guestQueueEnabled ? guestJoinTitle : 'Guest queue unavailable'}</div>
+          <div class="role-card-desc" style="margin-bottom:16px;">${escapeHtml(venue.config?.uiConfig?.supportCopy || 'No app download. Use your phone number as your queue identity and receive a seating OTP instantly.')}</div>
           ${flash ? renderInlineFlash(flash) : ''}
-          ${activeEntryId ? `
+          ${canContinueEntry ? `
             <div class="alert alert-blue">
               <div>Active queue entry found for this device.</div>
             </div>
-            <a class="btn btn-secondary btn-full" data-nav href="/v/${slug}/e/${activeEntryId}" style="margin-bottom:14px;">Continue existing entry</a>
+            <a class="btn btn-secondary btn-full" data-nav href="${buildGuestEntryPath(slug, activeEntryId)}" style="margin-bottom:14px;">Continue existing entry</a>
           ` : ''}
-          <form id="join-form">
-            <div class="form-group">
-              <label class="form-label" for="guest-name">Guest name</label>
-              <input class="form-input" id="guest-name" required maxlength="80" placeholder="Asha">
-            </div>
-            <div class="form-row">
+          ${guestQueueEnabled ? `
+            <form id="join-form">
               <div class="form-group">
-                <label class="form-label" for="guest-phone">Phone</label>
-                <input class="form-input" id="guest-phone" required placeholder="9876543210" inputmode="numeric">
+                <label class="form-label" for="guest-name">Guest name</label>
+                <input class="form-input" id="guest-name" required maxlength="80" placeholder="Asha">
               </div>
-              <div class="form-group">
-                <label class="form-label" for="party-size">Party size</label>
-                <input class="form-input" id="party-size" required type="number" min="1" max="20" value="2">
+              <div class="form-row">
+                <div class="form-group">
+                  <label class="form-label" for="guest-phone">Phone</label>
+                  <input class="form-input" id="guest-phone" required placeholder="9876543210" inputmode="numeric">
+                </div>
+                <div class="form-group">
+                  <label class="form-label" for="party-size">Party size</label>
+                  <input class="form-input" id="party-size" required type="number" min="1" max="20" value="2">
+                </div>
               </div>
+              <button class="btn btn-primary btn-full" type="submit" ${venue.isQueueOpen ? '' : 'disabled'}>
+                ${venue.isQueueOpen ? guestJoinAction : 'Queue closed'}
+              </button>
+            </form>
+          ` : `
+            <div class="alert alert-blue">
+              <div>This venue is configured without the guest queue module. Use the venue selector to enter any enabled staff or admin tools instead.</div>
             </div>
-            <button class="btn btn-primary btn-full" type="submit" ${venue.isQueueOpen ? '' : 'disabled'}>
-              ${venue.isQueueOpen ? 'Join queue' : 'Queue closed'}
-            </button>
-          </form>
+            <div class="row" style="flex-wrap:wrap;">
+              ${isVenueFeatureEnabled(venue, 'staffConsole') ? `<a class="btn btn-secondary" data-nav href="${buildStaffLoginPath(slug)}">Open staff console</a>` : ''}
+              ${isVenueFeatureEnabled(venue, 'adminConsole') ? `<a class="btn btn-secondary" data-nav href="${buildAdminLoginPath(slug)}">Open admin console</a>` : ''}
+            </div>
+          `}
         </div>
       </div>
     </main>
-  `, `Flock | ${venue.name}`);
+  `, `Flock | ${venueName}`);
 
   document.getElementById('join-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -538,7 +665,7 @@ async function renderVenueLanding(slug) {
         otp: entry.otp,
       });
       setFlash('green', `Joined queue. OTP ${entry.otp} issued with position #${entry.position}.`);
-      navigate(`/v/${slug}/e/${entry.id}`);
+      navigate(buildGuestEntryPath(slug, entry.id));
     } catch (error) {
       setFlash('red', error.message);
       await renderVenueLanding(slug);
@@ -551,6 +678,11 @@ async function renderVenueLanding(slug) {
 async function renderGuestEntry(slug, entryId) {
   const guestSession = getGuestSession(entryId);
   const venue = await apiRequest(`/venues/${slug}`);
+  applyVenueThemeForVenue(venue);
+  const venueName = resolveVenueDisplayName(venue);
+  const partyShareEnabled = isVenueFeatureEnabled(venue, 'partyShare');
+  const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
+  const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
 
   if (!guestSession?.guestToken) {
     const flash = consumeFlash();
@@ -563,10 +695,10 @@ async function renderGuestEntry(slug, entryId) {
           <div class="card-sub">This device no longer has the active guest session token. Enter the seating OTP once to recover the queue entry securely.</div>
           <form id="recover-guest-session-form">
             <div class="form-group">
-              <label class="form-label" for="guest-session-otp">Seating OTP</label>
-              <input class="form-input" id="guest-session-otp" required maxlength="6" placeholder="123456">
-            </div>
-            <button class="btn btn-secondary btn-full" type="submit">Restore ordering</button>
+                <label class="form-label" for="guest-session-otp">Seating OTP</label>
+                <input class="form-input" id="guest-session-otp" required maxlength="6" placeholder="123456">
+              </div>
+              <button class="btn btn-secondary btn-full" type="submit">Restore session</button>
           </form>
           <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
             <div class="card-sub" style="margin-bottom:10px;">Testing or wrong device? Clear this session and start fresh.</div>
@@ -574,8 +706,8 @@ async function renderGuestEntry(slug, entryId) {
           </div>
         </div>
       `,
-      right: `<a class="btn btn-secondary btn-sm" data-nav href="/v/${slug}">Venue</a>`,
-    }), `Flock | ${venue.name}`);
+      right: `<a class="btn btn-secondary btn-sm" data-nav href="${buildVenuePath(slug)}">Venue</a>`,
+    }), `Flock | ${venueName}`);
 
     document.getElementById('recover-guest-session-form')?.addEventListener('submit', async (event) => {
       event.preventDefault();
@@ -602,7 +734,7 @@ async function renderGuestEntry(slug, entryId) {
           guestToken: session.guestToken,
           otp,
         });
-        setFlash('green', 'Guest ordering session restored.');
+        setFlash('green', 'Guest session restored.');
         await renderGuestEntry(slug, entryId);
       } catch (error) {
         setFlash('red', error.message);
@@ -616,7 +748,7 @@ async function renderGuestEntry(slug, entryId) {
       clearGuestSession(entryId);
       clearGuestEntryId(slug);
       setTableCart(entryId, {});
-      navigate(`/v/${slug}`);
+      navigate(buildVenuePath(slug));
     });
 
     return;
@@ -647,12 +779,12 @@ async function renderGuestEntry(slug, entryId) {
           <div class="card-sub">Your guest token is still kept on this device. This looks like a temporary server issue, not a lost session.</div>
           <div class="row">
             <button class="btn btn-primary" id="retry-guest-route" type="button">Retry</button>
-            <a class="btn btn-secondary" data-nav href="/v/${slug}">Venue</a>
+            <a class="btn btn-secondary" data-nav href="${buildVenuePath(slug)}">Venue</a>
           </div>
         </div>
       `,
       right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
-    }), `Flock | ${venue.name}`);
+    }), `Flock | ${venueName}`);
 
     document.getElementById('retry-guest-route')?.addEventListener('click', () => {
       renderGuestEntry(slug, entryId).catch(handleFatalError);
@@ -661,7 +793,7 @@ async function renderGuestEntry(slug, entryId) {
   }
 
   setGuestEntryId(slug, entryId);
-  if (entry.status === 'SEATED') {
+  if (entry.status === 'SEATED' && partyShareEnabled) {
     await loadPartySessionState(entry, guestSession);
   } else {
     uiState.activePartySessionId = null;
@@ -672,7 +804,7 @@ async function renderGuestEntry(slug, entryId) {
   const flash = consumeFlash();
   const tableCart = getTableCart(entryId);
   const tableCartSummary = buildCartSummary(venue.menuCategories || [], tableCart);
-  const bill = entry.status === 'SEATED' || entry.status === 'COMPLETED'
+  const bill = shouldLoadVenueBills(venue) && (entry.status === 'SEATED' || entry.status === 'COMPLETED')
     ? await apiRequest(`/orders/bill/${entryId}`, {
       auth: 'guest',
       guestToken: guestSession.guestToken,
@@ -680,29 +812,33 @@ async function renderGuestEntry(slug, entryId) {
     : null;
 
   const hasDeposit = entry.depositPaid > 0;
-  const activeStep = entry.status === 'COMPLETED'
-    ? 5
-    : entry.status === 'SEATED'
-      ? 4
-      : hasDeposit
-        ? 2
-        : 1;
+  const activeStep = queueOnlyGuestExperience
+    ? (entry.status === 'COMPLETED' ? 4 : entry.status === 'SEATED' ? 3 : 2)
+    : entry.status === 'COMPLETED'
+      ? 5
+      : entry.status === 'SEATED'
+        ? 4
+        : hasDeposit
+          ? 2
+          : 1;
+  const stepLabels = getGuestJourneyStepLabels(venue);
 
-  const body = entry.status === 'SEATED'
+  const body = entry.status === 'SEATED' && !queueOnlyGuestExperience
     ? `
-      ${renderStepBar(activeStep)}
+      ${renderStepBar(activeStep, stepLabels)}
       ${flash ? renderInlineFlash(flash) : ''}
       ${renderSeatedGuestShell({ entry, venue, bill, guestSession })}
     `
     : `
       ${entry.status === 'NOTIFIED' ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>` : ''}
-      ${renderStepBar(activeStep)}
+      ${renderStepBar(activeStep, stepLabels)}
       ${flash ? renderInlineFlash(flash) : ''}
-      ${renderGuestStateHero(entry, guestSession)}
+      ${renderGuestStateHero(entry, guestSession, venue)}
       ${renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary })}
     `;
 
   const showShareAction = ['WAITING', 'NOTIFIED', 'SEATED'].includes(entry.status)
+    && partyShareEnabled
     && Boolean(entry.partySession?.joinToken);
 
   renderPage(renderShell({
@@ -712,7 +848,7 @@ async function renderGuestEntry(slug, entryId) {
       ${showShareAction ? '<button class="btn btn-secondary btn-sm" id="guest-invite-cta" type="button">Invite others</button>' : ''}
       <a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>
     `,
-  }), `Flock | ${venue.name}`);
+  }), `Flock | ${venueName}`);
 
   if (showShareAction) {
     preloadPartyInviteQr(slug, entry.partySession.joinToken, 240);
@@ -721,22 +857,23 @@ async function renderGuestEntry(slug, entryId) {
     });
   }
 
-  if (entry.status === 'SEATED') {
+  if (entry.status === 'SEATED' && !queueOnlyGuestExperience) {
     if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
-      uiState.guestTray = 'menu';
+      uiState.guestTray = venue.config?.uiConfig?.defaultGuestTray || 'menu';
     }
     if (!uiState.guestTrayUserChosen) {
-      uiState.guestTray = 'menu';
+      uiState.guestTray = venue.config?.uiConfig?.defaultGuestTray || 'menu';
     }
     mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession });
     return;
   }
 
   document.getElementById('preorder-cta')?.addEventListener('click', () => {
-    navigate(`/v/${slug}/e/${entryId}/preorder`);
+    navigate(buildGuestPreorderPath(slug, entryId));
   });
 
   document.getElementById('final-pay-cta')?.addEventListener('click', async () => {
+    if (!finalPaymentEnabled) return;
     if (uiState.paymentSubmitting) return;
 
     const button = document.getElementById('final-pay-cta');
@@ -777,7 +914,7 @@ async function renderGuestEntry(slug, entryId) {
     clearGuestSession(entryId);
     clearGuestEntryId(slug);
     setTableCart(entryId, {});
-    navigate(`/v/${slug}`);
+    navigate(buildVenuePath(slug));
   });
 
   document.getElementById('recover-guest-session-form')?.addEventListener('submit', async (event) => {
@@ -824,7 +961,24 @@ async function renderGuestEntry(slug, entryId) {
 
 async function renderGuestSessionJoin(slug, joinToken) {
   const venue = await apiRequest(`/venues/${slug}`);
+  applyVenueThemeForVenue(venue);
+  const venueName = resolveVenueDisplayName(venue);
   const flash = consumeFlash();
+
+  if (!isVenueFeatureEnabled(venue, 'partyShare')) {
+    renderPage(renderShell({
+      pill: 'Join',
+      body: `
+        <div class="card join-session-card">
+          <div class="card-title">Shared table sessions unavailable</div>
+          <div class="card-sub">${escapeHtml(venueName)} is currently configured without the shared party module.</div>
+          <a class="btn btn-primary btn-full" data-nav href="${buildVenuePath(slug)}">Back to venue</a>
+        </div>
+      `,
+      right: `<a class="btn btn-secondary btn-sm" data-nav href="${buildVenuePath(slug)}">Venue</a>`,
+    }), `Flock | ${venueName}`);
+    return;
+  }
 
   renderPage(renderShell({
     pill: 'Join',
@@ -840,7 +994,7 @@ async function renderGuestSessionJoin(slug, joinToken) {
           </div>
           <div id="join-party-session-error"></div>
           <div class="row">
-            <a class="btn btn-secondary" data-nav href="/v/${slug}">Back to venue</a>
+            <a class="btn btn-secondary" data-nav href="${buildVenuePath(slug)}">Back to venue</a>
             <button class="btn btn-primary" id="join-party-session-submit" type="submit">
               ${uiState.sessionJoinSubmitting ? 'Joining...' : 'Join table'}
             </button>
@@ -848,8 +1002,8 @@ async function renderGuestSessionJoin(slug, joinToken) {
         </form>
       </div>
     `,
-    right: `<a class="btn btn-secondary btn-sm" data-nav href="/v/${slug}">Venue</a>`,
-  }), `Flock | Join ${venue.name}`);
+    right: `<a class="btn btn-secondary btn-sm" data-nav href="${buildVenuePath(slug)}">Venue</a>`,
+  }), `Flock | Join ${venueName}`);
 
   document.getElementById('join-party-session-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -894,8 +1048,8 @@ async function renderGuestSessionJoin(slug, joinToken) {
         partySessionId: payload.sessionId,
         participantId: payload.participant?.id || null,
       });
-      setFlash('green', `Joined ${venue.name}.`);
-      navigate(`/v/${slug}/e/${payload.queueEntryId}`);
+      setFlash('green', `Joined ${venueName}.`);
+      navigate(buildGuestEntryPath(slug, payload.queueEntryId));
     } catch (error) {
       const message = /invalid|expired/i.test(error.message)
         ? 'This invite is invalid or expired.'
@@ -915,7 +1069,7 @@ async function renderGuestSessionJoin(slug, joinToken) {
 }
 
 function buildPartyInviteUrl(slug, joinToken) {
-  return `${window.location.origin}/v/${slug}/session/${encodeURIComponent(joinToken)}`;
+  return `${window.location.origin}${buildGuestSessionJoinPath(slug, joinToken)}`;
 }
 
 function copyToClipboard(value) {
@@ -1120,7 +1274,7 @@ async function renderPreorder(slug, entryId) {
   const guestSession = getGuestSession(entryId);
   if (!guestSession?.guestToken) {
     setFlash('amber', 'Restore the guest session before placing a pre-order.');
-    navigate(`/v/${slug}/e/${entryId}`);
+    navigate(buildGuestEntryPath(slug, entryId));
     return;
   }
 
@@ -1131,16 +1285,23 @@ async function renderPreorder(slug, entryId) {
       guestToken: guestSession.guestToken,
     }),
   ]);
+  applyVenueThemeForVenue(venue);
+
+  if (!isVenueFeatureEnabled(venue, 'preOrder')) {
+    setFlash('amber', 'Pre-order is disabled for this venue.');
+    navigate(buildGuestEntryPath(slug, entryId));
+    return;
+  }
 
   if (!['WAITING', 'NOTIFIED'].includes(entry.status)) {
     setFlash('amber', 'Pre-order is only available while the guest is still in queue.');
-    navigate(`/v/${slug}/e/${entryId}`);
+    navigate(buildGuestEntryPath(slug, entryId));
     return;
   }
 
   if (entry.depositPaid > 0) {
     setFlash('amber', 'A deposit-backed pre-order already exists for this entry.');
-    navigate(`/v/${slug}/e/${entryId}`);
+    navigate(buildGuestEntryPath(slug, entryId));
     return;
   }
 
@@ -1269,13 +1430,35 @@ async function renderPreorder(slug, entryId) {
   }));
 }
 
-async function renderStaffLogin() {
-  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
+async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
+  if (!slug) {
+    navigate('/', { replace: true });
+    return;
+  }
+
+  const venue = await apiRequest(`/venues/${slug}`);
+  applyVenueThemeForVenue(venue);
+  const venueName = resolveVenueDisplayName(venue);
   const pendingPhone = sessionStorage.getItem(STAFF_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
   if (getStaffAuth()) {
-    navigate('/staff/dashboard');
+    navigate(buildStaffDashboardPath(getStaffAuth().venueSlug || slug), { replace: true });
+    return;
+  }
+
+  if (!isVenueFeatureEnabled(venue, 'staffConsole')) {
+    renderPage(renderShell({
+      pill: 'Staff',
+      body: `
+        <div class="card">
+          <div class="card-title">Staff console unavailable</div>
+          <div class="card-sub">${escapeHtml(venueName)} is currently configured without the staff console module.</div>
+          <a class="btn btn-primary btn-full" data-nav href="/">Return to venue selector</a>
+        </div>
+      `,
+      right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
+    }), `Flock | ${venueName}`);
     return;
   }
 
@@ -1285,7 +1468,7 @@ async function renderStaffLogin() {
       ${flash ? renderInlineFlash(flash) : ''}
       <div class="section-head">
         <div class="section-title">Staff OTP login</div>
-        <div class="section-sub">${escapeHtml(venue.name)} closed-pilot console.</div>
+        <div class="section-sub">${escapeHtml(venueName)} closed-pilot console.</div>
       </div>
       <div class="grid grid-2">
         <div class="card">
@@ -1313,7 +1496,7 @@ async function renderStaffLogin() {
       </div>
     `,
     right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
-  }), 'Flock | Staff login');
+  }), `Flock | ${venueName} staff`);
 
   document.getElementById('staff-send-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1330,14 +1513,14 @@ async function renderStaffLogin() {
       } else {
         setFlash('green', 'OTP sent. Enter the code to access the console.');
       }
-      await renderStaffLogin();
+      await renderStaffLogin(slug);
       if (result?.mockOtp) {
         const codeInput = document.getElementById('staff-code');
         if (codeInput) codeInput.value = result.mockOtp;
       }
     } catch (error) {
       setFlash('red', error.message);
-      await renderStaffLogin();
+      await renderStaffLogin(slug);
     }
   });
 
@@ -1352,21 +1535,43 @@ async function renderStaffLogin() {
       });
       localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(STAFF_PENDING_PHONE_KEY);
-      navigate('/staff/dashboard');
+      navigate(buildStaffDashboardPath(venue.slug));
     } catch (error) {
       setFlash('red', error.message);
-      await renderStaffLogin();
+      await renderStaffLogin(slug);
     }
   });
 }
 
-async function renderAdminLogin() {
-  const venue = await apiRequest(`/venues/${getActiveVenueSlug()}`);
+async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
+  if (!slug) {
+    navigate('/', { replace: true });
+    return;
+  }
+
+  const venue = await apiRequest(`/venues/${slug}`);
+  applyVenueThemeForVenue(venue);
+  const venueName = resolveVenueDisplayName(venue);
   const pendingPhone = sessionStorage.getItem(ADMIN_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
 
   if (getStaffAuth() && isManagerRole(getStaffAuth().staff?.role)) {
-    navigate('/admin/dashboard');
+    navigate(buildAdminDashboardPath(getStaffAuth().venueSlug || slug), { replace: true });
+    return;
+  }
+
+  if (!isVenueFeatureEnabled(venue, 'adminConsole')) {
+    renderPage(renderShell({
+      pill: 'Admin',
+      body: `
+        <div class="card">
+          <div class="card-title">Admin console unavailable</div>
+          <div class="card-sub">${escapeHtml(venueName)} is currently configured without the admin console module.</div>
+          <a class="btn btn-primary btn-full" data-nav href="/">Return to venue selector</a>
+        </div>
+      `,
+      right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
+    }), `Flock | ${venueName}`);
     return;
   }
 
@@ -1376,7 +1581,7 @@ async function renderAdminLogin() {
       ${flash ? renderInlineFlash(flash) : ''}
       <div class="section-head">
         <div class="section-title">Admin OTP login</div>
-        <div class="section-sub">${escapeHtml(venue.name)} menu and category operations.</div>
+        <div class="section-sub">${escapeHtml(venueName)} menu and category operations.</div>
       </div>
       <div class="grid grid-2">
         <div class="card">
@@ -1404,7 +1609,7 @@ async function renderAdminLogin() {
       </div>
     `,
     right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
-  }), 'Flock | Admin login');
+  }), `Flock | ${venueName} admin`);
 
   document.getElementById('admin-send-form')?.addEventListener('submit', async (event) => {
     event.preventDefault();
@@ -1420,14 +1625,14 @@ async function renderAdminLogin() {
       } else {
         setFlash('green', 'OTP sent. Admin access still requires a manager or owner role.');
       }
-      await renderAdminLogin();
+      await renderAdminLogin(slug);
       if (result?.mockOtp) {
         const codeInput = document.getElementById('admin-code');
         if (codeInput) codeInput.value = result.mockOtp;
       }
     } catch (error) {
       setFlash('red', error.message);
-      await renderAdminLogin();
+      await renderAdminLogin(slug);
     }
   });
 
@@ -1445,24 +1650,30 @@ async function renderAdminLogin() {
       if (!isManagerRole(auth.staff?.role)) {
         sessionStorage.removeItem(ADMIN_PENDING_PHONE_KEY);
         setFlash('red', 'This staff role cannot open the admin console.');
-        await renderAdminLogin();
+        await renderAdminLogin(slug);
         return;
       }
 
       localStorage.setItem(STAFF_AUTH_KEY, JSON.stringify({ ...auth, venueSlug: venue.slug, venueId: venue.id }));
       sessionStorage.removeItem(ADMIN_PENDING_PHONE_KEY);
-      navigate('/admin/dashboard');
+      navigate(buildAdminDashboardPath(venue.slug));
     } catch (error) {
       setFlash('red', error.message);
-      await renderAdminLogin();
+      await renderAdminLogin(slug);
     }
   });
 }
 
-async function renderStaffDashboard() {
+async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   const auth = getStaffAuth();
+  const activeSlug = auth?.venueSlug || routeSlug || resolveActiveVenueSlug();
   if (!auth) {
-    navigate('/staff/login');
+    navigateToStaffLogin(activeSlug, { replace: true });
+    return;
+  }
+
+  if (routeSlug && auth.venueSlug && routeSlug !== auth.venueSlug) {
+    navigateToStaffDashboard(auth.venueSlug, { replace: true });
     return;
   }
   let venue = {
@@ -1470,22 +1681,70 @@ async function renderStaffDashboard() {
     isQueueOpen: true,
     depositPercent: 75,
     tableReadyWindowMin: 10,
+    config: {
+      featureConfig: {},
+    },
   };
   let queue = [];
-  const currentTab = uiState.staffTab;
-  const fetchPlan = buildStaffDashboardFetchPlan({
-    currentTab,
-    tablesFetchedAt: uiState.staffTablesFetchedAt,
-    recentTableEventsFetchedAt: uiState.staffRecentTableEventsFetchedAt,
-  });
+  let currentTab = uiState.staffTab;
   let tables = uiState.staffTables || [];
   let stats = uiState.staffStats || EMPTY_VENUE_STATS;
   let recentTableEvents = uiState.staffRecentTableEvents || [];
   const dependencyWarnings = [];
 
-  const [venueResult, queueResult, tablesResult, eventsResult] = await Promise.allSettled([
-    apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
-    apiRequest('/queue/live', { auth: true }),
+  try {
+    venue = await apiRequest(`/venues/${activeSlug}`);
+    applyVenueThemeForVenue(venue);
+  } catch (error) {
+    if (isAuthErrorMessage(error.message)) {
+      clearStaffAuth();
+      navigateToStaffLogin(activeSlug, { replace: true });
+      return;
+    }
+    dependencyWarnings.push('Venue details');
+  }
+
+  const queueModuleEnabled = Boolean(venue.config?.featureConfig?.guestQueue);
+  const historyTabEnabled = Boolean(venue.config?.featureConfig?.historyTab);
+  const validStaffTabs = [
+    ...(queueModuleEnabled ? ['queue', 'seated', ...(historyTabEnabled ? ['history'] : []), 'seat'] : []),
+    'tables',
+    'manager',
+  ];
+  if (!validStaffTabs.includes(currentTab)) {
+    currentTab = validStaffTabs[0] || 'manager';
+    uiState.staffTab = currentTab;
+  }
+
+  if (!isVenueFeatureEnabled(venue, 'staffConsole')) {
+    renderPage(renderShell({
+      pill: 'Staff',
+      body: `
+        <div class="card">
+          <div class="card-title">Staff console unavailable</div>
+          <div class="card-sub">${escapeHtml(resolveVenueDisplayName(venue))} is configured without the staff console module.</div>
+          <a class="btn btn-primary btn-full" data-nav href="/">Return to venue selector</a>
+        </div>
+      `,
+      right: `<button class="btn btn-secondary btn-sm" id="staff-logout">Logout</button>`,
+    }), `Flock | ${resolveVenueDisplayName(venue)}`);
+
+    document.getElementById('staff-logout')?.addEventListener('click', () => {
+      clearStaffAuth();
+      clearActiveVenueSlug();
+      navigateToVenueSelector();
+    });
+    return;
+  }
+
+  const fetchPlan = buildStaffDashboardFetchPlan({
+    currentTab,
+    tablesFetchedAt: uiState.staffTablesFetchedAt,
+    recentTableEventsFetchedAt: uiState.staffRecentTableEventsFetchedAt,
+  });
+
+  const [queueResult, tablesResult, eventsResult] = await Promise.allSettled([
+    queueModuleEnabled ? apiRequest('/queue/live', { auth: true }) : Promise.resolve([]),
     fetchPlan.shouldFetchTables
       ? apiRequest('/tables', { auth: true })
       : Promise.resolve(tables),
@@ -1494,21 +1753,11 @@ async function renderStaffDashboard() {
       : Promise.resolve(recentTableEvents),
   ]);
 
-  if (venueResult.status === 'fulfilled') {
-    venue = venueResult.value;
-  } else if (isAuthErrorMessage(venueResult.reason?.message)) {
-    clearStaffAuth();
-    navigate('/staff/login');
-    return;
-  } else {
-    dependencyWarnings.push('Venue details');
-  }
-
   if (queueResult.status === 'fulfilled') {
     queue = queueResult.value;
   } else if (isAuthErrorMessage(queueResult.reason?.message)) {
     clearStaffAuth();
-    navigate('/staff/login');
+    navigateToStaffLogin(activeSlug, { replace: true });
     return;
   } else {
     dependencyWarnings.push('Live queue');
@@ -1522,7 +1771,7 @@ async function renderStaffDashboard() {
     }
   } else if (isAuthErrorMessage(tablesResult.reason?.message)) {
     clearStaffAuth();
-    navigate('/staff/login');
+    navigateToStaffLogin(activeSlug, { replace: true });
     return;
   } else if (fetchPlan.needsTables) {
     dependencyWarnings.push('Tables');
@@ -1536,7 +1785,7 @@ async function renderStaffDashboard() {
     }
   } else if (isAuthErrorMessage(eventsResult.reason?.message)) {
     clearStaffAuth();
-    navigate('/staff/login');
+    navigateToStaffLogin(activeSlug, { replace: true });
     return;
   } else if (fetchPlan.needsRecentTableEvents) {
     dependencyWarnings.push('Table events');
@@ -1550,7 +1799,7 @@ async function renderStaffDashboard() {
     } catch (error) {
       if (isAuthErrorMessage(error.message)) {
         clearStaffAuth();
-        navigate('/staff/login');
+        navigateToStaffLogin(activeSlug, { replace: true });
         return;
       }
       if (isTransientServiceErrorMessage(error.message)) {
@@ -1563,8 +1812,10 @@ async function renderStaffDashboard() {
   const flash = consumeFlash();
   const waiting = queue.filter((entry) => entry.status === 'WAITING' || entry.status === 'NOTIFIED');
   const seated = queue.filter((entry) => entry.status === 'SEATED');
+  const shouldShowBillingSummary = shouldLoadVenueBills(venue);
   let seatedBills = uiState.staffSeatedBills;
-  const shouldRefreshSeatedBills = currentTab === 'seated'
+  const shouldRefreshSeatedBills = shouldShowBillingSummary
+    && currentTab === 'seated'
     && (
       !uiState.staffLastUpdatedAt
       || (Date.now() - uiState.staffLastUpdatedAt) >= 10000
@@ -1577,13 +1828,13 @@ async function renderStaffDashboard() {
     uiState.staffLastUpdatedAt = Date.now();
   }
 
-  if (currentTab === 'history' && (Date.now() - uiState.staffHistoryLoadedAt) >= 15000) {
+  if (queueModuleEnabled && historyTabEnabled && currentTab === 'history' && (Date.now() - uiState.staffHistoryLoadedAt) >= 15000) {
     try {
       const history = await apiRequest('/queue/history/recent', { auth: true });
       uiState.staffHistory = history;
       uiState.staffHistoryLoadedAt = Date.now();
     } catch (error) {
-      if (isAuthErrorMessage(error.message)) { clearStaffAuth(); navigate('/staff/login'); return; }
+      if (isAuthErrorMessage(error.message)) { clearStaffAuth(); navigateToStaffLogin(activeSlug, { replace: true }); return; }
       dependencyWarnings.push('History');
     }
   }
@@ -1607,23 +1858,23 @@ async function renderStaffDashboard() {
           <div class="stat-value">${stats.today.avgWaitMin}m</div>
         </div>
         <div class="stat-tile">
-          <div class="stat-label">Captured revenue</div>
-          <div class="stat-value">${formatMoney(stats.today.totalRevenuePaise)}</div>
+          <div class="stat-label">${shouldShowBillingSummary ? 'Captured revenue' : 'Ready window'}</div>
+          <div class="stat-value">${shouldShowBillingSummary ? formatMoney(stats.today.totalRevenuePaise) : `${venue.tableReadyWindowMin}m`}</div>
         </div>
       </div>
       <div class="tabs">
-        ${renderTabButton('queue', 'Queue', currentTab)}
-        ${renderTabButton('seated', 'Seated', currentTab)}
-        ${renderTabButton('history', 'History', currentTab)}
+        ${queueModuleEnabled ? renderTabButton('queue', 'Queue', currentTab) : ''}
+        ${queueModuleEnabled ? renderTabButton('seated', 'Seated', currentTab) : ''}
+        ${queueModuleEnabled && historyTabEnabled ? renderTabButton('history', 'History', currentTab) : ''}
         ${renderTabButton('tables', 'Tables', currentTab)}
-        ${renderTabButton('seat', 'Seat OTP', currentTab)}
+        ${queueModuleEnabled ? renderTabButton('seat', 'Seat OTP', currentTab) : ''}
         ${renderTabButton('manager', 'Manager', currentTab)}
       </div>
-      ${currentTab === 'queue' ? renderQueueTab(waiting, tables) : ''}
-      ${currentTab === 'seated' ? renderSeatedTab(seated, seatedBills) : ''}
-      ${currentTab === 'history' ? renderHistoryTab() : ''}
+      ${currentTab === 'queue' && queueModuleEnabled ? renderQueueTab(waiting, tables, venue) : ''}
+      ${currentTab === 'seated' && queueModuleEnabled ? renderSeatedTab(seated, seatedBills, venue) : ''}
+      ${currentTab === 'history' && queueModuleEnabled && historyTabEnabled ? renderHistoryTab(venue) : ''}
       ${currentTab === 'tables' ? renderTablesTab(tables, recentTableEvents) : ''}
-      ${currentTab === 'seat' ? renderSeatTab(tables) : ''}
+      ${currentTab === 'seat' && queueModuleEnabled ? renderSeatTab(tables, venue) : ''}
       ${currentTab === 'manager' ? renderManagerTab({ auth, venue, queue }) : ''}
     `,
     right: `
@@ -1635,7 +1886,7 @@ async function renderStaffDashboard() {
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       uiState.staffTab = button.getAttribute('data-tab');
-      renderStaffDashboard().catch(handleFatalError);
+      renderStaffDashboard(activeSlug).catch(handleFatalError);
     });
   });
 
@@ -1643,8 +1894,8 @@ async function renderStaffDashboard() {
 
   document.getElementById('staff-logout')?.addEventListener('click', () => {
     clearStaffAuth();
-    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
-    navigate('/staff/login');
+    clearActiveVenueSlug();
+    navigateToStaffLogin(activeSlug, { replace: true });
   });
 
   document.querySelectorAll('[data-prefill-seat]').forEach((button) => {
@@ -1742,7 +1993,9 @@ async function renderStaffDashboard() {
         body: { otp, tableId },
       });
       resetStaffSeatState();
-      uiState.staffSeat.success = `Guest seated. Pre-order sync: ${result.preOrderSync.status}.`;
+      uiState.staffSeat.success = isVenueFeatureEnabled(venue, 'preOrder')
+        ? `Guest seated. Pre-order sync: ${result.preOrderSync.status}.`
+        : 'Guest seated.';
       uiState.staffTab = 'seat';
       await renderStaffDashboard();
     } catch (error) {
@@ -1811,10 +2064,11 @@ async function renderStaffDashboard() {
   document.getElementById('manager-config-form')?.addEventListener('submit', guardedAction('config-form', async (event) => {
     event.preventDefault();
     try {
+      const depositInput = document.getElementById('manager-deposit');
       await apiRequest('/venues/config', {
         method: 'PATCH', auth: true,
         body: {
-          depositPercent: Number(document.getElementById('manager-deposit').value),
+          ...(depositInput ? { depositPercent: Number(depositInput.value) } : {}),
           tableReadyWindowMin: Number(document.getElementById('manager-window').value),
         },
       });
@@ -1886,10 +2140,16 @@ async function renderStaffDashboard() {
   }
 }
 
-async function renderAdminDashboard() {
+async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
   const auth = getStaffAuth();
+  const activeSlug = auth?.venueSlug || routeSlug || resolveActiveVenueSlug();
   if (!auth) {
-    navigate('/admin/login');
+    navigateToAdminLogin(activeSlug, { replace: true });
+    return;
+  }
+
+  if (routeSlug && auth.venueSlug && routeSlug !== auth.venueSlug) {
+    navigateToAdminDashboard(auth.venueSlug, { replace: true });
     return;
   }
 
@@ -1904,8 +2164,8 @@ async function renderAdminDashboard() {
         <div class="card">
           <div class="card-sub">Use a manager or owner account to continue, or return to the staff dashboard.</div>
           <div class="row">
-            <a class="btn btn-secondary" data-nav href="/staff/dashboard">Return to staff</a>
-            <a class="btn btn-primary" data-nav href="/admin/login">Use manager login</a>
+            <a class="btn btn-secondary" data-nav href="${buildStaffDashboardPath(activeSlug)}">Return to staff</a>
+            <a class="btn btn-primary" data-nav href="${buildAdminLoginPath(activeSlug)}">Use manager login</a>
           </div>
         </div>
       `,
@@ -1914,7 +2174,8 @@ async function renderAdminDashboard() {
 
     document.getElementById('admin-logout')?.addEventListener('click', () => {
       clearStaffAuth();
-      navigate('/admin/login');
+      clearActiveVenueSlug();
+      navigateToAdminLogin(activeSlug, { replace: true });
     });
     return;
   }
@@ -1922,21 +2183,45 @@ async function renderAdminDashboard() {
   const dependencyWarnings = [];
   let venue = {
     name: 'Venue unavailable',
+    config: {
+      featureConfig: {},
+    },
   };
   let menu = {
     categories: uiState.adminMenu.categories || [],
   };
 
   const [venueResult, menuResult] = await Promise.allSettled([
-    apiRequest(`/venues/${auth.venueSlug || DEFAULT_VENUE_SLUG}`),
+    apiRequest(`/venues/${activeSlug}`),
     apiRequest('/menu/admin/current', { auth: true }),
   ]);
 
   if (venueResult.status === 'fulfilled') {
     venue = venueResult.value;
+    applyVenueThemeForVenue(venue);
+    if (!isVenueFeatureEnabled(venue, 'adminConsole')) {
+      renderPage(renderShell({
+        pill: 'Admin',
+        body: `
+          <div class="card">
+            <div class="card-title">Admin console unavailable</div>
+            <div class="card-sub">${escapeHtml(resolveVenueDisplayName(venue))} is configured without the admin console module.</div>
+            <a class="btn btn-primary btn-full" data-nav href="/">Return to venue selector</a>
+          </div>
+        `,
+        right: `<button class="btn btn-secondary btn-sm" id="admin-logout">Logout</button>`,
+      }), `Flock | ${resolveVenueDisplayName(venue)}`);
+
+      document.getElementById('admin-logout')?.addEventListener('click', () => {
+        clearStaffAuth();
+        clearActiveVenueSlug();
+        navigateToVenueSelector();
+      });
+      return;
+    }
   } else if (isAuthErrorMessage(venueResult.reason?.message)) {
     clearStaffAuth();
-    navigate('/admin/login');
+    navigateToAdminLogin(activeSlug, { replace: true });
     return;
   } else {
     dependencyWarnings.push('Venue details');
@@ -1946,7 +2231,7 @@ async function renderAdminDashboard() {
     menu = menuResult.value;
   } else if (isAuthErrorMessage(menuResult.reason?.message)) {
     clearStaffAuth();
-    navigate('/admin/login');
+    navigateToAdminLogin(activeSlug, { replace: true });
     return;
   } else {
     dependencyWarnings.push('Admin menu');
@@ -1962,7 +2247,7 @@ async function renderAdminDashboard() {
       ${renderDependencyWarnings(dependencyWarnings)}
       <div class="section-head">
         <div class="section-title">Admin command</div>
-        <div class="section-sub">${escapeHtml(auth.staff.name)} · ${escapeHtml(auth.staff.role)} · ${escapeHtml(venue.name)}</div>
+        <div class="section-sub">${escapeHtml(auth.staff.name)} · ${escapeHtml(auth.staff.role)} · ${escapeHtml(resolveVenueDisplayName(venue))}</div>
       </div>
       <div class="tabs">
         ${renderTabButton('menu', 'Menu', uiState.adminTab)}
@@ -1971,7 +2256,7 @@ async function renderAdminDashboard() {
       ${uiState.adminTab === 'menu' ? renderAdminMenuTab(menu.categories || []) : renderAdminAddTab(menu.categories || [])}
     `,
     right: `
-      <a class="btn btn-secondary btn-sm" data-nav href="/staff/dashboard">Floor</a>
+      <a class="btn btn-secondary btn-sm" data-nav href="${buildStaffDashboardPath(activeSlug)}">Floor</a>
       <button class="btn btn-secondary btn-sm" id="admin-logout">Logout</button>
     `,
   }), 'Flock | Admin dashboard');
@@ -1979,7 +2264,7 @@ async function renderAdminDashboard() {
   document.querySelectorAll('[data-tab]').forEach((button) => {
     button.addEventListener('click', () => {
       uiState.adminTab = button.getAttribute('data-tab');
-      renderAdminDashboard().catch(handleFatalError);
+      renderAdminDashboard(activeSlug).catch(handleFatalError);
     });
   });
 
@@ -1987,8 +2272,8 @@ async function renderAdminDashboard() {
 
   document.getElementById('admin-logout')?.addEventListener('click', () => {
     clearStaffAuth();
-    sessionStorage.removeItem(ACTIVE_VENUE_KEY);
-    navigate('/admin/login');
+    clearActiveVenueSlug();
+    navigateToAdminLogin(activeSlug, { replace: true });
   });
 
   document.querySelectorAll('[data-admin-toggle]').forEach((button) => {
@@ -2062,7 +2347,8 @@ async function renderAdminDashboard() {
   }));
 }
 
-function renderQueueTab(waiting, tables) {
+function renderQueueTab(waiting, tables, venue) {
+  const { showFlowLog: flowLogEnabled, showBillingSignals } = getVenueStaffSurfaceFlags(venue);
   return waiting.length ? waiting.map((entry) => `
     <div class="q-row ${entry.status === 'NOTIFIED' ? 'highlight' : ''}">
       <div class="q-row-num">${entry.position || '-'}</div>
@@ -2070,26 +2356,27 @@ function renderQueueTab(waiting, tables) {
         <div class="q-row-name">
           ${escapeHtml(entry.guestName)}
           ${renderStatusBadge(entry.status)}
-          ${entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
-          ${entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
+          ${showBillingSignals && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
+          ${showBillingSignals && entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
         </div>
         <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
         <div class="q-row-orders">
           ${entry.estimatedWaitMin ? `ETA ~${entry.estimatedWaitMin} mins` : 'Awaiting table match'}
           ${entry.table?.label ? ` · Reserved ${escapeHtml(entry.table.label)}` : ''}
         </div>
-        ${entry.orders?.length ? `<div class="q-row-orders">Pre-order: ${escapeHtml(renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) || 'Locked items on file')}</div>` : ''}
+        ${showBillingSignals && entry.orders?.length ? `<div class="q-row-orders">Pre-order: ${escapeHtml(renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) || 'Locked items on file')}</div>` : ''}
       </div>
       <div class="q-row-actions">
         <button class="btn btn-secondary btn-sm" data-prefill-seat="${escapeHtml(entry.otp)}" data-entry-id="${entry.id}" data-suggested-table="${getSuggestedTableId(entry, tables)}">Seat</button>
-        <button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>
+        ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>` : ''}
         <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
       </div>
     </div>
   `).join('') : '<div class="empty-state">No waiting or notified guests right now.</div>';
 }
 
-function renderSeatedTab(seated, seatedBills) {
+function renderSeatedTab(seated, seatedBills, venue) {
+  const { showFlowLog: flowLogEnabled, showBillingSignals: showBillingSummary } = getVenueStaffSurfaceFlags(venue);
   return seated.length ? seated.map((entry) => {
     const bill = seatedBills[entry.id];
     return `
@@ -2099,15 +2386,15 @@ function renderSeatedTab(seated, seatedBills) {
           <div class="q-row-name">
             ${escapeHtml(entry.guestName)}
             <span class="badge badge-seated">Seated</span>
-            ${entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
+            ${showBillingSummary && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           </div>
           <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax${entry.table?.section ? ` · ${escapeHtml(entry.table.section)}` : ''}${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
-          <div class="q-row-orders">${entry.orders?.length ? renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) : 'No orders posted yet.'}</div>
+          <div class="q-row-orders">${showBillingSummary ? (entry.orders?.length ? renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) : 'No orders posted yet.') : 'Use checkout once the party leaves the table.'}</div>
         </div>
         <div class="q-row-actions" style="align-items:flex-end;">
-          <div class="muted">${bill ? `Total ${formatMoney(bill.summary.totalIncGst)}` : 'Loading bill'}</div>
-          ${bill ? `<div class="muted">Balance ${formatMoney(bill.summary.balanceDue)}</div>` : ''}
-          <button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}" style="margin-top:4px;">Flow log</button>
+          ${showBillingSummary ? `<div class="muted">${bill ? `Total ${formatMoney(bill.summary.totalIncGst)}` : 'Loading bill'}</div>` : '<div class="muted">Queue-only venue</div>'}
+          ${showBillingSummary && bill ? `<div class="muted">Balance ${formatMoney(bill.summary.balanceDue)}</div>` : ''}
+          ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}" style="margin-top:4px;">Flow log</button>` : ''}
           <button class="btn btn-secondary btn-sm" data-checkout-entry="${entry.id}" style="margin-top:4px;">Check out</button>
         </div>
       </div>
@@ -2115,8 +2402,9 @@ function renderSeatedTab(seated, seatedBills) {
   }).join('') : '<div class="empty-state">No seated parties are active right now.</div>';
 }
 
-function renderHistoryTab() {
+function renderHistoryTab(venue) {
   const entries = uiState.staffHistory || [];
+  const { showFlowLog: flowLogEnabled, showBillingSignals: showBillingSummary } = getVenueStaffSurfaceFlags(venue);
   if (!entries.length) return '<div class="empty-state">No completed sessions found yet.</div>';
 
   const statusLabel = { COMPLETED: 'Completed', CANCELLED: 'Cancelled', NO_SHOW: 'No-show' };
@@ -2135,14 +2423,14 @@ function renderHistoryTab() {
           <div class="q-row-name">
             ${escapeHtml(entry.guestName)}
             ${statusBadge}
-            ${entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
+            ${showBillingSummary && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           </div>
           <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
           <div class="q-row-meta muted">${formatRelativeStamp(new Date(entry.completedAt || entry.updatedAt).getTime())}</div>
         </div>
         <div class="q-row-actions" style="align-items:flex-end;">
-          <div class="muted">${totalPaise ? `Total ${formatMoney(totalPaise)}` : 'No orders'}</div>
-          <button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}" style="margin-top:4px;">Flow log</button>
+          <div class="muted">${showBillingSummary ? (totalPaise ? `Total ${formatMoney(totalPaise)}` : 'No orders') : (entry.status === 'NO_SHOW' ? 'No-show' : 'Visit closed')}</div>
+          ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}" style="margin-top:4px;">Flow log</button>` : ''}
         </div>
       </div>
     `;
@@ -2191,13 +2479,14 @@ function renderTablesTab(tables, recentTableEvents) {
   `;
 }
 
-function renderSeatTab(tables) {
+function renderSeatTab(tables, venue) {
   const available = tables.filter((table) => table.status === 'FREE' || table.status === 'RESERVED');
+  const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
   return `
     <div class="grid grid-2">
       <div class="card">
         <div class="card-title">Seat by OTP</div>
-        <div class="card-sub">Use the 6-digit guest OTP, then explicitly bind the guest to a compatible free or reserved table.</div>
+        <div class="card-sub">${queueOnlyGuestExperience ? 'Use the 6-digit guest OTP, then bind the guest to a compatible free or reserved table.' : 'Use the 6-digit guest OTP, then explicitly bind the guest to a compatible free or reserved table.'}</div>
         ${uiState.staffSeat.error ? renderInlineFlash({ kind: 'red', message: uiState.staffSeat.error }) : ''}
         ${uiState.staffSeat.success ? renderInlineFlash({ kind: 'green', message: uiState.staffSeat.success }) : ''}
         ${uiState.staffSeat.prefilledFromQueueId ? `<div class="alert alert-blue"><div>Quick seat loaded from queue row. OTP is prefilled for queue entry <span class="mono">${escapeHtml(uiState.staffSeat.prefilledFromQueueId)}</span>.</div></div>` : ''}
@@ -2232,9 +2521,9 @@ function renderSeatTab(tables) {
       </div>
       <div class="card">
         <div class="card-title">Operator note</div>
-        <div class="card-sub">Deposit-first stays intact. If a guest already prepaid, seating locks the table and triggers the pre-order handoff path.</div>
+        <div class="card-sub">${queueOnlyGuestExperience ? 'This venue is running waitlist-first. Seat the arriving party and keep the queue moving from the host desk.' : 'Deposit-first stays intact. If a guest already prepaid, seating locks the table and triggers the pre-order handoff path.'}</div>
         <div class="alert alert-blue">
-          <div>Queue-row quick seat never bypasses verification. It only preloads the guest OTP and best-fit table to speed up the same PM-faithful step.</div>
+          <div>${queueOnlyGuestExperience ? 'Queue-row quick seat never bypasses verification. It only preloads the guest OTP and best-fit table so the host can move faster.' : 'Queue-row quick seat never bypasses verification. It only preloads the guest OTP and best-fit table to speed up the same PM-faithful step.'}</div>
         </div>
       </div>
     </div>
@@ -2243,21 +2532,31 @@ function renderSeatTab(tables) {
 
 function renderManagerTab({ auth, venue, queue }) {
   const isManager = auth.staff.role === 'OWNER' || auth.staff.role === 'MANAGER';
+  const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
+  const {
+    queueOnlyGuestExperience,
+    showBulkClearTool: bulkClearEnabled,
+    showDepositControls,
+    showOfflineSettleTool: offlineSettleEnabled,
+    showRefundTool: refundsEnabled,
+  } = getVenueStaffSurfaceFlags(venue);
   return `
     <div class="grid grid-2">
       <div class="card">
         <div class="card-title">Queue control</div>
-        <div class="card-sub">Single pilot venue mode. Toggle queue access instantly.</div>
+        <div class="card-sub">${queueOnlyGuestExperience ? 'Venue-scoped waitlist controls for the host desk.' : 'Venue-scoped operational controls. Queue-only actions disappear when the queue module is disabled.'}</div>
         <div class="row" style="margin-bottom:16px;">
-          <span class="badge ${venue.isQueueOpen ? 'badge-ready' : 'badge-neutral'}">${venue.isQueueOpen ? 'Queue open' : 'Queue closed'}</span>
-          <button class="btn btn-secondary btn-sm" id="toggle-queue">${venue.isQueueOpen ? 'Close queue' : 'Open queue'}</button>
+          <span class="badge ${guestQueueEnabled && venue.isQueueOpen ? 'badge-ready' : 'badge-neutral'}">${guestQueueEnabled ? (venue.isQueueOpen ? 'Queue open' : 'Queue closed') : 'Queue module off'}</span>
+          ${guestQueueEnabled ? `<button class="btn btn-secondary btn-sm" id="toggle-queue">${venue.isQueueOpen ? 'Close queue' : 'Open queue'}</button>` : ''}
         </div>
         ${isManager ? `
           <form id="manager-config-form">
-            <div class="form-group">
-              <label class="form-label" for="manager-deposit">Deposit %</label>
-              <input class="form-input" id="manager-deposit" type="number" min="50" max="100" value="${venue.depositPercent}">
-            </div>
+            ${showDepositControls ? `
+              <div class="form-group">
+                <label class="form-label" for="manager-deposit">Deposit %</label>
+                <input class="form-input" id="manager-deposit" type="number" min="50" max="100" value="${venue.depositPercent}">
+              </div>
+            ` : ''}
             <div class="form-group">
               <label class="form-label" for="manager-window">Table ready window (min)</label>
               <input class="form-input" id="manager-window" type="number" min="5" max="60" value="${venue.tableReadyWindowMin}">
@@ -2269,16 +2568,23 @@ function renderManagerTab({ auth, venue, queue }) {
         `}
       </div>
       <div class="card">
-        <div class="card-title">Operational fallbacks</div>
-        <div class="card-sub">These are pilot-safe escape hatches to keep service moving.</div>
-        <form id="offline-settle-form" style="margin-bottom:16px;">
-          <div class="form-group">
-            <label class="form-label" for="offline-queue-entry">Queue entry ID</label>
-            <input class="form-input mono" id="offline-queue-entry" placeholder="${queue[0]?.id || 'Queue entry UUID'}">
+        <div class="card-title">${queueOnlyGuestExperience ? 'Operator note' : 'Operational fallbacks'}</div>
+        <div class="card-sub">${queueOnlyGuestExperience ? 'Craftery is running as a waitlist-first venue. Payment recovery and bulk reset tools stay hidden so the host desk only sees queue-relevant controls.' : 'These are pilot-safe escape hatches to keep service moving.'}</div>
+        ${queueOnlyGuestExperience ? `
+          <div class="alert alert-blue" style="margin-top:16px;">
+            <div>Keep Queue, Tables, Seat OTP, Seated, and History as the operational path for this venue. Checkout remains available from the Seated tab when a party leaves.</div>
           </div>
-          <button class="btn btn-secondary btn-full" type="submit">Mark final bill settled offline</button>
-        </form>
-        ${isManager ? `
+        ` : ''}
+        ${!queueOnlyGuestExperience && offlineSettleEnabled ? `
+          <form id="offline-settle-form" style="margin-bottom:16px;">
+            <div class="form-group">
+              <label class="form-label" for="offline-queue-entry">Queue entry ID</label>
+              <input class="form-input mono" id="offline-queue-entry" placeholder="${queue[0]?.id || 'Queue entry UUID'}">
+            </div>
+            <button class="btn btn-secondary btn-full" type="submit">Mark final bill settled offline</button>
+          </form>
+        ` : !queueOnlyGuestExperience ? '<div class="alert alert-blue" style="margin-bottom:16px;"><div>Offline settlement is disabled for this venue.</div></div>' : ''}
+        ${!queueOnlyGuestExperience && isManager && refundsEnabled ? `
           <form id="refund-form">
             <div class="form-group">
               <label class="form-label" for="refund-payment-id">Deposit payment ID</label>
@@ -2286,9 +2592,9 @@ function renderManagerTab({ auth, venue, queue }) {
             </div>
             <button class="btn btn-danger btn-full" type="submit">Refund deposit</button>
           </form>
-        ` : ''}
+        ` : !queueOnlyGuestExperience && isManager ? '<div class="alert alert-blue"><div>Refunds are disabled for this venue.</div></div>' : ''}
       </div>
-      ${isManager ? `
+      ${!queueOnlyGuestExperience && isManager && bulkClearEnabled ? `
         <div class="card">
           <div class="card-title">Reset floor</div>
           <div class="card-sub">Cancel all waiting entries, check out all seated guests, and free all tables. Use at end of service or to reset test data.</div>
@@ -2474,8 +2780,7 @@ function renderShell({ pill, body, right = '' }) {
   `;
 }
 
-function renderStepBar(activeStep) {
-  const labels = ['Queue', 'Pre-order', 'Seated', 'Pay'];
+function renderStepBar(activeStep, labels = ['Queue', 'Pre-order', 'Seated', 'Pay']) {
   return `
     <div class="steps">
       ${labels.map((label, index) => {
@@ -2496,14 +2801,28 @@ function getBucketItemCount(summary) {
   return (summary?.lines || []).reduce((sum, line) => sum + (line.quantity || 0), 0);
 }
 
-function renderGuestBottomNav(activeTray, itemCount) {
+function getAvailableGuestTrays(venue) {
+  return isVenueFeatureEnabled(venue, 'seatedOrdering')
+    ? ['menu', 'bucket', 'ordered']
+    : ['ordered'];
+}
+
+function clampGuestTrayForVenue(venue, requestedTray) {
+  const availableTrays = getAvailableGuestTrays(venue);
+  if (availableTrays.includes(requestedTray)) {
+    return requestedTray;
+  }
+  return availableTrays[0];
+}
+
+function renderGuestBottomNav(activeTray, itemCount, availableTrays = ['menu', 'bucket', 'ordered']) {
   return `
     <nav class="guest-bottom-nav" aria-label="Guest ordering trays">
       ${[
         ['menu', 'Menu'],
         ['bucket', 'Your Bucket'],
         ['ordered', 'Ordered'],
-      ].map(([key, label]) => `
+      ].filter(([key]) => availableTrays.includes(key)).map(([key, label]) => `
         <button class="guest-bottom-nav-btn ${activeTray === key ? 'active' : ''}" type="button" data-guest-tray="${key}">
           <span>${label}</span>
           ${key === 'bucket' && itemCount > 0 ? `<span class="guest-bottom-badge">${itemCount}</span>` : ''}
@@ -2513,8 +2832,8 @@ function renderGuestBottomNav(activeTray, itemCount) {
   `;
 }
 
-function renderFloatingPayButton(balanceDue) {
-  if (!balanceDue || balanceDue <= 0) {
+function renderFloatingPayButton(balanceDue, enabled = true) {
+  if (!enabled || !balanceDue || balanceDue <= 0) {
     return '';
   }
 
@@ -2630,9 +2949,10 @@ function renderGuestBucketTray({ draftSummary }) {
   `;
 }
 
-function renderGuestOrderedTray({ entry, bill }) {
+function renderGuestOrderedTray({ entry, bill, venue }) {
   const preOrders = entry.orders.filter((order) => order.type === 'PRE_ORDER');
   const tableOrders = entry.orders.filter((order) => order.type === 'TABLE_ORDER');
+  const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
 
   return `
     <section class="guest-tray-panel" data-guest-tray-panel="ordered">
@@ -2655,8 +2975,10 @@ function renderGuestOrderedTray({ entry, bill }) {
               <div class="order-total-label">Balance due</div>
               <div class="order-total-val">${formatMoney(bill.summary.balanceDue)}</div>
             </div>
-            ${bill.summary.balanceDue > 0 ? `
+            ${bill.summary.balanceDue > 0 && finalPaymentEnabled ? `
               <button class="btn btn-primary btn-full" id="final-pay-cta" style="margin-top:16px;">${uiState.paymentSubmitting ? 'Preparing payment...' : 'Pay balance'}</button>
+            ` : bill.summary.balanceDue > 0 ? `
+              <div class="alert alert-blue" style="margin-top:16px;"><div>Online balance payment is disabled for this venue. Please settle with the venue team.</div></div>
             ` : ''}
           ` : '<div class="empty-state">Bill data unavailable.</div>'}
         </div>
@@ -2668,6 +2990,8 @@ function renderGuestOrderedTray({ entry, bill }) {
 function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
   const draftSummary = buildCartSummary(venue.menuCategories || [], BucketStore.getDraftCart());
   const bucketItemCount = getBucketItemCount(draftSummary);
+  const availableTrays = getAvailableGuestTrays(venue);
+  const activeTray = clampGuestTrayForVenue(venue, uiState.guestTray);
   const participantCount = Math.max(
     1,
     Number(uiState.partySessionMeta?.participantCount || uiState.partyParticipants.length || 1),
@@ -2683,9 +3007,9 @@ function renderSeatedGuestShell({ entry, venue, bill, guestSession }) {
         ${entry.displayRef ? `<div class="guest-shell-meta">Ref: <span class="mono">${escapeHtml(entry.displayRef)}</span></div>` : ''}
       </div>
       <div id="guest-tray-host"></div>
-      <div id="guest-floating-pay-host">${renderFloatingPayButton(bill?.summary?.balanceDue || 0)}</div>
+      <div id="guest-floating-pay-host">${renderFloatingPayButton(bill?.summary?.balanceDue || 0, isVenueFeatureEnabled(venue, 'finalPayment'))}</div>
       <div id="guest-bucket-toast-host"></div>
-      <div id="guest-bottom-nav-host">${renderGuestBottomNav(uiState.guestTray, bucketItemCount)}</div>
+      <div id="guest-bottom-nav-host">${renderGuestBottomNav(activeTray, bucketItemCount, availableTrays)}</div>
     </div>
   `;
 }
@@ -2753,16 +3077,19 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
     const draftCart = BucketStore.getDraftCart();
     const draftSummary = buildCartSummary(liveVenue.menuCategories || [], draftCart);
     const bucketCount = getBucketItemCount(draftSummary);
+    const availableTrays = getAvailableGuestTrays(liveVenue);
+
+    uiState.guestTray = clampGuestTrayForVenue(liveVenue, uiState.guestTray);
 
     uiState.activeGuestView = {
       ...liveView,
       refreshSeatedShell: renderTrayShell,
     };
 
-    navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount);
+    navHost.innerHTML = renderGuestBottomNav(uiState.guestTray, bucketCount, availableTrays);
 
-    const showFloatingPay = uiState.guestTray !== 'ordered';
-    payHost.innerHTML = showFloatingPay ? renderFloatingPayButton(liveBill?.summary?.balanceDue || 0) : '';
+    const showFloatingPay = isVenueFeatureEnabled(liveVenue, 'finalPayment') && uiState.guestTray !== 'ordered';
+    payHost.innerHTML = showFloatingPay ? renderFloatingPayButton(liveBill?.summary?.balanceDue || 0, true) : '';
 
     if (toastHost) {
       const showToast = uiState.guestTray === 'menu' && bucketCount > 0;
@@ -2882,7 +3209,7 @@ function mountSeatedGuestExperience({ slug, entry, venue, bill, guestSession }) 
         }
       });
     } else {
-      trayHost.innerHTML = renderGuestOrderedTray({ entry: liveEntry, bill: liveBill });
+      trayHost.innerHTML = renderGuestOrderedTray({ entry: liveEntry, bill: liveBill, venue: liveVenue });
 
       document.getElementById('final-pay-cta')?.addEventListener('click', async () => {
         if (uiState.paymentSubmitting) return;
@@ -2971,16 +3298,17 @@ function renderSessionRef(entry) {
   return `<div class="session-ref">Session ref: <span class="mono">${escapeHtml(entry.displayRef)}</span></div>`;
 }
 
-function renderGuestStateHero(entry, guestSession) {
+function renderGuestStateHero(entry, guestSession, venue) {
   const guestOtp = guestSession?.otp;
+  const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
 
   if (entry.status === 'WAITING') {
     const pct = Math.max(10, Math.min(95, Math.round(100 - (entry.position * 8))));
     return `
       <div class="queue-hero">
         <div class="queue-pos-num">${entry.position}</div>
-        <div class="queue-pos-label">Queue position</div>
-        <div class="queue-pos-sub">We will notify you when a matching table clears.</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Waitlist position' : 'Queue position'}</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'We will message you once a suitable table is ready.' : 'We will notify you when a matching table clears.'}</div>
         ${renderSessionRef(entry)}
       </div>
       <div class="wait-strip">
@@ -3000,7 +3328,7 @@ function renderGuestStateHero(entry, guestSession) {
       <div class="queue-hero">
         <div class="queue-pos-num">${escapeHtml(entry.table?.label || 'Now')}</div>
         <div class="queue-pos-label">Table ready</div>
-        <div class="queue-pos-sub">Head to the entrance and show the OTP to staff.</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? `Return to the host desk within ${venue?.tableReadyWindowMin || 10} minutes and show the OTP to staff.` : 'Head to the entrance and show the OTP to staff.'}</div>
         ${renderSessionRef(entry)}
       </div>
       <div class="otp-block">
@@ -3015,7 +3343,7 @@ function renderGuestStateHero(entry, guestSession) {
       <div class="queue-hero">
         <div class="queue-pos-num">${escapeHtml(entry.table?.label || 'Seated')}</div>
         <div class="queue-pos-label">Now seated</div>
-        <div class="queue-pos-sub">Your table is live. Add more items from your phone and clear the balance when ready.</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'You are checked in. Our host team will take it from here while you enjoy the table.' : 'Your table is live. Add more items from your phone and clear the balance when ready.'}</div>
       </div>
     `;
   }
@@ -3024,8 +3352,8 @@ function renderGuestStateHero(entry, guestSession) {
     return `
       <div class="queue-hero">
         <div class="queue-pos-num">Done</div>
-        <div class="queue-pos-label">Service complete</div>
-        <div class="queue-pos-sub">Payment is captured and the table can move into the next turn.</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Visit complete' : 'Service complete'}</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'This visit has been marked complete. Thanks for waiting with us.' : 'Payment is captured and the table can move into the next turn.'}</div>
         ${renderSessionRef(entry)}
       </div>
     `;
@@ -3042,8 +3370,30 @@ function renderGuestStateHero(entry, guestSession) {
 
 function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary }) {
   const isPartyJoiner = Boolean(guestSession?.isPartyJoiner);
+  const preOrderEnabled = isVenueFeatureEnabled(venue, 'preOrder');
+  const seatedOrderingEnabled = isVenueFeatureEnabled(venue, 'seatedOrdering');
+  const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
+  const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
 
   if (entry.status === 'WAITING') {
+    if (queueOnlyGuestExperience) {
+      return `
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">Waiting list status</div>
+            <div class="card-sub">Your phone number is your queue identity. We will message you when a matching table is ready.</div>
+            <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or the table may be reassigned.</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Venue</div>
+            <div class="card-sub">${escapeHtml(venue.name)} · ${escapeHtml(venue.city)}</div>
+            <div class="muted">Party size: ${entry.partySize} pax</div>
+            <div class="muted">Response window: ${venue.tableReadyWindowMin} minutes</div>
+          </div>
+        </div>
+      `;
+    }
+
     return `
       <div class="grid grid-2">
         <div class="card">
@@ -3054,7 +3404,9 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
             ? isPartyJoiner
               ? `<div class="alert alert-blue"><div>The host has already placed a pre-order (${formatMoney(entry.preOrderTotal || 0)}). You can add more items once seated.</div></div>`
               : `<div class="alert alert-green"><div>Deposit captured: ${formatMoney(entry.depositPaid)}. Pre-order total: ${formatMoney(entry.preOrderTotal || 0)}.</div></div>`
-            : `<button class="btn btn-primary" id="preorder-cta">Pre-order now</button>`
+            : preOrderEnabled
+              ? `<button class="btn btn-primary" id="preorder-cta">Pre-order now</button>`
+              : `<div class="alert alert-blue"><div>Pre-order is disabled for this venue.</div></div>`
           }
         </div>
         <div class="card">
@@ -3068,6 +3420,24 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
   }
 
   if (entry.status === 'NOTIFIED') {
+    if (queueOnlyGuestExperience) {
+      return `
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">Table ready</div>
+            <div class="card-sub">${entry.table?.label ? `Reserved: ${escapeHtml(entry.table.label)}` : 'A suitable table is ready for you.'}</div>
+            <div class="alert alert-green"><div>Return to the host desk within ${venue.tableReadyWindowMin} minutes and show the OTP to staff.</div></div>
+          </div>
+          <div class="card">
+            <div class="card-title">Guest snapshot</div>
+            <div class="muted">${entry.partySize} pax</div>
+            <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
+            <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
+          </div>
+        </div>
+      `;
+    }
+
     return `
       <div class="grid grid-2">
         <div class="card">
@@ -3078,7 +3448,9 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
             ? isPartyJoiner
               ? `<div class="alert alert-blue"><div>The host locked a pre-order before seating. You'll be able to add items once seated.</div></div>`
               : `<div class="muted">Deposit secured: ${formatMoney(entry.depositPaid)}</div>`
-            : '<button class="btn btn-primary" id="preorder-cta">Add a pre-order before seating</button>'
+            : preOrderEnabled
+              ? '<button class="btn btn-primary" id="preorder-cta">Add a pre-order before seating</button>'
+              : '<div class="alert alert-blue"><div>Pre-order is disabled for this venue.</div></div>'
           }
         </div>
         <div class="card">
@@ -3092,9 +3464,30 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
   }
 
   if (entry.status === 'SEATED' || entry.status === 'COMPLETED') {
+    if (queueOnlyGuestExperience) {
+      return `
+        <div class="grid grid-2">
+          <div class="card">
+            <div class="card-title">${entry.table?.label ? `Table ${escapeHtml(entry.table.label)}` : 'Table assigned'}</div>
+            <div class="card-sub">${entry.status === 'COMPLETED' ? 'This waitlist visit has been closed and the table can move to the next guest.' : 'You are checked in. The host team will continue service from here.'}</div>
+            ${entry.table?.section ? `<div class="muted" style="margin-bottom:14px;">Section: ${escapeHtml(entry.table.section)}</div>` : ''}
+            <div class="alert alert-blue"><div>${entry.status === 'COMPLETED' ? 'No more actions are needed on this device.' : 'Keep this page handy in case the host desk needs to verify your session reference.'}</div></div>
+            ${entry.status === 'COMPLETED' ? '<button class="btn btn-secondary btn-full" id="guest-done-cta" style="margin-top:16px;">Done</button>' : ''}
+          </div>
+          <div class="card">
+            <div class="card-title">Visit summary</div>
+            <div class="muted">${entry.partySize} pax</div>
+            <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
+            <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
+            ${entry.displayRef ? `<div class="muted">Reference: <span class="mono">${escapeHtml(entry.displayRef)}</span></div>` : ''}
+          </div>
+        </div>
+      `;
+    }
+
     const preOrders = entry.orders.filter((order) => order.type === 'PRE_ORDER');
     const tableOrders = entry.orders.filter((order) => order.type === 'TABLE_ORDER');
-    const canPlaceTableOrders = entry.status === 'SEATED' && Boolean(guestSession?.guestToken);
+    const canPlaceTableOrders = entry.status === 'SEATED' && seatedOrderingEnabled && Boolean(guestSession?.guestToken);
     return `
       <div class="grid grid-2">
         <div class="card">
@@ -3109,7 +3502,7 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
             ${renderGuestOrderBlock(order, 'Table order')}
           `).join('') : '<div class="empty-state" style="margin-top:14px;">No add-on table orders yet.</div>'}
 
-          ${entry.status === 'SEATED' ? `
+          ${entry.status === 'SEATED' && seatedOrderingEnabled ? `
             <div class="section-head" style="margin-top:18px;">
               <div class="section-title">Order at table</div>
               <div class="section-sub">The menu stays visible while seated. Pre-order items are already locked, any new rounds add to the live bill, and only the remaining balance is paid later.</div>
@@ -3145,6 +3538,8 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
                 </form>
               `}
             </div>
+          ` : entry.status === 'SEATED' ? `
+            <div class="alert alert-blue" style="margin-top:18px;"><div>At-table ordering is disabled for this venue. Review the live bill on the right and settle with the venue team when ready.</div></div>
           ` : ''}
         </div>
         <div class="card">
@@ -3159,8 +3554,10 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
               <div class="order-total-label">Balance due</div>
               <div class="order-total-val">${formatMoney(bill.summary.balanceDue)}</div>
             </div>
-            ${(entry.status === 'SEATED' && bill.summary.balanceDue > 0) ? `
+            ${(entry.status === 'SEATED' && bill.summary.balanceDue > 0 && finalPaymentEnabled) ? `
               <button class="btn btn-primary btn-full" id="final-pay-cta" style="margin-top:16px;">Pay balance</button>
+            ` : (entry.status === 'SEATED' && bill.summary.balanceDue > 0) ? `
+              <div class="alert alert-blue" style="margin-top:16px;"><div>Online balance payment is disabled for this venue. Please settle directly with the venue team.</div></div>
             ` : ''}
             ${(entry.status === 'COMPLETED') ? `
               <div class="alert alert-green" style="margin-top:16px;"><div>Final payment completed. The invoice generation path has already been triggered.</div></div>

@@ -108,6 +108,14 @@ describe('order service', () => {
   it('replaces stale preorders before creating a new one', async () => {
     const { createPreOrder } = await import('../../src/services/order.service');
 
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
     prismaMock.queueEntry.findFirst.mockResolvedValue({
       id: 'entry_1',
       venueId: 'venue_1',
@@ -145,6 +153,14 @@ describe('order service', () => {
   it('rejects guest table orders when the entry is not seated', async () => {
     const { createGuestTableOrder } = await import('../../src/services/order.service');
 
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Venue',
+      slug: 'venue-slug',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+    });
     prismaMock.queueEntry.findFirst.mockResolvedValue(null);
 
     await expect(createGuestTableOrder({

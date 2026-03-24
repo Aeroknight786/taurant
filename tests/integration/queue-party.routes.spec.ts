@@ -4,6 +4,7 @@ const {
   queueServiceMock,
   orderFlowEventServiceMock,
   partySessionServiceMock,
+  venueFeatureState,
 } = vi.hoisted(() => ({
   queueServiceMock: {
     joinQueue: vi.fn(),
@@ -26,11 +27,25 @@ const {
     getPartyBucket: vi.fn(),
     updatePartyBucket: vi.fn(),
   },
+  venueFeatureState: {
+    disabledFeatures: new Set<string>(),
+  },
 }));
 
 vi.mock('../../src/services/queue.service', () => queueServiceMock);
 vi.mock('../../src/services/orderFlowEvent.service', () => orderFlowEventServiceMock);
 vi.mock('../../src/services/partySession.service', () => partySessionServiceMock);
+vi.mock('../../src/middleware/venueFeature', () => ({
+  requireVenueFeature: (feature: string) => (_req: any, res: any, next: any) => {
+    if (venueFeatureState.disabledFeatures.has(feature)) {
+      res.status(403).json({ success: false, error: `${feature} disabled`, code: 'VENUE_FEATURE_DISABLED' });
+      return;
+    }
+    next();
+  },
+  resolveVenueIdFromQueueEntryParam: () => async () => 'venue_1',
+  resolveVenueIdFromPartyJoinToken: () => async () => 'venue_1',
+}));
 
 vi.mock('../../src/middleware/auth', () => ({
   requireAuth: (req: any, res: any, next: any) => {
@@ -80,6 +95,7 @@ vi.mock('../../src/middleware/auth', () => ({
 describe('queue and party-session routes', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    venueFeatureState.disabledFeatures.clear();
   });
 
   it('covers queue join, live queue, session recovery, and flow history', async () => {
@@ -226,5 +242,43 @@ describe('queue and party-session routes', () => {
       headers: { authorization: 'Bearer guest-token' },
       body: { items: [{ menuItemId: '', quantity: -1 }] },
     })).status).toBe(400);
+  });
+
+  it('rejects disabled party-share routes', async () => {
+    venueFeatureState.disabledFeatures.add('partyShare');
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/party-sessions/join/join_123',
+      body: { displayName: 'Aman' },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('VENUE_FEATURE_DISABLED');
+  });
+
+  it('rejects disabled flow-log and bulk-clear queue routes', async () => {
+    const app = (await import('../../src/app')).default;
+
+    venueFeatureState.disabledFeatures.add('flowLog');
+    const flowResponse = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/queue/entry_1/flow',
+      headers: { authorization: 'Bearer staff-token' },
+    });
+
+    venueFeatureState.disabledFeatures.clear();
+    venueFeatureState.disabledFeatures.add('bulkClear');
+    const clearResponse = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/clear-all',
+      headers: { authorization: 'Bearer staff-token' },
+    });
+
+    expect(flowResponse.status).toBe(403);
+    expect(flowResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
+    expect(clearResponse.status).toBe(403);
+    expect(clearResponse.body.code).toBe('VENUE_FEATURE_DISABLED');
   });
 });

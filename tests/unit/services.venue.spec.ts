@@ -80,4 +80,74 @@ describe('venue service', () => {
 
     vi.useRealTimers();
   });
+
+  it('returns public venue selector data and resolved config for venue reads', async () => {
+    const { getPublicVenues, getVenueBySlug } = await import('../../src/services/venue.service');
+
+    prismaMock.venue.findMany.mockResolvedValue([
+      {
+        id: 'venue_1',
+        slug: 'the-barrel-room-koramangala',
+        name: 'The Barrel Room',
+        city: 'Bengaluru',
+        isQueueOpen: true,
+        brandConfig: null,
+        featureConfig: null,
+        uiConfig: null,
+      },
+      {
+        id: 'venue_2',
+        slug: 'the-craftery-koramangala',
+        name: 'The Craftery by Subko',
+        city: 'Bengaluru',
+        isQueueOpen: true,
+        brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
+        featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
+        uiConfig: { defaultGuestTray: 'ordered', supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.' },
+      },
+    ]);
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_2',
+      slug: 'the-craftery-koramangala',
+      name: 'The Craftery by Subko',
+      address: '68 Koramangala',
+      city: 'Bengaluru',
+      isQueueOpen: true,
+      depositPercent: 30,
+      licenceType: 'RESTAURANT_ONLY',
+      tableReadyWindowMin: 15,
+      brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
+      featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
+      uiConfig: { defaultGuestTray: 'ordered', supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.' },
+      menuCategories: [],
+    });
+
+    const publicVenues = await getPublicVenues();
+    expect(publicVenues).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        slug: 'the-barrel-room-koramangala',
+        brandConfig: expect.objectContaining({ themeKey: 'default' }),
+      }),
+      expect.objectContaining({
+        slug: 'the-craftery-koramangala',
+        brandConfig: expect.objectContaining({ themeKey: 'craftery' }),
+        featureConfig: expect.objectContaining({
+          guestQueue: true,
+          preOrder: false,
+          adminConsole: true,
+        }),
+        uiConfig: expect.objectContaining({
+          supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+        }),
+      }),
+    ]));
+
+    const venue = await getVenueBySlug('the-craftery-koramangala');
+    expect(venue.config.brandConfig.themeKey).toBe('craftery');
+    expect(venue.config.featureConfig.preOrder).toBe(false);
+    expect(venue.config.featureConfig.flowLog).toBe(false);
+    expect(venue.config.featureConfig.bulkClear).toBe(false);
+    expect(venue.config.featureConfig.adminConsole).toBe(true);
+    expect(venue.config.uiConfig.defaultGuestTray).toBe('ordered');
+  });
 });
