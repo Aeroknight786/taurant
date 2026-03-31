@@ -472,6 +472,50 @@ describe('queue service', () => {
     }));
   });
 
+  it('lets a guest leave their own waiting queue entry and reuses cancellation semantics', async () => {
+    const { leaveQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst
+      .mockResolvedValueOnce({
+        id: 'entry_1',
+        venueId: 'venue_1',
+        status: QueueEntryStatus.WAITING,
+      })
+      .mockResolvedValueOnce({
+        id: 'entry_1',
+        venueId: 'venue_1',
+        status: QueueEntryStatus.WAITING,
+        tableId: null,
+      });
+    prismaMock.payment.findFirst.mockResolvedValue(null);
+    prismaMock.queueEntry.findMany.mockResolvedValue([]);
+
+    const result = await leaveQueueEntry('entry_1', 'venue_1', '9876543210');
+
+    expect(result).toEqual(expect.objectContaining({
+      queueCancelled: true,
+      refundStatus: 'not_needed',
+    }));
+    expect(logFlowEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      queueEntryId: 'entry_1',
+      type: 'ENTRY_CANCELLED',
+    }));
+  });
+
+  it('rejects guest leave attempts for non-leavable queue entries', async () => {
+    const { leaveQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: QueueEntryStatus.SEATED,
+    });
+
+    await expect(leaveQueueEntry('entry_1', 'venue_1', '9876543210')).rejects.toMatchObject<AppError>({
+      code: 'ENTRY_NOT_LEAVABLE',
+    });
+  });
+
   it('skips auto-advance for manual-dispatch venues when a table becomes free', async () => {
     const { tryAdvanceQueue } = await import('../../src/services/table.service');
 

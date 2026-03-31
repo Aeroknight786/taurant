@@ -4,6 +4,7 @@ import { AuthenticatedRequest } from '../types';
 import * as QueueService from '../services/queue.service';
 import { getFlowEvents } from '../services/orderFlowEvent.service';
 import { ok, created } from '../utils/response';
+import { AppError } from '../middleware/errorHandler';
 
 const JoinSchema = z.object({
   venueId:           z.string().min(1),
@@ -81,6 +82,17 @@ export async function prioritizeEntry(req: AuthenticatedRequest, res: Response, 
 export async function cancelEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const result = await QueueService.cancelQueueEntry(req.params.entryId, req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
+export async function leaveEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.guest || req.guest.queueEntryId !== req.params.entryId) {
+      throw new AppError('Guest session does not match this queue entry', 403, 'GUEST_SESSION_MISMATCH');
+    }
+
+    const result = await QueueService.leaveQueueEntry(req.params.entryId, req.guest.venueId, req.guest.guestPhone);
     ok(res, result);
   } catch (e) { next(e); }
 }

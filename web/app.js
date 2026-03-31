@@ -148,6 +148,7 @@ const uiState = {
   partyPollerId: null,
   nextRenderResetScroll: false,
   guestJoinSubmitting: false,
+  guestLeaveSubmitting: false,
   preorderSubmitting: false,
   tableOrderSubmitting: false,
   paymentSubmitting: false,
@@ -712,11 +713,38 @@ async function renderGuestEntry(slug, entryId) {
   const partyShareEnabled = isVenueFeatureEnabled(venue, 'partyShare');
   const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
-  const leaveWaitlist = () => {
-    clearGuestSession(entryId);
-    clearGuestEntryId(slug);
-    setTableCart(entryId, {});
-    navigate(buildVenuePath(slug));
+  const leaveWaitlist = async (options = {}) => {
+    const {
+      serverSide = true,
+      successMessage = 'You left the waitlist.',
+    } = options;
+
+    if (uiState.guestLeaveSubmitting) {
+      return;
+    }
+
+    uiState.guestLeaveSubmitting = true;
+    try {
+      const activeSession = getGuestSession(entryId);
+      if (serverSide && activeSession?.guestToken) {
+        await apiRequest(`/queue/${entryId}/leave`, {
+          method: 'DELETE',
+          auth: 'guest',
+          guestToken: activeSession.guestToken,
+        });
+      }
+
+      clearGuestSession(entryId);
+      clearGuestEntryId(slug);
+      setTableCart(entryId, {});
+      setFlash('green', successMessage);
+      navigate(buildVenuePath(slug));
+    } catch (error) {
+      setFlash('red', error.message || 'Unable to leave the waitlist right now.');
+      await renderGuestEntry(slug, entryId);
+    } finally {
+      uiState.guestLeaveSubmitting = false;
+    }
   };
 
   if (!guestSession?.guestToken) {
@@ -736,8 +764,8 @@ async function renderGuestEntry(slug, entryId) {
               <button class="btn btn-secondary btn-full" type="submit">Restore session</button>
           </form>
           <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
-            <div class="card-sub" style="margin-bottom:10px;">Testing or wrong device? Clear this session and start fresh.</div>
-            <button class="btn btn-ghost btn-full" id="clear-guest-session-btn" type="button">Leave waitlist</button>
+            <div class="card-sub" style="margin-bottom:10px;">Wrong device or stale state? Clear the saved session on this device and start again.</div>
+            <button class="btn btn-ghost btn-full" id="clear-guest-session-btn" type="button">Clear saved session</button>
           </div>
         </div>
       `,
@@ -779,7 +807,12 @@ async function renderGuestEntry(slug, entryId) {
       }
     });
 
-    document.getElementById('clear-guest-session-btn')?.addEventListener('click', leaveWaitlist);
+    document.getElementById('clear-guest-session-btn')?.addEventListener('click', () => {
+      leaveWaitlist({
+        serverSide: false,
+        successMessage: 'Saved session cleared from this device.',
+      }).catch(handleFatalError);
+    });
 
     return;
   }
@@ -888,13 +921,6 @@ async function renderGuestEntry(slug, entryId) {
     });
   }
 
-  document.getElementById('leave-waitlist-cta')?.addEventListener('click', () => {
-    clearGuestSession(entryId);
-    clearGuestEntryId(slug);
-    setTableCart(entryId, {});
-    navigate(buildVenuePath(slug));
-  });
-
   if (entry.status === 'SEATED' && !queueOnlyGuestExperience) {
     if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
       uiState.guestTray = venue.config?.uiConfig?.defaultGuestTray || 'menu';
@@ -908,6 +934,10 @@ async function renderGuestEntry(slug, entryId) {
 
   document.getElementById('preorder-cta')?.addEventListener('click', () => {
     navigate(buildGuestPreorderPath(slug, entryId));
+  });
+
+  document.getElementById('leave-waitlist-cta')?.addEventListener('click', () => {
+    leaveWaitlist().catch(handleFatalError);
   });
 
   document.getElementById('final-pay-cta')?.addEventListener('click', async () => {
@@ -1505,24 +1535,24 @@ async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
     body: `
       ${flash ? renderInlineFlash(flash) : ''}
       <div class="section-head">
-        <div class="section-title">Staff OTP login</div>
-        <div class="section-sub">${escapeHtml(venueName)} closed-pilot console.</div>
+        <div class="section-title">Staff sign in</div>
+        <div class="section-sub">${escapeHtml(venueName)} host console.</div>
       </div>
       <div class="grid grid-2">
         <div class="card">
-          <div class="card-title">Send OTP</div>
-          <div class="card-sub">Use one of the seeded pilot staff phone numbers for local testing.</div>
+          <div class="card-title">Send code</div>
+          <div class="card-sub">Enter your staff phone number to continue.</div>
           <form id="staff-send-form">
             <div class="form-group">
               <label class="form-label" for="staff-phone">Phone</label>
-              <input class="form-input" id="staff-phone" required placeholder="9000000002" value="${escapeHtml(pendingPhone)}">
+              <input class="form-input" id="staff-phone" required placeholder="9876543210" value="${escapeHtml(pendingPhone)}">
             </div>
-            <button class="btn btn-primary btn-full" type="submit">Send OTP</button>
+            <button class="btn btn-primary btn-full" type="submit">Send code</button>
           </form>
         </div>
         <div class="card">
-          <div class="card-title">Verify OTP</div>
-          <div class="card-sub">Local dev with mock notifications still uses the same verification flow.</div>
+          <div class="card-title">Enter code</div>
+          <div class="card-sub">If demo OTP is enabled for this venue, it will appear here automatically.</div>
           <form id="staff-verify-form">
             <div class="form-group">
               <label class="form-label" for="staff-code">OTP code</label>
@@ -1547,9 +1577,9 @@ async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
       sessionStorage.setItem(STAFF_PENDING_PHONE_KEY, phone);
       if (result?.mockOtp) {
         sessionStorage.setItem('flock_staff_mock_otp', result.mockOtp);
-        setFlash('green', `[Demo] OTP auto-filled: ${result.mockOtp}`);
+        setFlash('green', '[Demo] Code auto-filled for this session.');
       } else {
-        setFlash('green', 'OTP sent. Enter the code to access the console.');
+        setFlash('green', 'Code sent. Enter it to access the console.');
       }
       await renderStaffLogin(slug);
       if (result?.mockOtp) {
@@ -1618,24 +1648,24 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
     body: `
       ${flash ? renderInlineFlash(flash) : ''}
       <div class="section-head">
-        <div class="section-title">Admin OTP login</div>
-        <div class="section-sub">${escapeHtml(venueName)} menu and category operations.</div>
+        <div class="section-title">Admin sign in</div>
+        <div class="section-sub">${escapeHtml(venueName)} admin tools.</div>
       </div>
       <div class="grid grid-2">
         <div class="card">
-          <div class="card-title">Send OTP</div>
-          <div class="card-sub">Use an owner or manager number. Admin access is intentionally role-gated.</div>
+          <div class="card-title">Send code</div>
+          <div class="card-sub">Enter a manager or owner phone number to continue.</div>
           <form id="admin-send-form">
             <div class="form-group">
               <label class="form-label" for="admin-phone">Phone</label>
-              <input class="form-input" id="admin-phone" required placeholder="9000000002" value="${escapeHtml(pendingPhone)}">
+              <input class="form-input" id="admin-phone" required placeholder="9876543210" value="${escapeHtml(pendingPhone)}">
             </div>
-            <button class="btn btn-primary btn-full" type="submit">Send OTP</button>
+            <button class="btn btn-primary btn-full" type="submit">Send code</button>
           </form>
         </div>
         <div class="card">
-          <div class="card-title">Verify OTP</div>
-          <div class="card-sub">Admin uses the same OTP rail as staff, but only owner and manager roles continue past this gate.</div>
+          <div class="card-title">Enter code</div>
+          <div class="card-sub">If demo OTP is enabled for this venue, it will appear here automatically. Only manager and owner roles can continue.</div>
           <form id="admin-verify-form">
             <div class="form-group">
               <label class="form-label" for="admin-code">OTP code</label>
@@ -1659,9 +1689,9 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
       });
       sessionStorage.setItem(ADMIN_PENDING_PHONE_KEY, phone);
       if (result?.mockOtp) {
-        setFlash('green', `[Demo] OTP auto-filled: ${result.mockOtp}`);
+        setFlash('green', '[Demo] Code auto-filled for this session.');
       } else {
-        setFlash('green', 'OTP sent. Admin access still requires a manager or owner role.');
+        setFlash('green', 'Code sent. Only manager and owner roles can continue.');
       }
       await renderAdminLogin(slug);
       if (result?.mockOtp) {

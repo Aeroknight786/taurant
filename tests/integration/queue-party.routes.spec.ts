@@ -11,6 +11,7 @@ const {
     getVenueQueue: vi.fn(),
     getQueueEntry: vi.fn(),
     reissueGuestSession: vi.fn(),
+    leaveQueueEntry: vi.fn(),
     notifyQueueEntry: vi.fn(),
     prioritizeQueueEntry: vi.fn(),
     seatGuest: vi.fn(),
@@ -120,6 +121,10 @@ describe('queue and party-session routes', () => {
     });
     queueServiceMock.getVenueQueue.mockResolvedValue([{ id: 'entry_1' }]);
     queueServiceMock.reissueGuestSession.mockResolvedValue({ guestToken: 'guest-token-2' });
+    queueServiceMock.leaveQueueEntry.mockResolvedValue({
+      queueCancelled: true,
+      refundStatus: 'not_needed',
+    });
     queueServiceMock.notifyQueueEntry.mockResolvedValue({
       entryId: 'entry_1',
       status: 'NOTIFIED',
@@ -168,6 +173,12 @@ describe('queue and party-session routes', () => {
       method: 'POST',
       url: '/api/v1/queue/entry_1/session',
       body: { otp: '123456' },
+    })).status).toBe(200);
+
+    expect((await invokeApp(app, {
+      method: 'DELETE',
+      url: '/api/v1/queue/entry_1/leave',
+      headers: { authorization: 'Bearer guest-token' },
     })).status).toBe(200);
 
     expect((await invokeApp(app, {
@@ -235,6 +246,20 @@ describe('queue and party-session routes', () => {
       url: '/api/v1/queue/entry_1/checkout',
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
+  });
+
+  it('rejects guest leave attempts for mismatched queue entries', async () => {
+    const app = (await import('../../src/app')).default;
+
+    const forbidden = await invokeApp(app, {
+      method: 'DELETE',
+      url: '/api/v1/queue/entry_2/leave',
+      headers: { authorization: 'Bearer guest-token' },
+    });
+
+    expect(forbidden.status).toBe(403);
+    expect(forbidden.body.error).toContain('Guest session');
+    expect(queueServiceMock.leaveQueueEntry).not.toHaveBeenCalled();
   });
 
   it('covers party-session join, realtime reads, and bucket mutation validation', async () => {

@@ -646,6 +646,32 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
   };
 }
 
+export async function leaveQueueEntry(entryId: string, venueId: string, guestPhone: string): Promise<{
+  queueCancelled: true;
+  refundStatus: 'refunded' | 'failed' | 'not_needed';
+  refundedPaymentId?: string;
+  refundId?: string;
+  refundFailureReason?: string;
+}> {
+  const entry = await prisma.queueEntry.findFirst({
+    where: { id: entryId, venueId, guestPhone },
+    select: {
+      id: true,
+      status: true,
+    },
+  });
+
+  if (!entry) {
+    throw new AppError('Guest session does not match this queue entry', 403, 'GUEST_SESSION_MISMATCH');
+  }
+
+  if (!['WAITING', 'NOTIFIED'].includes(entry.status)) {
+    throw new AppError('Queue entry is not eligible to leave', 400, 'ENTRY_NOT_LEAVABLE');
+  }
+
+  return cancelQueueEntry(entryId, venueId);
+}
+
 // ── Complete (checkout) ───────────────────────────────────────────
 
 export async function completeQueueEntry(entryId: string): Promise<void> {
