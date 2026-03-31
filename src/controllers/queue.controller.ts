@@ -6,10 +6,12 @@ import { getFlowEvents } from '../services/orderFlowEvent.service';
 import { ok, created } from '../utils/response';
 
 const JoinSchema = z.object({
-  venueId:    z.string().min(1),
-  guestName:  z.string().min(1).max(80),
-  guestPhone: z.string().regex(/^[6-9]\d{9}$/),
-  partySize:  z.number().int().min(1).max(20),
+  venueId:           z.string().min(1),
+  guestName:         z.string().min(1).max(80),
+  guestPhone:        z.string().regex(/^[6-9]\d{9}$/),
+  partySize:         z.number().int().min(1).max(20),
+  seatingPreference: z.enum(['INDOOR', 'OUTDOOR', 'FIRST_AVAILABLE']).default('FIRST_AVAILABLE'),
+  guestNotes:        z.string().trim().max(240).optional(),
 });
 
 const SeatSchema = z.object({
@@ -58,6 +60,20 @@ export async function seatGuest(req: AuthenticatedRequest, res: Response, next: 
   try {
     const { otp, tableId } = SeatSchema.parse(req.body);
     const result = await QueueService.seatGuest({ venueId: req.venue!.id, otp, tableId });
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
+export async function notifyEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.notifyQueueEntry(req.params.entryId, req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
+export async function prioritizeEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.prioritizeQueueEntry(req.params.entryId, req.venue!.id, req.staff?.id);
     ok(res, result);
   } catch (e) { next(e); }
 }

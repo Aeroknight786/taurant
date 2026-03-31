@@ -3,7 +3,7 @@ import { redis, RedisKeys, PubSubChannels, isRedisReady } from '../config/redis'
 import { generateSeatingOtp } from '../utils/otp';
 import { Notify } from '../integrations/notifications';
 import { AppError } from '../middleware/errorHandler';
-import { PaymentStatus, PaymentType, QueueEntryStatus, TableStatus } from '@prisma/client';
+import { PaymentStatus, PaymentType, QueueEntryStatus, QueueSeatingPreference, TableStatus } from '@prisma/client';
 import { QueuePositionInfo } from '../types';
 import { logger } from '../config/logger';
 import { syncPendingPreOrderForSeating } from './order.service';
@@ -12,17 +12,19 @@ import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { generateDisplayRef } from '../utils/txnRef';
-import { resolveVenueConfig } from './venueConfig.service';
+import { ResolvedVenueConfig, isManualQueueDispatchConfig, resolveVenueConfig, shouldSendJoinQueueNotification } from './venueConfig.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 
 // ── Join queue ────────────────────────────────────────────────────
 
 export async function joinQueue(params: {
-  venueId:    string;
-  guestName:  string;
-  guestPhone: string;
-  partySize:  number;
+  venueId:           string;
+  guestName:         string;
+  guestPhone:        string;
+  partySize:         number;
+  seatingPreference: QueueSeatingPreference;
+  guestNotes?:       string;
 }): Promise<{ id: string; otp: string; position: number; estimatedWaitMin: number; guestToken: string }> {
   const venue = await prisma.venue.findUnique({ where: { id: params.venueId } });
   if (!venue) throw new AppError('Venue not found', 404);
@@ -42,7 +44,7 @@ export async function joinQueue(params: {
   if (existing) throw new AppError('This phone is already in the queue', 400, 'ALREADY_IN_QUEUE');
 
   const position = activeCount + 1;
-  const estimatedWaitMin = estimateWait(params.venueId, position);
+  const estimatedWaitMin = estimateWait(venueConfig, position);
 
   // Generate OTP — retry on collision (rare but possible at high volume)
   let otp = generateSeatingOtp();
@@ -64,6 +66,8 @@ export async function joinQueue(params: {
       guestName:       params.guestName,
       guestPhone:      params.guestPhone,
       partySize:       params.partySize,
+      seatingPreference: params.seatingPreference,
+      guestNotes:      params.guestNotes?.trim() || null,
       position,
       otp,
       estimatedWaitMin,
@@ -93,13 +97,21 @@ export async function joinQueue(params: {
     redis.publish(PubSubChannels.queueUpdate(params.venueId), JSON.stringify({ type: 'ENTRY_ADDED', position }))
   );
 
-  await Notify.queueJoined(params.venueId, entry.id, params.guestPhone, params.guestName, position, estimatedWaitMin, venue.name);
+  if (shouldSendJoinQueueNotification(venueConfig)) {
+    await Notify.queueJoined(params.venueId, entry.id, params.guestPhone, params.guestName, position, estimatedWaitMin, venue.name);
+  }
 
   await logFlowEvent({
     queueEntryId: entry.id,
     venueId: params.venueId,
     type: OrderFlowEventType.QUEUE_JOINED,
-    snapshot: { position, partySize: params.partySize, guestName: params.guestName },
+    snapshot: {
+      position,
+      partySize: params.partySize,
+      guestName: params.guestName,
+      seatingPreference: params.seatingPreference,
+      guestNotes: params.guestNotes?.trim() || null,
+    },
   });
 
   return {
@@ -221,6 +233,7 @@ export async function reissueGuestSession(entryId: string, otp: string) {
           brandConfig: true,
           featureConfig: true,
           uiConfig: true,
+          opsConfig: true,
         },
       },
     },
@@ -251,6 +264,190 @@ export async function reissueGuestSession(entryId: string, otp: string) {
       partySessionId: partySession?.session.id,
       participantId: partySession?.hostParticipant.id,
     }),
+  };
+}
+
+export async function notifyQueueEntry(entryId: string, venueId: string): Promise<{
+  entryId: string;
+  status: QueueEntryStatus;
+  notifiedAt: Date;
+  tableReadyDeadlineAt: Date;
+}> {
+  const [entry, venue] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: entryId, venueId },
+      select: {
+        id: true,
+        venueId: true,
+        status: true,
+        tableId: true,
+        guestName: true,
+        guestPhone: true,
+      },
+    }),
+    prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        tableReadyWindowMin: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    }),
+  ]);
+
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
+  }
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  const venueConfig = resolveVenueConfig(venue);
+  if (!isManualQueueDispatchConfig(venueConfig)) {
+    throw new AppError('Manual notify is not enabled for this venue', 400, 'MANUAL_NOTIFY_DISABLED');
+  }
+
+  if (entry.status !== QueueEntryStatus.WAITING) {
+    throw new AppError('Only waiting guests can be notified', 400, 'ENTRY_NOT_WAITING');
+  }
+
+  const notifiedAt = new Date();
+  const tableReadyDeadlineAt = new Date(notifiedAt.getTime() + venue.tableReadyWindowMin * 60 * 1000);
+
+  await prisma.queueEntry.update({
+    where: { id: entry.id },
+    data: {
+      status: QueueEntryStatus.NOTIFIED,
+      notifiedAt,
+      tableReadyDeadlineAt,
+      tableReadyExpiredAt: null,
+    },
+  });
+
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NOTIFIED', entryId: entry.id }))
+  );
+
+  await Notify.tableReady(
+    venueId,
+    entry.id,
+    entry.guestPhone,
+    entry.guestName,
+    'Host desk',
+    venue.name,
+    venue.tableReadyWindowMin,
+  );
+
+  await logFlowEvent({
+    queueEntryId: entry.id,
+    venueId,
+    type: OrderFlowEventType.TABLE_NOTIFIED,
+    snapshot: {
+      dispatchMode: venueConfig.opsConfig.queueDispatchMode,
+      tableLabel: 'Host desk',
+      tableId: entry.tableId,
+    },
+  });
+
+  return {
+    entryId: entry.id,
+    status: QueueEntryStatus.NOTIFIED,
+    notifiedAt,
+    tableReadyDeadlineAt,
+  };
+}
+
+export async function prioritizeQueueEntry(entryId: string, venueId: string, staffId?: string): Promise<{
+  entryId: string;
+  status: QueueEntryStatus;
+  position: number;
+  estimatedWaitMin: number;
+  prioritizedAt: Date;
+}> {
+  const [entry, venue] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: entryId, venueId },
+      select: {
+        id: true,
+        venueId: true,
+        status: true,
+        position: true,
+        estimatedWaitMin: true,
+        guestName: true,
+      },
+    }),
+    prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    }),
+  ]);
+
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
+  }
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  const venueConfig = resolveVenueConfig(venue);
+  if (!isManualQueueDispatchConfig(venueConfig)) {
+    throw new AppError('Manual prioritization is not enabled for this venue', 400, 'QUEUE_PRIORITIZE_DISABLED');
+  }
+
+  if (entry.status !== QueueEntryStatus.WAITING) {
+    throw new AppError('Only waiting guests can be prioritized', 400, 'ENTRY_NOT_WAITING');
+  }
+
+  const { prioritizedPosition } = await resequenceActiveQueue(venueId, entry.id);
+
+  const prioritizedAt = new Date();
+  const newPosition = prioritizedPosition ?? entry.position;
+  const estimatedWaitMin = estimateWait(venueConfig, newPosition);
+
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
+      type: 'ENTRY_PRIORITIZED',
+      entryId,
+      position: newPosition,
+      prioritizedAt: prioritizedAt.toISOString(),
+    }))
+  );
+
+  await logFlowEvent({
+    queueEntryId: entry.id,
+    venueId,
+    type: OrderFlowEventType.QUEUE_PRIORITIZED,
+    snapshot: {
+      previousPosition: entry.position,
+      newPosition,
+      estimatedWaitMin,
+      guestName: entry.guestName,
+      staffId: staffId ?? null,
+      dispatchMode: venueConfig.opsConfig.queueDispatchMode,
+    },
+  });
+
+  return {
+    entryId: entry.id,
+    status: QueueEntryStatus.WAITING,
+    position: newPosition,
+    estimatedWaitMin,
+    prioritizedAt,
   };
 }
 
@@ -525,21 +722,68 @@ export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: 
 
 // ── Internal helpers ──────────────────────────────────────────────
 
-async function recompactPositions(venueId: string): Promise<void> {
-  const waiting = await prisma.queueEntry.findMany({
-    where:   { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
-    orderBy: { joinedAt: 'asc' },
-  });
-
-  await Promise.all(
-    waiting.map((entry, idx) =>
-      prisma.queueEntry.update({ where: { id: entry.id }, data: { position: idx + 1, estimatedWaitMin: estimateWait(venueId, idx + 1) } })
-    )
-  );
+async function recompactPositions(venueId: string, prioritizedEntryId?: string): Promise<void> {
+  await resequenceActiveQueue(venueId, prioritizedEntryId);
 }
 
-function estimateWait(_venueId: string, position: number): number {
-  // TODO: replace with real table-turnover data per venue from TMS
+async function resequenceActiveQueue(venueId: string, prioritizedEntryId?: string): Promise<{ prioritizedPosition: number | null }> {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+
+  const waiting = await prisma.queueEntry.findMany({
+    where:   { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+    orderBy: { position: 'asc' },
+  });
+
+  const prioritizedEntry = prioritizedEntryId ? waiting.find((entry) => entry.id === prioritizedEntryId) : null;
+  let prioritizedPosition: number | null = null;
+  let ordered = waiting;
+
+  if (prioritizedEntry) {
+    const remaining = waiting.filter((entry) => entry.id !== prioritizedEntryId);
+    const firstWaitingIndex = remaining.findIndex((entry) => entry.status === QueueEntryStatus.WAITING);
+    const insertIndex = firstWaitingIndex === -1 ? remaining.length : firstWaitingIndex;
+
+    ordered = [
+      ...remaining.slice(0, insertIndex),
+      prioritizedEntry,
+      ...remaining.slice(insertIndex),
+    ];
+    prioritizedPosition = ordered.findIndex((entry) => entry.id === prioritizedEntryId) + 1;
+  }
+
+  await Promise.all(
+    ordered.map((entry, idx) =>
+      prisma.queueEntry.update({
+        where: { id: entry.id },
+        data: {
+          position: idx + 1,
+          estimatedWaitMin: estimateWait(venueConfig, idx + 1),
+        },
+      })
+    )
+  );
+
+  return { prioritizedPosition };
+}
+
+function estimateWait(venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null, position: number): number {
+  if (venueConfig?.opsConfig.guestWaitFormula === 'SUBKO_FIXED_V1') {
+    return Math.max(3, Math.min(8 + (3 * (position - 1)), 30));
+  }
+
+  // Legacy heuristic used by existing non-Subko venues.
   return Math.ceil(position * AVG_TURN_MINUTES * 0.7);
 }
 

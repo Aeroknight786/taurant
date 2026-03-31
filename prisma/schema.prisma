@@ -35,6 +35,12 @@ enum QueueEntryStatus {
   NO_SHOW
 }
 
+enum QueueSeatingPreference {
+  INDOOR
+  OUTDOOR
+  FIRST_AVAILABLE
+}
+
 enum OrderType {
   PRE_ORDER
   TABLE_ORDER
@@ -98,6 +104,7 @@ enum TmsProvider {
 
 enum OrderFlowEventType {
   QUEUE_JOINED
+  QUEUE_PRIORITIZED
   PREORDER_CREATED
   PREORDER_REPLACED
   DEPOSIT_INITIATED
@@ -149,6 +156,7 @@ model Venue {
   brandConfig         Json?
   featureConfig       Json?
   uiConfig            Json?
+  opsConfig           Json?
   monthlyCoversUsed   Int            @default(0)
   invoiceSequence     Int            @default(0)
   billingCycleStart   DateTime       @default(now())
@@ -276,6 +284,8 @@ model QueueEntry {
   guestName        String
   guestPhone       String
   partySize        Int
+  seatingPreference QueueSeatingPreference @default(FIRST_AVAILABLE)
+  guestNotes       String?
   position         Int
   otp              String
   status           QueueEntryStatus @default(WAITING)

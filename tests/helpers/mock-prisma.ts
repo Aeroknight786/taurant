@@ -67,6 +67,10 @@ export function createPrismaMock() {
       deleteMany: vi.fn(),
     },
     notification: {
+      findFirst: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
       deleteMany: vi.fn(),
     },
     menuCategory: {

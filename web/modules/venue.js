@@ -21,6 +21,41 @@ function readVenueSection(venue, sectionKey) {
   return venue?.config?.[sectionKey] || venue?.[sectionKey] || null;
 }
 
+export function formatQueueSeatingPreference(preference) {
+  switch (preference) {
+    case 'INDOOR':
+      return 'Indoor';
+    case 'OUTDOOR':
+      return 'Outdoor';
+    case 'FIRST_AVAILABLE':
+    default:
+      return 'First available';
+  }
+}
+
+const DEFAULT_VENUE_OPS_CONFIG = {
+  queueDispatchMode: 'AUTO_TABLE',
+  tableSourceMode: 'MANUAL',
+  joinConfirmationMode: 'WHATSAPP',
+  readyNotificationChannels: ['WHATSAPP'],
+  readyReminderEnabled: false,
+  readyReminderOffsetMin: 1,
+  expiryNotificationEnabled: false,
+  guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+  contentMode: 'DEFAULT',
+};
+
+export function resolveVenueOpsConfig(venue) {
+  const rawOpsConfig = readVenueSection(venue, 'opsConfig') || {};
+  return {
+    ...DEFAULT_VENUE_OPS_CONFIG,
+    ...rawOpsConfig,
+    readyNotificationChannels: Array.isArray(rawOpsConfig.readyNotificationChannels) && rawOpsConfig.readyNotificationChannels.length
+      ? rawOpsConfig.readyNotificationChannels
+      : DEFAULT_VENUE_OPS_CONFIG.readyNotificationChannels,
+  };
+}
+
 export function resolveThemePreset(themeKey = DEFAULT_THEME_KEY) {
   return THEME_PRESETS[themeKey] || THEME_PRESETS.default;
 }
@@ -89,6 +124,10 @@ export function shouldLoadVenueBills(venue) {
     || isVenueFeatureEnabled(venue, 'finalPayment');
 }
 
+export function isManualDispatchVenue(venue) {
+  return resolveVenueOpsConfig(venue).queueDispatchMode === 'MANUAL_NOTIFY';
+}
+
 export function getGuestJourneyStepLabels(venue) {
   return isQueueOnlyGuestExperience(venue)
     ? ['Join', 'Wait', 'Seated', 'Done']
@@ -98,6 +137,7 @@ export function getGuestJourneyStepLabels(venue) {
 export function getVenueGuestSurfaceFlags(venue) {
   return {
     queueOnlyGuestExperience: isQueueOnlyGuestExperience(venue),
+    manualDispatchMode: isManualDispatchVenue(venue),
     showPreOrderCta: isVenueFeatureEnabled(venue, 'preOrder'),
     showInviteAction: isVenueFeatureEnabled(venue, 'partyShare'),
     showTableOrdering: isVenueFeatureEnabled(venue, 'seatedOrdering'),
@@ -109,6 +149,8 @@ export function getVenueGuestSurfaceFlags(venue) {
 export function getVenueStaffSurfaceFlags(venue) {
   return {
     queueOnlyGuestExperience: isQueueOnlyGuestExperience(venue),
+    manualDispatchMode: isManualDispatchVenue(venue),
+    showNotifyAction: isManualDispatchVenue(venue),
     showFlowLog: isVenueFeatureEnabled(venue, 'flowLog'),
     showRefundTool: isVenueFeatureEnabled(venue, 'refunds'),
     showOfflineSettleTool: isVenueFeatureEnabled(venue, 'offlineSettle'),

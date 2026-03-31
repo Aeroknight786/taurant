@@ -1,19 +1,20 @@
 # Subko Waitlist Roadmap
 
-Last updated: 2026-03-24
-Status: Phase A implemented in code, awaiting deploy validation
+Last updated: 2026-03-31
+Status: Implementation in progress; manual-dispatch foundation and host-priority/reminder wave landed locally
 
 ## Purpose
 
-This document is the working roadmap for adapting Flock to Subko's current requirements.
+This document is the working roadmap for adapting Flock to Subko's pilot requirements.
 
 It is the source of truth for:
 
 - Subko-specific product scope
-- implementation phases
-- locked decisions
+- phased implementation plan
+- architectural decisions
+- locked assumptions
 - open questions
-- change history for this workstream
+- decision and change history for this workstream
 
 Use this file for the Subko venue adaptation. Use [FLOCK_IMPLEMENTATION_STATE.md](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/docs/FLOCK_IMPLEMENTATION_STATE.md) for the broader product snapshot and [FLOCK_ORCHESTRATION_LEDGER.md](/Users/adsaha/Desktop/Pricing%20Engine/C/Flock/docs/FLOCK_ORCHESTRATION_LEDGER.md) for the broader repo coordination history.
 
@@ -22,90 +23,144 @@ Use this file for the Subko venue adaptation. Use [FLOCK_IMPLEMENTATION_STATE.md
 This roadmap is based on:
 
 - the current multi-venue Flock codebase in `C/Flock`
-- Raj's Craftery / Subko requirements shared on 2026-03-24
-- the current validated venue-config refactor already implemented in code
+- the current live Craftery venue configuration and queue-only feature posture
+- Raj / Nagraj waitlist requirements shared during March 2026
+- the exported pilot note:
+  - [`Product Flow — Flock x The Craftery by Subko 332c085c7b99819fb565ff090a9cb9e8.md`](/Users/adsaha/Downloads/4db32bc4-a05f-4099-a9dd-eb3836301880_ExportBlock-00e3f7d0-58ef-4460-807c-a1b66472f095/ExportBlock-00e3f7d0-58ef-4460-807c-a1b66472f095-Part-1/Private%20&%20Shared/Product%20Flow%20%E2%80%94%20Flock%20x%20The%20Craftery%20by%20Subko%20332c085c7b99819fb565ff090a9cb9e8.md)
+- direct clarification after review:
+  - do not remove TMS / POSist work already built
+  - archive or keep it dormant for Subko
+  - table progression for Subko should be driven by staff actions in the staff module
+  - WhatsApp and IVR are major required integrations for the pilot experience
 
-Raj's current direction, in plain terms:
+## Executive Direction
 
-- no pre-orders for now
-- digitize the waiting list first
-- keep the guest flow simple
-- improve notifications
-- improve queue management and host-side logic
-- capture guest data for service and future engagement
+Subko should run as a manual-dispatch digital waitlist, not as a table-state-driven automation venue.
 
-## Product Scope
+That means:
 
-## Phase 1 Subko Scope
+- keep Flock as a shared multi-venue platform
+- keep TMS / POSist code, schema, and workers intact
+- do not delete or unwind any existing table-sync architecture
+- add a Subko-specific operating mode where queue progression is driven by host action, not by table state or TMS
+- treat WhatsApp and IVR as first-class operational integrations for table-ready communication
 
-The first Subko release should be a queue-first product, not the full Flock pilot stack.
+In short:
 
-Included:
+- shared platform stays broad
+- Subko runtime stays narrow
 
-- QR-based guest waitlist entry
-- guest name capture
-- mobile number capture
-- pax capture
-- seating preference capture
-- optional special notes capture
-- guest live waitlist position view
-- real-time guest updates
-- WhatsApp-first table-ready and queue updates
-- host-side queue management
-- host-side queue prioritization
-- table assignment support
-- no-show timeout and reassignment
-- basic guest data capture for future use
+## Architectural Principles
 
-Excluded for Subko Phase 1:
+### 1. Preserve shared platform capabilities
 
-- pre-order
-- deposit payments
-- shared party sessions
-- at-table ordering
-- final online payment
-- refunds
-- offline settlement
-- admin menu operations as part of the guest launch path
+TMS, POSist, table automation, ordering, payments, and other Flock modules remain part of the codebase and remain available for other venues.
 
-## Current Codebase Fit
+Subko should not force us to remove those systems.
 
-The current system already covers part of Subko's ask well:
+### 2. Disable or archive by venue, not by deletion
 
-- venue QR / browser entry exists
+If a capability is not wanted by Subko, it should become dormant through venue-scoped config and operating mode, not through code removal.
+
+### 3. Separate product modules from operational mode
+
+Feature flags alone are not enough. Subko needs a different queue progression model.
+
+We should distinguish:
+
+- product modules:
+  - guest queue
+  - ordering
+  - payments
+  - staff console
+  - admin console
+- operational mode:
+  - how the queue advances
+  - whether TMS can affect queue progression
+  - whether notifications are sent on join, ready, reminder, expiry
+
+### 4. Keep manual host control primary for the pilot
+
+For Subko, the host decides when to nudge the next guest. The system should assist, not auto-dispatch.
+
+### 5. Keep notification orchestration centralized
+
+WhatsApp, SMS fallback, and the new IVR layer should all remain under one operational notification system with logging, retries, and auditability.
+
+## Current Platform Snapshot
+
+The current codebase already gives us a strong base:
+
+- multi-venue support exists
+- Craftery is already venue-scoped
+- Craftery is already configured as queue-only at the feature level
 - guest queue join exists
-- guest position and ETA view exists
-- table-ready notification infrastructure exists
-- no-show timeout and reassignment already exist
-- staff dashboard and table dashboard already exist
-- pax-based table fitting already exists
-- venue feature flags now exist and can disable unrelated modules per venue
+- guest status page exists
+- staff console exists
+- seat-by-OTP exists
+- queue history exists
+- WhatsApp + SMS notification plumbing exists
+- TMS / POSist poller exists
 
-The current system does not yet fully meet Subko's ask:
+The main mismatch is not code volume. It is operating model.
 
-- queue entry does not yet store seating preference
-- queue entry does not yet store guest special notes
-- host prioritization is still basic
-- wait estimation is still heuristic, not operationally smart
-- notification coverage is still minimal
-- the guest flow still contains queue-plus-ordering language in some copy paths
-- Craftery is now configured down to queue-only behavior in code and migration, but still needs live deployment validation
+Today, core queue movement still assumes table-state-driven progression. For Subko, progression should be host-triggered from the staff console.
 
-## Locked Working Assumptions
+## Subko Target Operating Model
 
-- Subko Phase 1 is a queue product, not a payments product.
-- We will keep the guest experience and a lean host console.
-- We will keep the current admin console enabled for Craftery as an internal fallback surface.
-- We will not remove the shared Flock capabilities from the codebase globally; we will disable them for Subko by venue config.
-- WhatsApp remains the primary notification channel.
-- SMS remains fallback when WhatsApp delivery fails.
-- Theme parity for Craftery / Subko must remain visually consistent with the current production look.
-- Admin-facing venue-config editing is not part of this phase.
-- POSist is scoped as TMS table sync only for Subko. Order posting remains out of scope unless ordering is reintroduced later.
+### Guest journey
+
+1. Guest scans QR at the venue entrance or host desk.
+2. Guest lands on the Craftery venue page.
+3. Guest enters:
+   - name
+   - phone
+   - pax
+   - seating preference
+   - optional special notes
+4. Guest joins the waitlist.
+5. Guest sees:
+   - live queue position
+   - ETA
+   - seating OTP
+   - waitlist disclaimer
+   - Subko content while waiting
+6. Host decides when the next party should be called.
+7. Host taps `Notify`.
+8. Guest receives WhatsApp and IVR.
+9. Guest returns to the desk and shows OTP.
+10. Host seats the guest through the staff console.
+11. Visit eventually moves to history / complete.
+
+### Host journey
+
+1. Host logs into the venue-qualified staff console.
+2. Host sees waiting, notified, seated, expired, cancelled, and recent history states.
+3. Host can:
+   - notify a guest
+   - seat via OTP
+   - cancel
+   - mark no-show or let timeout expire
+   - reorder or prioritize when needed
+   - open or close the queue
+   - tune ready window
+4. Host does not need POSist or TMS for the pilot.
+
+### TMS / POSist posture
+
+For Subko:
+
+- TMS and POSist remain preserved in the platform
+- they do not drive queue progression for this venue
+- they are effectively archived or dormant for Craftery
+
+For the broader platform:
+
+- TMS and POSist remain supported and can still power other venues
 
 ## Target Venue Configuration
 
-For the Subko venue, the intended feature configuration is:
+### Feature configuration for `the-craftery-koramangala`
 
 - `guestQueue: true`
 - `staffConsole: true`
@@ -120,352 +175,401 @@ For the Subko venue, the intended feature configuration is:
 - `refunds: false`
 - `offlineSettle: false`
 
-The intended UI posture is:
+### Proposed new Subko operational configuration
 
-- root venue selector remains shared
-- Subko venue landing becomes queue-only
-- guest copy should describe waitlist flow, not ordering flow
-- staff tools remain accessible through canonical venue-qualified staff routes
-- Craftery staff surface keeps Queue, Seated, History, Tables, Seat OTP, and Manager
-- Craftery staff surface hides flow-log, refund, offline-settle, and bulk-reset tools
+The existing `brandConfig`, `featureConfig`, and `uiConfig` are not enough to express the pilot cleanly.
 
-## Desired Guest Flow
+Add a new venue-scoped `opsConfig` layer, or equivalent strongly typed config, for operational behavior.
 
-1. Guest scans a QR code at entrance or reception.
-2. Guest lands on the Subko venue page.
-3. Guest enters:
-   - name
-   - mobile number
-   - number of guests
-   - seating preference: Indoor / Outdoor / First Available
-   - optional note
-4. Guest submits and is added to the waitlist.
-5. Guest sees:
-   - live queue position
-   - estimated wait
-   - queue status
-   - clear disclaimer about the response window once notified
-6. When a table is ready:
-   - guest receives WhatsApp notification
-   - guest page reflects ready state
-   - countdown window is visible
-7. If the guest does not report within the configured window:
-   - entry becomes no-show
-   - table is released
-   - next suitable party is advanced
+Proposed `opsConfig` fields:
 
-## Desired Host Flow
+- `queueDispatchMode`
+  - `AUTO_TABLE`
+  - `MANUAL_NOTIFY`
+- `tableSourceMode`
+  - `MANUAL`
+  - `TMS`
+  - `HYBRID`
+- `joinConfirmationMode`
+  - `WEB_ONLY`
+  - `WHATSAPP`
+  - `WHATSAPP_SMS`
+- `readyNotificationChannels`
+  - array of `WHATSAPP`, `SMS`, `IVR`
+- `readyReminderEnabled`
+  - boolean
+- `readyReminderOffsetMin`
+  - integer
+- `expiryNotificationEnabled`
+  - boolean
+- `guestWaitFormula`
+  - `SUBKO_FIXED_V1`
+- `contentMode`
+  - `SUBKO_WAIT_CONTENT`
 
-1. Host opens the staff console for the Subko venue.
-2. Host sees:
-   - current waiting list
-   - pax counts
-   - seating preferences
-   - notes
-   - notified parties
-   - countdown / expiry state for ready tables
-3. Host can:
-   - seat a party
-   - prioritize / bump a party
-   - mark a party as no-show or cancel
-   - clear stale entries
-   - monitor recent history
-4. The system should help hosts:
-   - fit the best queue entry to available tables
-   - avoid losing time on expired ready calls
-   - understand queue mix by section and pax
+For Craftery / Subko, the intended values are:
+
+- `queueDispatchMode: MANUAL_NOTIFY`
+- `tableSourceMode: MANUAL`
+- `joinConfirmationMode: WEB_ONLY`
+- `readyNotificationChannels: [WHATSAPP, IVR]`
+- `readyReminderEnabled: true`
+- `readyReminderOffsetMin: 1`
+- `expiryNotificationEnabled: optional, to confirm`
+- `guestWaitFormula: SUBKO_FIXED_V1`
+- `contentMode: SUBKO_WAIT_CONTENT`
 
 ## Roadmap
 
-## Phase A: Configure Craftery / Subko Down To Queue-Only
+## Phase 0: Lock The Subko Operating Mode
 
 Goal:
-Turn the Subko venue into a queue-first product using the new venue config system, without deleting the broader Flock capabilities.
+Make Subko a first-class manual-dispatch waitlist mode without disturbing the shared platform.
 
 Deliverables:
 
-- Subko fixture config set to queue-only feature flags
-- Subko guest landing copy updated for waitlist-only language
-- guest UI hides all ordering and payment paths for Subko
-- staff UI hides irrelevant manager tools for Subko
-- queue-only smoke test passes for Subko
+- finalize this roadmap as the approved architectural direction
+- add a typed venue operational config layer for queue dispatch and notification behavior
+- preserve all existing TMS / POSist code paths
+- explicitly mark Craftery as a manual-dispatch venue
+- stop treating POSist as part of the current Subko pilot path
 
 Acceptance:
 
-- Subko venue exposes only queue-relevant guest functionality
-- attempts to call disabled ordering/payment routes return `VENUE_FEATURE_DISABLED`
-- current Craftery theme remains unchanged
+- Subko has a defined operating mode separate from generic Flock defaults
+- no shared TMS / POSist code is removed
+- Subko runtime behavior can diverge without forking the repo
 
-## Phase A1: POSist Table Sync Hardening
+## Phase 1: Manual Queue Dispatch Backend
 
 Goal:
-Prepare POSist as the table-management system for Subko without expanding into order posting.
+Decouple Craftery queue progression from table-state automation.
 
 Deliverables:
 
-- configure Craftery venue with `tmsProvider=POSIST` once credentials are available
-- map Flock tables to POSist table IDs
-- harden the existing TMS poller against Subko's real POSist payload shape
-- validate `FREE`, `OCCUPIED`, and `CLEARING` transitions against floor operations
-- preserve `RESERVED` tables during inbound POSist sync
-- confirm queue auto-advance still triggers when POSist frees a table
-- keep manual staff table controls as the fallback while POSist stabilizes
-
-Rollout posture:
-
-- mock/dev validation first
-- then observed shadow polling against real credentials
-- then production authority for table-state transitions
+- add explicit queue progression mode handling in backend services
+- when Craftery is in `MANUAL_NOTIFY` mode:
+  - table or TMS events do not auto-notify the next guest
+  - queue progression happens only from host actions
+- add a dedicated `notifyGuest` service path
+- create or reuse state transitions for:
+  - `WAITING`
+  - `NOTIFIED`
+  - `SEATED`
+  - `NO_SHOW`
+  - `CANCELLED`
+  - `COMPLETED`
+- set `notifiedAt` and ready-window expiry timestamps from explicit notify action
+- preserve seat-by-OTP flow after notify
+- keep existing table-state and TMS automation untouched for other venues
 
 Acceptance:
 
-- Craftery can poll POSist without corrupting table state
-- unmatched external table IDs are surfaced for ops follow-up
-- poll failures degrade safely without crashing the worker
-- queue auto-advance still works when table status changes originate in POSist
+- Craftery no longer depends on `tryAdvanceQueue()` or TMS to call the next guest
+- host can move a party from waiting to notified manually
+- host can still seat via OTP cleanly
+- no regressions for non-Subko venues that still use automated table progression
 
-## Phase B: Extend Queue Data Model
+## Phase 2: Queue Data Model And Intake
 
 Goal:
-Capture the exact guest inputs Raj requested.
+Capture the exact guest intake required for the pilot.
 
 Deliverables:
 
-- add `seatingPreference` to `QueueEntry`
-- add guest-entered queue notes to `QueueEntry`
-- validate and persist these fields from the guest form
-- expose them in queue APIs and staff queue views
-
-Proposed model additions:
-
-- `seatingPreference` enum:
+- add `QueueSeatingPreference` enum:
   - `INDOOR`
   - `OUTDOOR`
   - `FIRST_AVAILABLE`
-- `guestNotes` optional string
+- add `QueueEntry.seatingPreference`
+- add `QueueEntry.guestNotes`
+- update join validation
+- update guest form
+- expose these values in queue APIs
+- render them clearly in host views and history
 
 Acceptance:
 
-- guest can submit all required fields from the QR page
-- staff queue view can see those fields clearly
-- historical entries retain those details for review
+- guest can submit the full pilot intake form
+- host can see seating preference and notes at a glance
+- historical queue records retain those values
 
-## Phase C: Improve Queue Logic
+## Phase 3: Guest Wait Experience
 
 Goal:
-Make queue movement and table allocation feel operationally useful, not just technically functional.
+Turn the queue page into the actual pilot guest experience, not just a technical status screen.
 
 Deliverables:
 
-- preference-aware table matching
-- host-side queue prioritization controls
-- clear notified / expiring / no-show states
-- improved ETA logic
-- richer queue stats for pax distribution and section pressure
-
-Planned logic improvements:
-
-- prefer section-compatible tables when preference is explicit
-- fall back to first-available logic when preference allows it
-- let hosts reorder or prioritize entries with an auditable reason
-- track and expose notified-expiring entries prominently
-- improve ETA calculation using:
-  - current occupied tables
-  - recent table turnover
-  - active waiting count by pax bucket
-
-Acceptance:
-
-- indoor-preferring parties are not assigned outdoor first unless overridden or fallback rules allow it
-- hosts can prioritize an entry without direct DB edits
-- queue state makes imminent no-shows obvious
-
-## Phase D: Beef Up Notifications
-
-Goal:
-Turn notifications from minimal transactional events into an operational communication layer for the waitlist.
-
-Deliverables:
-
-- refined WhatsApp templates for:
-  - queue joined
-  - queue progress / reminder
-  - table ready
-  - final reminder before expiry
-  - no-show expiration or rejoin guidance
-- optional SMS fallback retained
-- notification payload logging improved for auditability
-- notification triggers aligned with queue state transitions
-
-Proposed notification behavior:
-
-- send queue-joined confirmation immediately
-- send table-ready message immediately on notify
-- send reminder partway through the response window
-- send expiry message when reassigned, if desired by operations
-
-Acceptance:
-
-- all Subko guest lifecycle notifications are visible in the notification log
-- fallback channel behavior remains intact
-- copy reflects Subko waitlist operations rather than food-ordering operations
-
-## Phase E: Harden Host Console For Subko
-
-Goal:
-Make the operator experience reliable and focused for live floor use.
-
-Deliverables:
-
-- queue rows show:
-  - guest name
-  - phone
-  - pax
-  - seating preference
-  - notes
+- replace the current heuristic ETA with the agreed Subko wait model:
+  - `min(8 + 3×(n−1), 30)`
+  - live countdown
+  - floor at 3 minutes
+  - immediate 3-minute drops when someone ahead is seated or cancelled
+- keep join confirmation in the web app only
+- show:
+  - queue position
   - ETA
-  - countdown if notified
-- prioritization control
-- better section visibility
-- fast queue filters
-- recent history useful for guest recall and service continuity
+  - OTP
+  - response-window disclaimer
+- add wait-page content blocks or tabs for:
+  - menu
+  - merchandise
+  - stories
+  - events
+- make this content venue-configurable
 
 Acceptance:
 
-- host can manage the entire waitlist without touching unrelated Flock modules
-- staff dashboard polling stays stable under live load
-- queue and table flows remain usable on mobile-width staff devices
+- guest sees the exact pilot wait experience without ordering or payment noise
+- countdown behavior matches the Subko pilot formula
+- wait time presentation avoids broken-looking zero states
 
-## Phase F: Subko Validation And Rollout
+## Phase 4: Host Console Rework For Manual Dispatch
 
 Goal:
-Validate the queue-only product against real Subko operations.
+Make the Craftery staff console the true operational surface for the pilot.
 
 Deliverables:
 
-- local automated coverage for new queue-only behaviors
-- Subko-specific Playwright flows
-- production smoke checklist for queue-only mode
-- operational QA checklist for host desk usage
+- add `Notify` action to queue rows
+- emphasize queue states:
+  - waiting
+  - notified
+  - expiring
+  - seated
+  - no-show
+- keep `Seat OTP`, `History`, and `Manager`
+- keep `Seated` only if needed for clean visit closure
+- reduce or hide table-state-heavy controls for Craftery from normal host flow
+- add prioritization or reorder support with auditability
+- expose ready-window countdowns and reminder status for notified guests
+- expose seating preference and notes directly in queue rows
 
 Acceptance:
 
-- guest queue join and live waiting flow work end to end
-- table-ready notifications send correctly
-- no-show reassignment works
-- host queue actions work without exposing disabled ordering modules
+- host can run the entire Subko waitlist from the staff console
+- host action, not hidden automation, drives the next guest call
+- irrelevant Flock modules stay out of the operator path
+
+## Phase 5: Notification Orchestration
+
+Goal:
+Build the real operational notification system required for the pilot.
+
+Deliverables:
+
+- keep the existing notification layer as the shared core
+- rework Subko notification behavior to match pilot scope:
+  - no WhatsApp on join
+  - WhatsApp on table-ready notify
+  - IVR on table-ready notify
+  - reminder during ready window
+  - optional expiry/no-show message
+- update WhatsApp copy for the agreed host-desk return flow
+- add a dedicated IVR provider adapter
+- persist notification attempts and outcomes for all channels
+- enforce idempotency so a double-click does not send duplicate calls or messages
+- add clear operator feedback in the staff console after notify attempts
+
+Acceptance:
+
+- host tapping `Notify` triggers the configured outbound channels exactly once
+- WhatsApp and IVR outcomes are auditable
+- failures degrade clearly and do not leave the queue in an ambiguous state
+
+## Phase 6: Host Analytics And Guest Data Usefulness
+
+Goal:
+Make the captured waitlist data operationally useful for Subko.
+
+Deliverables:
+
+- surface pax mix and queue distribution
+- surface section preference distribution
+- keep history readable for guest recall
+- support export or internal reporting for pilot review
+- track:
+  - join time
+  - notify time
+  - seat time
+  - completion time
+  - final status
+
+Acceptance:
+
+- Subko can evaluate the pilot with actual guest and queue behavior data
+- the host team can use history for service continuity
+
+## Phase 7: Pilot Rollout And Validation
+
+Goal:
+Get the manual-dispatch Craftery pilot operationally ready and verifiable.
+
+Deliverables:
+
+- automated test coverage for the new Subko mode
+- manual host-flow QA on staging / production
+- notification provider validation
+- on-site launch checklist
+- day-1 support checklist
+
+Acceptance:
+
+- guest join, wait, notify, seat, no-show, and complete flows all work end to end
+- host staff can operate without touching unrelated product areas
+- notification delivery is good enough for live pilot use
+
+## Phase 8: Deferred Shared-Platform Work
+
+Goal:
+Make explicit what is preserved but not active for Subko.
+
+Deferred for the Subko pilot, but retained in the platform:
+
+- TMS-driven auto-advance
+- POSist table sync activation
+- ordering and payment modules
+- deposit collection
+- party sessions
+- final online payment
+- refund tooling
+
+Acceptance:
+
+- these capabilities remain intact in code and available to other venues
+- Subko does not depend on them for pilot launch
 
 ## Data Model Plan
 
-Expected schema work for the next implementation phase:
+Expected schema and contract work:
 
-- add a `QueueSeatingPreference` enum
+- add `QueueSeatingPreference`
 - add `QueueEntry.seatingPreference`
 - add `QueueEntry.guestNotes`
-- consider `QueueEntry.priorityRank` or equivalent if manual prioritization needs persistence
-- consider `QueueEntry.priorityReason` for auditability
-- consider notification reminder timestamps if reminder logic should be idempotent
+- add an operational venue config layer such as `opsConfig`
+- consider `QueueEntry.priorityRank`
+- consider `QueueEntry.priorityReason`
+- consider reminder-tracking fields if reminder sending must be idempotent without re-query heuristics
+- consider `QueueEntry.lastNotifiedChannelState` only if notification audit cannot stay fully in `Notification`
 
-## Notification Plan
+## Notification Architecture Plan
 
-Current notification integration is already centralized and should remain the delivery mechanism.
-
-Current delivery path:
+Current shared delivery path should remain the foundation:
 
 - domain service triggers `Notify.*`
 - notification log row is created
-- WhatsApp send is attempted through Gupshup
-- SMS fallback is attempted through MSG91 if WhatsApp fails
+- send is attempted
+- fallback or retry logic runs
+- final status is persisted
 
-Subko-specific expansion should happen inside that same integration layer, not in a separate notification system.
+Subko-specific additions:
 
-## POSist TMS Plan
+- explicit `TABLE_READY_IVR`
+- explicit reminder path
+- explicit expiry path if product confirms it
+- provider abstraction for IVR
+- clear separation between:
+  - join confirmation policy
+  - ready notification policy
+  - reminder policy
 
-Current repo posture:
+Recommended operational behavior for Subko:
 
-- POSist already exists only in the TMS poller path
-- order posting still targets UrbanPiper, not POSist
-- the existing venue fields are already enough for initial POSist setup:
-  - `tmsProvider`
-  - `tmsApiKey`
-  - `tmsVenueId`
-  - `posPlatform`
-  - `posOutletId`
+- join:
+  - web confirmation only
+- ready:
+  - WhatsApp + IVR
+- reminder:
+  - WhatsApp and optional IVR or SMS fallback, depending on provider costs and user behavior
+- expiry:
+  - optional guest-facing message
 
-Subko implementation direction:
+## TMS / POSist Posture For Subko
 
-- treat POSist as table-state sync only
-- do not introduce POSist order posting in the current roadmap
-- reuse the existing TMS poller entrypoint and harden it for the real Subko payload contract
-- add monitoring for:
-  - last successful poll per venue
-  - poll failures
-  - unmatched external table IDs
-  - state transition counts
+This is now explicitly revised.
 
-## UX / Copy Plan
+### What stays true
 
-Guest copy should shift from "queue, pre-order, pay" language to "join the waiting list and stay updated."
+- TMS and POSist work already built in Flock should remain in the repo
+- venue schema fields stay intact
+- workers and adapters stay intact
 
-Subko guest experience should communicate:
+### What changes for Subko
 
-- simple queue signup
-- clear live status
-- clear table-ready window
-- clear no-show expectation
+- Craftery should not use POSist in the current pilot
+- Craftery should not use TMS table-state changes to advance the queue
+- the shared TMS / POSist architecture becomes dormant for this venue
 
-The disclaimer should be explicit:
+### Future posture
 
-"Once your table is ready, please report to the host desk within 2 to 3 minutes. If you do not arrive in time, the table may be reassigned to the next guest."
+If Subko later wants POSist reintroduced:
+
+- we reactivate it through venue config and rollout planning
+- we do not need to rebuild the platform from scratch
 
 ## Test Plan
 
 ## Unit
 
-- queue join with seating preference and notes
-- queue validation for allowed preferences
-- preference-aware table matching
-- no-show expiry and reassignment
-- prioritization behavior
-- reminder scheduling / send logic
-- Subko venue config disables non-queue modules
+- Subko operating-mode resolution
+- manual notify state transition
+- no auto-advance for manual-dispatch venues
+- seating preference validation
+- guest notes validation
+- ETA formula and countdown math
+- reminder scheduling logic
+- IVR send orchestration
+- venue-config dormant TMS / POSist behavior for Craftery
 
 ## Integration
 
-- guest join payload includes new fields
-- queue read returns new fields
-- staff queue endpoints reflect prioritization and notified states correctly
-- disabled order/payment routes return stable `403 VENUE_FEATURE_DISABLED`
-- notification records are created for each waitlist lifecycle event
+- guest join payload includes seating preference and notes
+- Craftery join does not send join-time WhatsApp
+- host `Notify` endpoint changes queue state correctly
+- notify action creates notification records for WhatsApp and IVR
+- seat-by-OTP works after manual notify
+- expiry moves notified guest to no-show correctly
+- non-Subko venues still retain current automated table progression behavior
 
 ## Browser / Playwright
 
-- guest joins Subko waitlist from QR venue page
-- guest sees queue position and ETA
-- guest receives notified state cleanly in UI
-- host seats a guest from the Subko queue console
-- host priority change affects queue order
-- no-show expiry releases table and advances next party
-- no ordering or payment CTA is exposed on the Subko guest flow
+- guest joins from Craftery QR page
+- guest sees live ETA, OTP, disclaimer, and content
+- host sees seating preference and notes in queue row
+- host taps `Notify`
+- guest page moves to ready state
+- host seats guest by OTP
+- no-show window behaves correctly
+- no ordering or payment CTAs appear for Craftery
+
+## Operational QA
+
+- WhatsApp template approval and live delivery check
+- IVR provider live delivery check
+- host desk training pass
+- mobile-width staff-console usability pass
+- day-1 pilot rehearsal
 
 ## Open Questions
 
-- Does Subko want guests to verify the phone number by OTP before final queue confirmation, or is phone capture enough for Phase 1?
-- Should hosts be able to override seating preference manually without additional warning?
-- Does Subko want "Indoor / Outdoor / First Available" to be strict matching, or only a preference signal?
-- Should no-show expiry send a guest-facing message, or should reassignment be silent?
-- Does Subko want a simple CRM export / data download in Phase 1, or only data capture in the product for now?
+- Which IVR provider should be used for the pilot?
+- Does Subko want a guest-facing expiry message when a table is reassigned?
+- Should a notified guest be seatable without selecting a specific table label, or should table selection remain part of the host flow?
+- Does Subko want hosts to manually choose the next guest every time, or should the system still recommend the best next candidate?
+- Should content blocks be simple external links first, or richer embedded content in the first release?
+- Is guest phone OTP verification needed at join, or is captured phone number enough for Phase 1?
 
 ## Review Checklist
 
 This roadmap is ready for implementation once the following are explicitly confirmed:
 
-- queue-only scope for Subko is approved
-- seating preference options are approved
-- guest notes should be stored
-- host prioritization is in scope
-- notification expansion is in scope
-- OTP on guest join yes / no decision is made
+- Subko pilot should use manual staff dispatch, not table-state automation
+- TMS / POSist should remain dormant, not active, for Craftery
+- seating preference and notes are approved as required intake fields
+- WhatsApp + IVR is approved as the primary ready-notification stack
+- join-time message policy is confirmed as web-only
+- the host console should be the operational source of truth for progression
 
 ## Decision Ledger
 
@@ -476,7 +580,15 @@ This roadmap is ready for implementation once the following are explicitly confi
 - Chosen implementation posture: keep Flock shared codebase, disable non-Subko modules by venue config instead of forking code.
 - Chosen notification posture: extend existing WhatsApp-first integration rather than build a new notification subsystem.
 - Locked admin posture: keep the current admin console enabled for Craftery as an internal fallback surface.
-- Locked POSist posture: table sync only through the TMS poller, no POSist order posting in the current roadmap.
+
+## 2026-03-31
+
+- Revised the roadmap after reviewing the exported pilot scope note and current architecture.
+- Locked new architectural direction: Subko should run in a manual-dispatch waitlist mode.
+- Locked preservation posture: TMS / POSist stays in the shared platform and is not removed.
+- Locked Subko posture for TMS / POSist: dormant for Craftery in the pilot, not active.
+- Locked notification posture for the pilot: WhatsApp and IVR are first-class integrations for table-ready communication.
+- Replaced the earlier Subko assumption that POSist table sync belongs in the current pilot roadmap.
 
 ## Change Ledger
 
@@ -486,20 +598,24 @@ This roadmap is ready for implementation once the following are explicitly confi
 - Recorded current fit/gap analysis between Raj's requirements and the current Flock implementation.
 - Defined phased roadmap from venue configuration through queue logic, notifications, host tooling, and rollout validation.
 - Updated Phase A to align Craftery with queue-only feature flags while retaining admin as fallback.
-- Added the POSist hardening phase and documented that Subko will treat POSist as TMS table sync only.
-- Implemented Phase A in code:
-  - Craftery fixture config is queue-only
-  - persisted Craftery venue migration updates the live row on deploy
-  - Craftery guest UI now hides preorder/share/order/pay surfaces
-  - Craftery staff UI now hides flow-log, refund, offline-settle, and bulk-reset tools
-  - Craftery-specific regression coverage now asserts hidden modules and theme routing
+- Implemented the initial Craftery queue-only feature posture in code.
+
+## 2026-03-31
+
+- Rewrote this roadmap to reflect the clarified Subko pilot architecture.
+- Added the explicit manual-dispatch operating model for Craftery.
+- Added the recommendation for a dedicated venue operational config layer.
+- Reframed TMS / POSist from active roadmap work to preserved but dormant platform capability for Subko.
+- Added a dedicated notification-orchestration phase covering WhatsApp and IVR.
+- Split the roadmap into architecture-first phases: operating mode, manual dispatch backend, queue model, guest wait experience, host console, notifications, analytics, rollout, and deferred platform capabilities.
+- Implemented the first manual-dispatch wave in code: queue notify action, seating preference and guest notes intake, queue-only Craftery wait content, IVR notification scaffolding, and fixed Subko wait-formula activation for Craftery.
+- Implemented the next host-operations wave in code: ready-window reminder sweep, manual queue reprioritization with audited flow events, and Craftery staff controls for prioritizing waiting guests without jumping ahead of already-notified parties.
 
 ## Next Action
 
-Review this roadmap with the Subko direction in mind.
+Continue implementation with the next Subko pilot slice:
 
-Once approved, implementation should start with:
-
-1. Deploy and validate Phase A on the Craftery venue
-2. Phase B: add seating preference and guest notes to queue entries
-3. Phase C: improve queue logic and notifications
+1. wire timed reminder scheduling through production-safe worker cadence and operator visibility
+2. add richer host prioritization controls and reason capture if the team wants audit detail beyond the current flow event
+3. complete real IVR provider integration and delivery logging
+4. run production validation after the new migrations are applied

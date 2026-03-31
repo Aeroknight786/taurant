@@ -28,6 +28,12 @@ function optionalHexColor() {
 }
 
 export const VenueThemeKeySchema = z.enum(['default', 'craftery']);
+export const VenueQueueDispatchModeSchema = z.enum(['AUTO_TABLE', 'MANUAL_NOTIFY']);
+export const VenueTableSourceModeSchema = z.enum(['MANUAL', 'TMS', 'HYBRID']);
+export const VenueJoinConfirmationModeSchema = z.enum(['WEB_ONLY', 'WHATSAPP', 'WHATSAPP_SMS']);
+export const VenueReadyNotificationChannelSchema = z.enum(['WHATSAPP', 'SMS', 'IVR']);
+export const VenueGuestWaitFormulaSchema = z.enum(['LEGACY_TURN_HEURISTIC', 'SUBKO_FIXED_V1']);
+export const VenueContentModeSchema = z.enum(['DEFAULT', 'SUBKO_WAIT_CONTENT']);
 
 export const VenueBrandConfigSchema = z.object({
   displayName: optionalTrimmedString(120),
@@ -60,9 +66,22 @@ export const VenueUiConfigSchema = z.object({
   supportCopy: optionalTrimmedString(240),
 }).strict();
 
+export const VenueOpsConfigSchema = z.object({
+  queueDispatchMode: VenueQueueDispatchModeSchema.optional(),
+  tableSourceMode: VenueTableSourceModeSchema.optional(),
+  joinConfirmationMode: VenueJoinConfirmationModeSchema.optional(),
+  readyNotificationChannels: z.array(VenueReadyNotificationChannelSchema).min(1).optional(),
+  readyReminderEnabled: z.boolean().optional(),
+  readyReminderOffsetMin: z.number().int().min(1).max(15).optional(),
+  expiryNotificationEnabled: z.boolean().optional(),
+  guestWaitFormula: VenueGuestWaitFormulaSchema.optional(),
+  contentMode: VenueContentModeSchema.optional(),
+}).strict();
+
 export type VenueBrandConfig = z.infer<typeof VenueBrandConfigSchema>;
 export type VenueFeatureConfig = z.infer<typeof VenueFeatureConfigSchema>;
 export type VenueUiConfig = z.infer<typeof VenueUiConfigSchema>;
+export type VenueOpsConfig = z.infer<typeof VenueOpsConfigSchema>;
 
 export type ResolvedVenueBrandConfig = {
   displayName: string;
@@ -81,10 +100,23 @@ export type ResolvedVenueUiConfig = {
   supportCopy: string;
 };
 
+export type ResolvedVenueOpsConfig = {
+  queueDispatchMode: z.infer<typeof VenueQueueDispatchModeSchema>;
+  tableSourceMode: z.infer<typeof VenueTableSourceModeSchema>;
+  joinConfirmationMode: z.infer<typeof VenueJoinConfirmationModeSchema>;
+  readyNotificationChannels: Array<z.infer<typeof VenueReadyNotificationChannelSchema>>;
+  readyReminderEnabled: boolean;
+  readyReminderOffsetMin: number;
+  expiryNotificationEnabled: boolean;
+  guestWaitFormula: z.infer<typeof VenueGuestWaitFormulaSchema>;
+  contentMode: z.infer<typeof VenueContentModeSchema>;
+};
+
 export type ResolvedVenueConfig = {
   brandConfig: ResolvedVenueBrandConfig;
   featureConfig: ResolvedVenueFeatureConfig;
   uiConfig: ResolvedVenueUiConfig;
+  opsConfig: ResolvedVenueOpsConfig;
 };
 
 export type VenueFeatureKey = keyof ResolvedVenueFeatureConfig;
@@ -98,6 +130,7 @@ type VenueConfigSource = {
   brandConfig?: Prisma.JsonValue | null;
   featureConfig?: Prisma.JsonValue | null;
   uiConfig?: Prisma.JsonValue | null;
+  opsConfig?: Prisma.JsonValue | null;
 };
 
 const THEME_PRESET_DEFAULTS: Record<z.infer<typeof VenueThemeKeySchema>, { themeColor: string }> = {
@@ -129,6 +162,18 @@ const DEFAULT_VENUE_UI_CONFIG: ResolvedVenueUiConfig = {
   defaultGuestTray: 'menu',
   showContinueEntry: true,
   supportCopy: 'No app download. Use your phone number as your queue identity and receive a seating OTP instantly.',
+};
+
+const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
+  queueDispatchMode: 'AUTO_TABLE',
+  tableSourceMode: 'MANUAL',
+  joinConfirmationMode: 'WHATSAPP',
+  readyNotificationChannels: ['WHATSAPP'],
+  readyReminderEnabled: false,
+  readyReminderOffsetMin: 1,
+  expiryNotificationEnabled: false,
+  guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+  contentMode: 'DEFAULT',
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -163,6 +208,7 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
   const rawBrandConfig = parseStoredConfig(VenueBrandConfigSchema, source.brandConfig);
   const rawFeatureConfig = parseStoredConfig(VenueFeatureConfigSchema, source.featureConfig);
   const rawUiConfig = parseStoredConfig(VenueUiConfigSchema, source.uiConfig);
+  const rawOpsConfig = parseStoredConfig(VenueOpsConfigSchema, source.opsConfig);
 
   const themeKey = rawBrandConfig.themeKey ?? 'default';
   const themePreset = THEME_PRESET_DEFAULTS[themeKey];
@@ -184,6 +230,10 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
       ...DEFAULT_VENUE_UI_CONFIG,
       ...rawUiConfig,
     },
+    opsConfig: {
+      ...DEFAULT_VENUE_OPS_CONFIG,
+      ...rawOpsConfig,
+    },
   };
 }
 
@@ -199,15 +249,18 @@ export function buildVenueConfigPatch(source: VenueConfigSource, patch: {
   brandConfig?: VenueBrandConfig;
   featureConfig?: VenueFeatureConfig;
   uiConfig?: VenueUiConfig;
+  opsConfig?: VenueOpsConfig;
 }) {
   const existingBrandConfig = parseStoredConfig(VenueBrandConfigSchema, source.brandConfig);
   const existingFeatureConfig = parseStoredConfig(VenueFeatureConfigSchema, source.featureConfig);
   const existingUiConfig = parseStoredConfig(VenueUiConfigSchema, source.uiConfig);
+  const existingOpsConfig = parseStoredConfig(VenueOpsConfigSchema, source.opsConfig);
 
   return {
     ...(patch.brandConfig ? { brandConfig: toJsonValue({ ...existingBrandConfig, ...patch.brandConfig }) } : {}),
     ...(patch.featureConfig ? { featureConfig: toJsonValue({ ...existingFeatureConfig, ...patch.featureConfig }) } : {}),
     ...(patch.uiConfig ? { uiConfig: toJsonValue({ ...existingUiConfig, ...patch.uiConfig }) } : {}),
+    ...(patch.opsConfig ? { opsConfig: toJsonValue({ ...existingOpsConfig, ...patch.opsConfig }) } : {}),
   };
 }
 
@@ -221,6 +274,7 @@ export async function getResolvedVenueConfigById(venueId: string): Promise<Resol
       brandConfig: true,
       featureConfig: true,
       uiConfig: true,
+      opsConfig: true,
     },
   });
 
@@ -270,3 +324,13 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
 }
 
 export const venueFeatureDisabledMessages = FEATURE_DISABLED_MESSAGES;
+
+export function isManualQueueDispatchConfig(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.queueDispatchMode === 'MANUAL_NOTIFY';
+}
+
+export function shouldSendJoinQueueNotification(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.joinConfirmationMode !== 'WEB_ONLY';
+}

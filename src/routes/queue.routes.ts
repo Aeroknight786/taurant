@@ -8,6 +8,8 @@ router.post('/',                     guestMutationLimiter, requireVenueFeature('
 router.get ('/live',                 requireAuth, requireVenueFeature('guestQueue'), operatorReadLimiter, Queue.getVenueQueue);
 router.post('/:entryId/session',     otpVerifyLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), Queue.reissueGuestSession);
 router.get ('/:entryId',             requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntry);
+router.post('/:entryId/notify',      requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.notifyEntry);
+router.post('/:entryId/prioritize',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.prioritizeEntry);
 router.post('/seat',                 requireAuth, requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.seatGuest);
 router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.cancelEntry);
 router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.checkoutEntry);

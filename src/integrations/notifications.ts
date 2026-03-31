@@ -2,6 +2,12 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { prisma } from '../config/database';
 import { NotificationType, NotificationChannel, NotificationStatus, Prisma } from '@prisma/client';
+import {
+  sendIvrQueueExpired,
+  sendIvrQueueNoShow,
+  sendIvrQueueReadyReminder,
+  sendIvrQueueTableReady,
+} from './ivr';
 
 // ── Template builders ──────────────────────────────────────────────
 
@@ -10,11 +16,26 @@ function otpMessage(otp: string, venueName: string): string {
 }
 
 function queueJoinedMessage(name: string, position: number, waitMin: number, venueName: string): string {
-  return `Hi ${name}! You're #${position} in the queue at ${venueName}. Estimated wait: ~${waitMin} mins. We'll WhatsApp you when your table's ready.`;
+  return `Hi ${name}! You're #${position} in the queue at ${venueName}. Estimated wait: ~${waitMin} mins. We'll message you when your table's ready.`;
 }
 
-function tableReadyMessage(name: string, tableLabel: string, venueName: string, windowMin: number): string {
-  return `Great news ${name}! Your table (${tableLabel}) is ready at ${venueName}. Please arrive within ${windowMin} minutes or it may be reassigned.`;
+function queueReadyReminderMessage(name: string, venueName: string, position?: number, waitMin?: number): string {
+  const positionPart = Number.isFinite(position) && (position ?? 0) > 0 ? ` You're still #${position} in line.` : '';
+  const waitPart = Number.isFinite(waitMin) ? ` Estimated wait: ~${waitMin} mins.` : '';
+  return `Hi ${name}!${positionPart}${waitPart} Please stay nearby and keep your phone handy. The host desk will call your party when a table is ready at ${venueName}.`;
+}
+
+function queueExpiredMessage(name: string, venueName: string, reason: 'EXPIRED' | 'NO_SHOW'): string {
+  if (reason === 'NO_SHOW') {
+    return `Hi ${name}. We couldn't reach you in time at ${venueName}, so the waitlist slot was released. Please check with the host desk if you'd like to rejoin.`;
+  }
+
+  return `Hi ${name}. Your host desk call window at ${venueName} expired. If you're still waiting, please check back in with the host desk.`;
+}
+
+function tableReadyMessage(name: string, venueName: string, windowMin: number, tableLabel?: string): string {
+  const labelSuffix = tableLabel ? ` (${tableLabel})` : '';
+  return `Great news ${name}! Your table${labelSuffix} is ready at ${venueName}. Please head to the host desk within ${windowMin} minutes or it may be reassigned.`;
 }
 
 function orderConfirmedMessage(name: string, txnRef: string, amount: number): string {
@@ -129,6 +150,69 @@ export async function sendNotification(params: SendNotificationParams): Promise<
   }
 }
 
+async function maybeSendIvrForQueueMessage(
+  venueId: string,
+  queueEntryId: string,
+  phone: string,
+  message: string,
+  kind: 'TABLE_READY' | 'QUEUE_READY_REMINDER' | 'QUEUE_EXPIRED' | 'QUEUE_NO_SHOW',
+): Promise<void> {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: { slug: true },
+  });
+
+  if (!venue?.slug) {
+    return;
+  }
+
+  try {
+    const params = {
+      venueId,
+      venueSlug: venue.slug,
+      queueEntryId,
+      to: phone,
+      message,
+    };
+
+    if (kind === 'TABLE_READY') {
+      await sendIvrQueueTableReady(params);
+    } else if (kind === 'QUEUE_READY_REMINDER') {
+      await sendIvrQueueReadyReminder(params);
+    } else if (kind === 'QUEUE_EXPIRED') {
+      await sendIvrQueueExpired(params);
+    } else {
+      await sendIvrQueueNoShow(params);
+    }
+  } catch (error) {
+    const messageText = error instanceof Error ? error.message : String(error);
+    logger.error('IVR queue-status dispatch failed', {
+      venueId,
+      queueEntryId,
+      to: phone,
+      kind,
+      error: messageText,
+    });
+  }
+}
+
+async function sendQueueStatusNotification(params: {
+  venueId: string;
+  queueEntryId: string;
+  phone: string;
+  message: string;
+  payload: Record<string, unknown>;
+}): Promise<void> {
+  await sendNotification({
+    venueId: params.venueId,
+    queueEntryId: params.queueEntryId,
+    type: NotificationType.TABLE_READY,
+    to: params.phone,
+    message: params.message,
+    payload: params.payload,
+  });
+}
+
 // ── Convenience wrappers ───────────────────────────────────────────
 
 export const Notify = {
@@ -139,9 +223,101 @@ export const Notify = {
     sendNotification({ venueId, queueEntryId: entryId, type: NotificationType.QUEUE_JOINED, to: phone,
       message: queueJoinedMessage(name, position, waitMin, venueName) }),
 
-  tableReady: (venueId: string, entryId: string, phone: string, name: string, tableLabel: string, venueName: string, windowMin: number) =>
-    sendNotification({ venueId, queueEntryId: entryId, type: NotificationType.TABLE_READY, to: phone,
-      message: tableReadyMessage(name, tableLabel, venueName, windowMin) }),
+  queueReadyReminder: async (
+    venueId: string,
+    entryId: string,
+    phone: string,
+    name: string,
+    position: number,
+    waitMin: number,
+    venueName: string,
+  ) => {
+    const message = queueReadyReminderMessage(name, venueName, position, waitMin);
+
+    await sendQueueStatusNotification({
+      venueId,
+      queueEntryId: entryId,
+      phone,
+      message,
+      payload: {
+        kind: 'QUEUE_READY_REMINDER',
+        name,
+        position,
+        waitMin,
+        venueName,
+      },
+    });
+
+    await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_READY_REMINDER');
+  },
+
+  queueExpired: async (
+    venueId: string,
+    entryId: string,
+    phone: string,
+    name: string,
+    venueName: string,
+  ) => {
+    const message = queueExpiredMessage(name, venueName, 'EXPIRED');
+
+    await sendQueueStatusNotification({
+      venueId,
+      queueEntryId: entryId,
+      phone,
+      message,
+      payload: {
+        kind: 'QUEUE_EXPIRED',
+        name,
+        venueName,
+      },
+    });
+
+    await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_EXPIRED');
+  },
+
+  queueNoShow: async (
+    venueId: string,
+    entryId: string,
+    phone: string,
+    name: string,
+    venueName: string,
+  ) => {
+    const message = queueExpiredMessage(name, venueName, 'NO_SHOW');
+
+    await sendQueueStatusNotification({
+      venueId,
+      queueEntryId: entryId,
+      phone,
+      message,
+      payload: {
+        kind: 'QUEUE_NO_SHOW',
+        name,
+        venueName,
+      },
+    });
+
+    await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_NO_SHOW');
+  },
+
+  tableReady: async (venueId: string, entryId: string, phone: string, name: string, tableLabel: string | undefined, venueName: string, windowMin: number) => {
+    const message = tableReadyMessage(name, venueName, windowMin, tableLabel);
+
+    await sendQueueStatusNotification({
+      venueId,
+      queueEntryId: entryId,
+      phone,
+      message,
+      payload: {
+        kind: 'TABLE_READY',
+        name,
+        tableLabel,
+        venueName,
+        windowMin,
+      },
+    });
+
+    await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'TABLE_READY');
+  },
 
   orderConfirmed: (venueId: string, entryId: string, phone: string, name: string, txnRef: string, amount: number) =>
     sendNotification({ venueId, queueEntryId: entryId, type: NotificationType.ORDER_CONFIRMED, to: phone,

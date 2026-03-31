@@ -11,6 +11,8 @@ const {
     getVenueQueue: vi.fn(),
     getQueueEntry: vi.fn(),
     reissueGuestSession: vi.fn(),
+    notifyQueueEntry: vi.fn(),
+    prioritizeQueueEntry: vi.fn(),
     seatGuest: vi.fn(),
     cancelQueueEntry: vi.fn(),
     completeQueueEntry: vi.fn(),
@@ -49,11 +51,16 @@ vi.mock('../../src/middleware/venueFeature', () => ({
 
 vi.mock('../../src/middleware/auth', () => ({
   requireAuth: (req: any, res: any, next: any) => {
-    if (req.header('authorization') !== 'Bearer staff-token') {
+    const auth = req.header('authorization');
+    if (auth !== 'Bearer staff-token' && auth !== 'Bearer staff-token-priority') {
       res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
-    req.staff = { id: 'staff_1', role: 'MANAGER', venueId: 'venue_1' };
+    req.staff = {
+      id: auth === 'Bearer staff-token-priority' ? 'staff_priority' : 'staff_1',
+      role: 'MANAGER',
+      venueId: 'venue_1',
+    };
     req.venue = { id: 'venue_1', slug: 'the-barrel-room-koramangala' };
     next();
   },
@@ -72,13 +79,18 @@ vi.mock('../../src/middleware/auth', () => ({
     next();
   },
   requireGuestOrStaffAuth: (req: any, res: any, next: any) => {
-    if (req.header('authorization') === 'Bearer staff-token') {
-      req.staff = { id: 'staff_1', role: 'MANAGER', venueId: 'venue_1' };
+    const auth = req.header('authorization');
+    if (auth === 'Bearer staff-token' || auth === 'Bearer staff-token-priority') {
+      req.staff = {
+        id: auth === 'Bearer staff-token-priority' ? 'staff_priority' : 'staff_1',
+        role: 'MANAGER',
+        venueId: 'venue_1',
+      };
       req.venue = { id: 'venue_1', slug: 'the-barrel-room-koramangala' };
       next();
       return;
     }
-    if (req.header('authorization') === 'Bearer guest-token') {
+    if (auth === 'Bearer guest-token') {
       req.guest = {
         queueEntryId: 'entry_1',
         venueId: 'venue_1',
@@ -108,6 +120,19 @@ describe('queue and party-session routes', () => {
     });
     queueServiceMock.getVenueQueue.mockResolvedValue([{ id: 'entry_1' }]);
     queueServiceMock.reissueGuestSession.mockResolvedValue({ guestToken: 'guest-token-2' });
+    queueServiceMock.notifyQueueEntry.mockResolvedValue({
+      entryId: 'entry_1',
+      status: 'NOTIFIED',
+      notifiedAt: new Date('2026-03-31T10:00:00.000Z'),
+      tableReadyDeadlineAt: new Date('2026-03-31T10:15:00.000Z'),
+    });
+    queueServiceMock.prioritizeQueueEntry.mockResolvedValue({
+      entryId: 'entry_1',
+      status: 'WAITING',
+      position: 1,
+      estimatedWaitMin: 8,
+      prioritizedAt: new Date('2026-03-31T10:01:00.000Z'),
+    });
     queueServiceMock.getRecentCompletedEntries.mockResolvedValue([{ id: 'entry_history' }]);
     orderFlowEventServiceMock.getFlowEvents.mockResolvedValue([{ id: 'flow_1' }]);
 
@@ -116,9 +141,20 @@ describe('queue and party-session routes', () => {
     const joined = await invokeApp(app, {
       method: 'POST',
       url: '/api/v1/queue',
-      body: { venueId: 'venue_1', guestName: 'Neha', guestPhone: '9876543210', partySize: 2 },
+      body: {
+        venueId: 'venue_1',
+        guestName: 'Neha',
+        guestPhone: '9876543210',
+        partySize: 2,
+        seatingPreference: 'OUTDOOR',
+        guestNotes: 'Need stroller space',
+      },
     });
     expect(joined.status).toBe(201);
+    expect(queueServiceMock.joinQueue).toHaveBeenCalledWith(expect.objectContaining({
+      seatingPreference: 'OUTDOOR',
+      guestNotes: 'Need stroller space',
+    }));
 
     const live = await invokeApp(app, {
       method: 'GET',
@@ -132,6 +168,18 @@ describe('queue and party-session routes', () => {
       method: 'POST',
       url: '/api/v1/queue/entry_1/session',
       body: { otp: '123456' },
+    })).status).toBe(200);
+
+    expect((await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/entry_1/notify',
+      headers: { authorization: 'Bearer staff-token' },
+    })).status).toBe(200);
+
+    expect((await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/entry_1/prioritize',
+      headers: { authorization: 'Bearer staff-token-priority' },
     })).status).toBe(200);
 
     expect((await invokeApp(app, {

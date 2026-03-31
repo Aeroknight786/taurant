@@ -334,6 +334,92 @@ button, input, select {
   margin-top: 3px;
 }
 
+.wait-content {
+  display: grid;
+  gap: 14px;
+  margin: 16px 0;
+}
+
+.wait-content-head {
+  margin-bottom: 0;
+}
+
+.wait-content-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.wait-content-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.wait-content-card--menu {
+  border-color: var(--amber-border);
+}
+
+.wait-content-card--merchandise {
+  border-color: var(--blue-border);
+}
+
+.wait-content-card--stories {
+  border-color: var(--green-border);
+}
+
+.wait-content-card--events {
+  border-color: var(--red-border);
+}
+
+.wait-content-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  margin-bottom: 8px;
+}
+
+.wait-content-title {
+  font-family: "Instrument Serif", serif;
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.wait-content-copy {
+  font-size: 13px;
+  color: var(--cream-dim);
+  line-height: 1.55;
+}
+
+.wait-content-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.wait-content-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(255, 255, 255, 0.02);
+  color: var(--cream);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.wait-content-chip-muted {
+  color: var(--cream-dimmer);
+  border-style: dashed;
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -428,6 +514,16 @@ button, input, select {
   background: var(--surface2);
   color: var(--cream);
   outline: none;
+}
+
+.form-input,
+textarea.form-input {
+  min-height: 44px;
+}
+
+textarea.form-input {
+  resize: vertical;
+  line-height: 1.45;
 }
 
 .form-input:focus,
@@ -1310,6 +1406,11 @@ button, input, select {
   background: rgba(90, 158, 114, 0.05);
 }
 
+.q-row.ready {
+  border-color: var(--blue-border);
+  background: rgba(74, 130, 192, 0.05);
+}
+
 .q-row-num {
   font-family: "Instrument Serif", serif;
   font-size: 40px;
@@ -1338,6 +1439,55 @@ button, input, select {
   font-size: 12px;
   color: var(--cream-dim);
   margin-top: 3px;
+}
+
+.q-row-note {
+  font-size: 12px;
+  color: var(--cream-dim);
+  margin-top: 6px;
+  line-height: 1.45;
+}
+
+.q-row-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--blue-border);
+  background: var(--blue-dim);
+  color: #8bb7ef;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.q-row-countdown.urgent {
+  border-color: var(--red-border);
+  background: var(--red-dim);
+  color: #e38b7b;
+}
+
+.queue-countdown {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--blue-border);
+  background: var(--blue-dim);
+  color: #8bb7ef;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.queue-countdown.urgent {
+  border-color: var(--red-border);
+  background: var(--red-dim);
+  color: #e38b7b;
 }
 
 .q-row-actions,
@@ -1550,6 +1700,10 @@ button, input, select {
     display: none;
   }
 
+  .wait-content-grid {
+    grid-template-columns: 1fr;
+  }
+
   .mobile-order-dock {
     display: flex;
   }
@@ -1693,4 +1847,3 @@ button, input, select {
   margin-top: 8px;
   letter-spacing: 0.02em;
 }
-

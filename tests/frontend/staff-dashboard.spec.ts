@@ -2,6 +2,10 @@ import {
   buildStaffDashboardFetchPlan,
   resolveStaffDashboardRefreshMs,
 } from '../../web/modules/staff-dashboard.js';
+import {
+  getVenueStaffSurfaceFlags,
+  isManualDispatchVenue,
+} from '../../web/modules/venue.js';
 
 describe('frontend staff dashboard fetch plan', () => {
   it('skips table endpoints when the current tab does not need floor data', () => {
@@ -56,5 +60,26 @@ describe('frontend staff dashboard fetch plan', () => {
     expect(resolveStaffDashboardRefreshMs({ currentTab: 'history', dependencyWarnings: [] })).toBe(8_000);
     expect(resolveStaffDashboardRefreshMs({ currentTab: 'tables', dependencyWarnings: [] })).toBe(12_000);
     expect(resolveStaffDashboardRefreshMs({ currentTab: 'tables', dependencyWarnings: ['Tables'] })).toBe(8_000);
+  });
+
+  it('shows notify actions for manual-dispatch venues', () => {
+    const crafteryVenue = {
+      brandConfig: { themeKey: 'craftery' },
+      opsConfig: { queueDispatchMode: 'MANUAL_NOTIFY' },
+      config: {
+        featureConfig: {
+          guestQueue: true,
+          staffConsole: true,
+          historyTab: true,
+          adminConsole: true,
+        },
+      },
+    };
+
+    expect(isManualDispatchVenue(crafteryVenue)).toBe(true);
+    expect(getVenueStaffSurfaceFlags(crafteryVenue)).toMatchObject({
+      manualDispatchMode: true,
+      showNotifyAction: true,
+    });
   });
 });

@@ -10,14 +10,17 @@ import {
   buildStaffLoginPath,
   buildVenuePath,
   clearActiveVenueSlug,
+  formatQueueSeatingPreference,
   getGuestJourneyStepLabels,
   getRouteVenueSlug,
   getStoredActiveVenueSlug,
   getVenueGuestSurfaceFlags,
   getVenueStaffSurfaceFlags,
+  isManualDispatchVenue,
   isQueueOnlyGuestExperience,
   isVenueFeatureEnabled,
   resolveLegacyVenueSlug,
+  resolveVenueOpsConfig,
   resolveThemePreset,
   resolveVenueThemeKey,
   shouldLoadVenueBills,
@@ -41,13 +44,34 @@ describe('frontend venue helpers', () => {
     const venue = {
       config: {
         brandConfig: { themeKey: 'craftery' },
+        opsConfig: {
+          queueDispatchMode: 'MANUAL_NOTIFY',
+          tableSourceMode: 'MANUAL',
+          joinConfirmationMode: 'WEB_ONLY',
+          readyNotificationChannels: ['WHATSAPP'],
+          guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+          contentMode: 'DEFAULT',
+        },
         featureConfig: { staffConsole: true, preOrder: false },
       },
     };
 
     expect(resolveVenueThemeKey(venue)).toBe('craftery');
+    expect(resolveVenueOpsConfig(venue)).toMatchObject({
+      queueDispatchMode: 'MANUAL_NOTIFY',
+      tableSourceMode: 'MANUAL',
+      joinConfirmationMode: 'WEB_ONLY',
+      readyNotificationChannels: ['WHATSAPP'],
+      readyReminderEnabled: false,
+      expiryNotificationEnabled: false,
+      guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+      contentMode: 'DEFAULT',
+    });
+    expect(isManualDispatchVenue(venue)).toBe(true);
     expect(isVenueFeatureEnabled(venue, 'staffConsole')).toBe(true);
     expect(isVenueFeatureEnabled(venue, 'preOrder')).toBe(false);
+    expect(formatQueueSeatingPreference('INDOOR')).toBe('Indoor');
+    expect(formatQueueSeatingPreference('OUTDOOR')).toBe('Outdoor');
 
     const publicVenueSummary = {
       brandConfig: { themeKey: 'craftery', displayName: 'The Craftery by Subko' },
@@ -60,6 +84,12 @@ describe('frontend venue helpers', () => {
 
   it('identifies queue-only venues and hides commerce surfaces for them', () => {
     const venue = {
+      brandConfig: { themeKey: 'craftery' },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'MANUAL',
+        joinConfirmationMode: 'WEB_ONLY',
+      },
       config: {
         featureConfig: {
           guestQueue: true,
@@ -79,6 +109,7 @@ describe('frontend venue helpers', () => {
     expect(getGuestJourneyStepLabels(venue)).toEqual(['Join', 'Wait', 'Seated', 'Done']);
     expect(getVenueGuestSurfaceFlags(venue)).toEqual({
       queueOnlyGuestExperience: true,
+      manualDispatchMode: true,
       showPreOrderCta: false,
       showInviteAction: false,
       showTableOrdering: false,
@@ -87,13 +118,47 @@ describe('frontend venue helpers', () => {
     });
     expect(getVenueStaffSurfaceFlags(venue)).toEqual({
       queueOnlyGuestExperience: true,
+      manualDispatchMode: true,
       showFlowLog: false,
+      showNotifyAction: true,
       showRefundTool: false,
       showOfflineSettleTool: false,
       showBulkClearTool: false,
       showDepositControls: false,
       showBillingSignals: false,
     });
+  });
+
+  it('keeps SUBKO wait content mode queue-only and manual-dispatch friendly', () => {
+    const venue = {
+      brandConfig: { themeKey: 'craftery' },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'MANUAL',
+        joinConfirmationMode: 'WEB_ONLY',
+        contentMode: 'SUBKO_WAIT_CONTENT',
+      },
+      config: {
+        featureConfig: {
+          guestQueue: true,
+          preOrder: false,
+          partyShare: false,
+          seatedOrdering: false,
+          finalPayment: false,
+          staffConsole: true,
+          adminConsole: true,
+        },
+      },
+    };
+
+    expect(resolveVenueOpsConfig(venue)).toMatchObject({
+      queueDispatchMode: 'MANUAL_NOTIFY',
+      tableSourceMode: 'MANUAL',
+      joinConfirmationMode: 'WEB_ONLY',
+      contentMode: 'SUBKO_WAIT_CONTENT',
+    });
+    expect(isQueueOnlyGuestExperience(venue)).toBe(true);
+    expect(isManualDispatchVenue(venue)).toBe(true);
   });
 
   it('persists active venue state and route-derived fallbacks', () => {

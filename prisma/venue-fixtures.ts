@@ -19,6 +19,7 @@ type VenueFixture = {
     brandConfig: Prisma.InputJsonValue;
     featureConfig: Prisma.InputJsonValue;
     uiConfig: Prisma.InputJsonValue;
+    opsConfig: Prisma.InputJsonValue;
   };
   staff: Array<{
     name: string;
@@ -87,6 +88,17 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         defaultGuestTray: 'menu',
         showContinueEntry: true,
         supportCopy: 'Join the queue, pre-order before seating, and settle the balance once the table is live.',
+      },
+      opsConfig: {
+        queueDispatchMode: 'AUTO_TABLE',
+        tableSourceMode: 'MANUAL',
+        joinConfirmationMode: 'WHATSAPP',
+        readyNotificationChannels: ['WHATSAPP'],
+        readyReminderEnabled: false,
+        readyReminderOffsetMin: 1,
+        expiryNotificationEnabled: false,
+        guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+        contentMode: 'DEFAULT',
       },
     },
     staff: [
@@ -169,6 +181,17 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         defaultGuestTray: 'ordered',
         showContinueEntry: true,
         supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+      },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'MANUAL',
+        joinConfirmationMode: 'WEB_ONLY',
+        readyNotificationChannels: ['WHATSAPP', 'IVR'],
+        readyReminderEnabled: true,
+        readyReminderOffsetMin: 1,
+        expiryNotificationEnabled: false,
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        contentMode: 'SUBKO_WAIT_CONTENT',
       },
     },
     staff: [

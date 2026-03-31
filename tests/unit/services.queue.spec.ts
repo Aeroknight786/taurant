@@ -1,4 +1,4 @@
-import { QueueEntryStatus, TableStatus } from '@prisma/client';
+import { QueueEntryStatus, QueueSeatingPreference, TableStatus } from '@prisma/client';
 import { AppError } from '../../src/middleware/errorHandler';
 import { createPrismaMock } from '../helpers/mock-prisma';
 
@@ -11,6 +11,8 @@ const redisMock = {
 const notifyMock = {
   queueJoined: vi.fn(),
   tableReady: vi.fn(),
+  queueReadyReminder: vi.fn(),
+  queueNoShow: vi.fn(),
 };
 const isRedisReadyMock = vi.fn(() => false);
 const ensurePartySessionForQueueEntryMock = vi.fn();
@@ -62,6 +64,8 @@ vi.mock('../../src/integrations/razorpay', async () => {
 vi.mock('../../src/services/orderFlowEvent.service', () => ({
   OrderFlowEventType: {
     QUEUE_JOINED: 'QUEUE_JOINED',
+    QUEUE_PRIORITIZED: 'QUEUE_PRIORITIZED',
+    TABLE_NOTIFIED: 'TABLE_NOTIFIED',
     GUEST_SEATED: 'GUEST_SEATED',
     ENTRY_CANCELLED: 'ENTRY_CANCELLED',
     ENTRY_COMPLETED: 'ENTRY_COMPLETED',
@@ -95,6 +99,7 @@ describe('queue service', () => {
       brandConfig: null,
       featureConfig: null,
       uiConfig: null,
+      opsConfig: null,
     });
     prismaMock.queueEntry.count.mockResolvedValue(2);
     prismaMock.queueEntry.findFirst.mockResolvedValue(null);
@@ -110,6 +115,8 @@ describe('queue service', () => {
       guestName: 'Neha',
       guestPhone: '9876543210',
       partySize: 3,
+      seatingPreference: QueueSeatingPreference.OUTDOOR,
+      guestNotes: 'Near the patio if possible',
     });
 
     expect(result).toEqual(expect.objectContaining({
@@ -122,10 +129,55 @@ describe('queue service', () => {
       data: expect.objectContaining({
         position: 3,
         partySize: 3,
+        seatingPreference: QueueSeatingPreference.OUTDOOR,
+        guestNotes: 'Near the patio if possible',
         displayRef: expect.stringMatching(/^FLK-/),
       }),
     }));
     expect(notifyMock.queueJoined).toHaveBeenCalled();
+  });
+
+  it('uses the Subko fixed ETA formula for venues configured with SUBKO_FIXED_V1', async () => {
+    const { joinQueue } = await import('../../src/services/queue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      isQueueOpen: true,
+      maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+    prismaMock.queueEntry.count.mockResolvedValue(2);
+    prismaMock.queueEntry.findFirst.mockResolvedValue(null);
+    prismaMock.queueEntry.create.mockResolvedValue({
+      id: 'entry_subko_1',
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+    });
+
+    const result = await joinQueue({
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      id: 'entry_subko_1',
+      position: 3,
+      estimatedWaitMin: 14,
+    }));
+    expect(notifyMock.queueJoined).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate active phones in the queue', async () => {
@@ -140,6 +192,7 @@ describe('queue service', () => {
       brandConfig: null,
       featureConfig: null,
       uiConfig: null,
+      opsConfig: null,
     });
     prismaMock.queueEntry.count.mockResolvedValue(1);
     prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_existing' });
@@ -149,6 +202,7 @@ describe('queue service', () => {
       guestName: 'Neha',
       guestPhone: '9876543210',
       partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
     })).rejects.toMatchObject<AppError>({ code: 'ALREADY_IN_QUEUE' });
   });
 
@@ -197,6 +251,190 @@ describe('queue service', () => {
     expect(result.preOrderSync.status).toBe('manual_fallback');
   });
 
+  it('recomputes ETA with the Subko fixed formula when positions are compacted', async () => {
+    const { seatGuest } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      guestName: 'Neha',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.WAITING,
+    });
+    prismaMock.table.findFirst.mockResolvedValue({
+      id: 'table_1',
+      label: 'P1',
+      status: TableStatus.FREE,
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      { id: 'entry_2', joinedAt: new Date('2026-03-09T10:00:00.000Z') },
+      { id: 'entry_3', joinedAt: new Date('2026-03-09T10:05:00.000Z') },
+    ]);
+
+    await seatGuest({
+      venueId: 'venue_subko',
+      otp: '123456',
+      tableId: 'table_1',
+    });
+
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_2' },
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 8 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_3' },
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 11 }),
+    }));
+  });
+
+  it('notifies a waiting entry in manual-dispatch mode without requiring a table assignment', async () => {
+    const { notifyQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: QueueEntryStatus.WAITING,
+      tableId: null,
+      guestName: 'Neha',
+      guestPhone: '9876543210',
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'The Craftery by Subko',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        readyNotificationChannels: ['WHATSAPP', 'IVR'],
+      },
+    });
+
+    const result = await notifyQueueEntry('entry_1', 'venue_1');
+
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_1' },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.NOTIFIED,
+        tableReadyExpiredAt: null,
+      }),
+    }));
+    expect(notifyMock.tableReady).toHaveBeenCalledWith(
+      'venue_1',
+      'entry_1',
+      '9876543210',
+      'Neha',
+      'Host desk',
+      'The Craftery by Subko',
+      15,
+    );
+    expect(result.status).toBe(QueueEntryStatus.NOTIFIED);
+  });
+
+  it('prioritizes a waiting entry to the front of the waiting cohort and audits the action', async () => {
+    const { prioritizeQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_target',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.WAITING,
+      position: 3,
+      guestName: 'Neha',
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      { id: 'entry_notified', position: 1, status: QueueEntryStatus.NOTIFIED, joinedAt: new Date('2026-03-31T08:58:00.000Z') },
+      { id: 'entry_other_1', position: 2, status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-31T09:00:00.000Z') },
+      { id: 'entry_target', position: 3, status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-31T09:05:00.000Z') },
+      { id: 'entry_other_2', position: 4, status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-31T09:10:00.000Z') },
+    ]);
+
+    const result = await prioritizeQueueEntry('entry_target', 'venue_subko', 'staff_priority');
+
+    expect(result).toEqual(expect.objectContaining({
+      entryId: 'entry_target',
+      status: QueueEntryStatus.WAITING,
+      position: 2,
+      estimatedWaitMin: 11,
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_notified' },
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 8 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_target' },
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 11 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_other_1' },
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 14 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_other_2' },
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 17 }),
+    }));
+    expect(logFlowEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      queueEntryId: 'entry_target',
+      type: 'QUEUE_PRIORITIZED',
+      snapshot: expect.objectContaining({
+        previousPosition: 3,
+        newPosition: 2,
+        estimatedWaitMin: 11,
+        staffId: 'staff_priority',
+      }),
+    }));
+  });
+
+  it('rejects prioritizing non-waiting queue entries', async () => {
+    const { prioritizeQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_target',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.NOTIFIED,
+      position: 1,
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+      },
+    });
+
+    await expect(prioritizeQueueEntry('entry_target', 'venue_subko')).rejects.toMatchObject<AppError>({
+      code: 'ENTRY_NOT_WAITING',
+    });
+  });
+
   it('cancels waiting entries and attempts an auto-refund when a deposit exists', async () => {
     const { cancelQueueEntry } = await import('../../src/services/queue.service');
 
@@ -232,5 +470,206 @@ describe('queue service', () => {
       where: { id: 'payment_1' },
       data: expect.objectContaining({ status: 'REFUNDED', refundAmount: 10_000 }),
     }));
+  });
+
+  it('skips auto-advance for manual-dispatch venues when a table becomes free', async () => {
+    const { tryAdvanceQueue } = await import('../../src/services/table.service');
+
+    prismaMock.table.findUnique.mockResolvedValue({
+      id: 'table_1',
+      venueId: 'venue_1',
+      label: 'P1',
+      status: TableStatus.FREE,
+      capacity: 4,
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'The Craftery by Subko',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: { queueDispatchMode: 'MANUAL_NOTIFY' },
+    });
+
+    await tryAdvanceQueue('venue_1', 'table_1');
+
+    expect(prismaMock.queueEntry.findFirst).not.toHaveBeenCalled();
+    expect(notifyMock.tableReady).not.toHaveBeenCalled();
+  });
+
+  it('sends a no-show notification when expiry notifications are enabled', async () => {
+    const { sweepExpiredTableReadyEntries } = await import('../../src/services/table.service');
+
+    prismaMock.queueEntry.findMany
+      .mockResolvedValueOnce([
+        {
+          id: 'entry_expired',
+          venueId: 'venue_subko',
+          status: QueueEntryStatus.NOTIFIED,
+          guestName: 'Neha',
+          guestPhone: '9876543210',
+          tableReadyDeadlineAt: new Date('2026-03-31T10:15:00.000Z'),
+          table: null,
+        },
+      ])
+      .mockResolvedValueOnce([]);
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        expiryNotificationEnabled: true,
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+
+    await sweepExpiredTableReadyEntries();
+
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_expired' },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.NO_SHOW,
+        tableReadyDeadlineAt: null,
+      }),
+    }));
+    expect(notifyMock.queueNoShow).toHaveBeenCalledWith(
+      'venue_subko',
+      'entry_expired',
+      '9876543210',
+      'Neha',
+      'The Craftery by Subko',
+    );
+  });
+
+  it('sends one ready reminder when the venue config enables reminder sweeps near expiry', async () => {
+    const { sweepReadyReminderEntries } = await import('../../src/services/table.service');
+
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      {
+        id: 'entry_reminder',
+        venueId: 'venue_subko',
+        guestName: 'Neha',
+        guestPhone: '9876543210',
+        position: 2,
+        estimatedWaitMin: 11,
+        tableReadyDeadlineAt: new Date('2026-03-31T10:02:00.000Z'),
+      },
+    ]);
+    prismaMock.venue.findMany.mockResolvedValue([
+      {
+        id: 'venue_subko',
+        name: 'The Craftery by Subko',
+        slug: 'the-craftery-koramangala',
+        brandConfig: null,
+        featureConfig: null,
+        uiConfig: null,
+        opsConfig: {
+          queueDispatchMode: 'MANUAL_NOTIFY',
+          readyReminderEnabled: true,
+          readyReminderOffsetMin: 1,
+        },
+      },
+    ]);
+    prismaMock.notification.findMany.mockResolvedValue([]);
+
+    await sweepReadyReminderEntries(new Date('2026-03-31T10:01:30.000Z'));
+
+    expect(prismaMock.notification.findMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        queueEntryId: 'entry_reminder',
+      }),
+    }));
+    expect(notifyMock.queueReadyReminder).toHaveBeenCalledWith(
+      'venue_subko',
+      'entry_reminder',
+      '9876543210',
+      'Neha',
+      2,
+      11,
+      'The Craftery by Subko',
+    );
+  });
+
+  it('does not send duplicate ready reminders when a reminder log already exists', async () => {
+    const { sweepReadyReminderEntries } = await import('../../src/services/table.service');
+
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      {
+        id: 'entry_reminder',
+        venueId: 'venue_subko',
+        guestName: 'Neha',
+        guestPhone: '9876543210',
+        position: 2,
+        estimatedWaitMin: 11,
+        tableReadyDeadlineAt: new Date('2026-03-31T10:02:00.000Z'),
+      },
+    ]);
+    prismaMock.venue.findMany.mockResolvedValue([
+      {
+        id: 'venue_subko',
+        name: 'The Craftery by Subko',
+        slug: 'the-craftery-koramangala',
+        brandConfig: null,
+        featureConfig: null,
+        uiConfig: null,
+        opsConfig: {
+          queueDispatchMode: 'MANUAL_NOTIFY',
+          readyReminderEnabled: true,
+          readyReminderOffsetMin: 1,
+        },
+      },
+    ]);
+    prismaMock.notification.findMany.mockResolvedValue([
+      {
+        payload: {
+          kind: 'QUEUE_READY_REMINDER',
+        },
+      },
+    ]);
+
+    await sweepReadyReminderEntries(new Date('2026-03-31T10:01:30.000Z'));
+
+    expect(notifyMock.queueReadyReminder).not.toHaveBeenCalled();
+  });
+
+  it('runs the ready-reminder sweep on the worker tick before expiry processing', async () => {
+    vi.resetModules();
+
+    const intervalCallback: Array<() => Promise<void> | void> = [];
+    const setIntervalSpy = vi.spyOn(globalThis, 'setInterval').mockImplementation(((handler: TimerHandler) => {
+      intervalCallback.push(handler as () => Promise<void> | void);
+      return { hasRef: () => true, ref: () => undefined, unref: () => undefined, refresh: () => undefined } as unknown as NodeJS.Timeout;
+    }) as typeof setInterval);
+
+    const sweepReadyReminderEntriesMock = vi.fn().mockResolvedValue(undefined);
+    const sweepExpiredTableReadyEntriesMock = vi.fn().mockResolvedValue(undefined);
+    const updateTableStatusMock = vi.fn();
+    const tryAdvanceQueueMock = vi.fn();
+    prismaMock.venue.findMany.mockResolvedValue([]);
+
+    vi.doMock('../../src/services/table.service', () => ({
+      sweepReadyReminderEntries: sweepReadyReminderEntriesMock,
+      sweepExpiredTableReadyEntries: sweepExpiredTableReadyEntriesMock,
+      updateTableStatus: updateTableStatusMock,
+      tryAdvanceQueue: tryAdvanceQueueMock,
+    }));
+
+    const { startTmsPoller } = await import('../../src/workers/tmsPoller');
+    startTmsPoller();
+    await intervalCallback[0]();
+
+    expect(sweepReadyReminderEntriesMock).toHaveBeenCalledTimes(1);
+    expect(sweepExpiredTableReadyEntriesMock).toHaveBeenCalledTimes(1);
+    expect(sweepReadyReminderEntriesMock.mock.invocationCallOrder[0]).toBeLessThan(
+      sweepExpiredTableReadyEntriesMock.mock.invocationCallOrder[0],
+    );
+
+    setIntervalSpy.mockRestore();
   });
 });

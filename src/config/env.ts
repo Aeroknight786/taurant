@@ -50,6 +50,18 @@ export const env = {
   MSG91_AUTH_KEY:          optional('MSG91_AUTH_KEY'),
   MSG91_SENDER_ID:         optional('MSG91_SENDER_ID', 'FLOCK'),
   MSG91_TEMPLATE_ID_OTP:   optional('MSG91_TEMPLATE_ID_OTP'),
+  MSG91_TEMPLATE_ID_QUEUE: optional('MSG91_TEMPLATE_ID_QUEUE'),
+  MSG91_TEMPLATE_ID_TABLE_READY: optional('MSG91_TEMPLATE_ID_TABLE_READY'),
+
+  IVR_PROVIDER:            optional('IVR_PROVIDER'),
+  IVR_API_KEY:             optional('IVR_API_KEY'),
+  IVR_API_SECRET:          optional('IVR_API_SECRET'),
+  IVR_BASE_URL:            optional('IVR_BASE_URL'),
+  IVR_CALLER_ID:           optional('IVR_CALLER_ID'),
+  IVR_ENABLED_VENUE_SLUGS: optional('IVR_ENABLED_VENUE_SLUGS'),
+  IVR_QUEUE_READY_REMINDER_ENABLED: optional('IVR_QUEUE_READY_REMINDER_ENABLED', 'false') === 'true',
+  IVR_QUEUE_EXPIRED_ENABLED: optional('IVR_QUEUE_EXPIRED_ENABLED', 'false') === 'true',
+  IVR_QUEUE_NO_SHOW_ENABLED: optional('IVR_QUEUE_NO_SHOW_ENABLED', 'false') === 'true',
 
   CLEARTAX_API_KEY:  optional('CLEARTAX_API_KEY'),
   CLEARTAX_BASE_URL: optional('CLEARTAX_BASE_URL', 'https://api.cleartax.in/v1'),

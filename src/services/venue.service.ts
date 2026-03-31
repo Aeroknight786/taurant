@@ -5,6 +5,7 @@ import { AppError } from '../middleware/errorHandler';
 import {
   VenueBrandConfigSchema,
   VenueFeatureConfigSchema,
+  VenueOpsConfigSchema,
   VenueUiConfigSchema,
   buildVenueConfigPatch,
   mapVenueToPublicSummary,
@@ -25,6 +26,7 @@ export const CreateVenueSchema = z.object({
   brandConfig: VenueBrandConfigSchema.optional(),
   featureConfig: VenueFeatureConfigSchema.optional(),
   uiConfig: VenueUiConfigSchema.optional(),
+  opsConfig: VenueOpsConfigSchema.optional(),
 });
 
 export const UpdateVenueConfigSchema = z.object({
@@ -40,6 +42,7 @@ export const UpdateVenueConfigSchema = z.object({
   brandConfig: VenueBrandConfigSchema.optional(),
   featureConfig: VenueFeatureConfigSchema.optional(),
   uiConfig: VenueUiConfigSchema.optional(),
+  opsConfig: VenueOpsConfigSchema.optional(),
 });
 
 function slugify(name: string): string {
@@ -71,6 +74,7 @@ export async function createVenue(data: z.infer<typeof CreateVenueSchema>) {
     brandConfig,
     featureConfig,
     uiConfig,
+    opsConfig,
     ...venueData
   } = data;
 
@@ -81,6 +85,7 @@ export async function createVenue(data: z.infer<typeof CreateVenueSchema>) {
       ...(brandConfig ? { brandConfig: toJsonValue(brandConfig) } : {}),
       ...(featureConfig ? { featureConfig: toJsonValue(featureConfig) } : {}),
       ...(uiConfig ? { uiConfig: toJsonValue(uiConfig) } : {}),
+      ...(opsConfig ? { opsConfig: toJsonValue(opsConfig) } : {}),
     },
   });
 }
@@ -100,6 +105,7 @@ export async function getPublicVenues() {
       brandConfig: true,
       featureConfig: true,
       uiConfig: true,
+      opsConfig: true,
     },
   });
 
@@ -122,6 +128,7 @@ export async function getVenueBySlug(slug: string) {
       brandConfig: true,
       featureConfig: true,
       uiConfig: true,
+      opsConfig: true,
       menuCategories: {
         where: { isVisible: true },
         orderBy: { sortOrder: 'asc' },
@@ -155,6 +162,7 @@ export async function updateVenueConfig(venueId: string, data: z.infer<typeof Up
       brandConfig: true,
       featureConfig: true,
       uiConfig: true,
+      opsConfig: true,
     },
   });
 
@@ -166,6 +174,7 @@ export async function updateVenueConfig(venueId: string, data: z.infer<typeof Up
     brandConfig,
     featureConfig,
     uiConfig,
+    opsConfig,
     ...scalarConfig
   } = data;
 
@@ -173,7 +182,7 @@ export async function updateVenueConfig(venueId: string, data: z.infer<typeof Up
     where: { id: venueId },
     data: {
       ...scalarConfig,
-      ...buildVenueConfigPatch(current, { brandConfig, featureConfig, uiConfig }),
+      ...buildVenueConfigPatch(current, { brandConfig, featureConfig, uiConfig, opsConfig }),
     },
   });
 }

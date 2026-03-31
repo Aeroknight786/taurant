@@ -10,6 +10,10 @@ async function noHorizontalOverflow(page: Page) {
   expect(overflow, 'Page should not have horizontal overflow').toBe(false);
 }
 
+function uniquePhoneNumber() {
+  return `9${Date.now().toString().slice(-9)}`;
+}
+
 // ─── Landing Page ─────────────────────────────────────────────────
 
 test.describe('Landing page', () => {
@@ -41,6 +45,185 @@ test.describe('Guest venue landing', () => {
 
     const fontHref = await page.locator('#flock-theme-fonts').getAttribute('href');
     expect(fontHref).toContain('Playfair+Display');
+
+    const seatingPreference = page.locator('#guest-seating-preference');
+    if (await seatingPreference.count()) {
+      await expect(seatingPreference).toBeVisible();
+    }
+
+    const guestNotes = page.locator('#guest-notes');
+    if (await guestNotes.count()) {
+      await expect(guestNotes).toBeVisible();
+    }
+
+    await expect(page.locator('#preorder-cta')).toHaveCount(0);
+    await expect(page.locator('#final-pay-cta')).toHaveCount(0);
+  });
+
+  test('Craftery wait page shows the Subko content block', async ({ page }) => {
+    await page.goto(`/v/${CRAFTERY_VENUE_SLUG}`);
+    await page.waitForSelector('#join-form');
+
+    await page.fill('#guest-name', 'Subko Wait Smoke');
+    await page.fill('#guest-phone', uniquePhoneNumber());
+    const seatingPreference = page.locator('#guest-seating-preference');
+    if (await seatingPreference.count()) {
+      await seatingPreference.selectOption('FIRST_AVAILABLE');
+    }
+
+    const guestNotes = page.locator('#guest-notes');
+    if (await guestNotes.count()) {
+      await guestNotes.fill('Testing the wait-content block.');
+    }
+
+    await page.click('#join-form button[type="submit"]');
+
+    await page.waitForURL(/\/v\/the-craftery-koramangala\/e\//);
+    await page.waitForSelector('[data-wait-content="subko"]');
+    await noHorizontalOverflow(page);
+
+    const waitContent = page.locator('[data-wait-content="subko"]');
+    await expect(waitContent).toBeVisible();
+    await expect(waitContent.locator('.wait-content-card')).toHaveCount(4);
+    await expect(waitContent).toContainText('Menu');
+    await expect(waitContent).toContainText('Merchandise');
+    await expect(waitContent).toContainText('Stories');
+    await expect(waitContent).toContainText('Events');
+  });
+
+  test('Craftery manual-dispatch queue rows expose a prioritize control', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem('flock_staff_auth', JSON.stringify({
+        token: 'mock_staff_token',
+        venueSlug: 'the-craftery-koramangala',
+        venueId: 'venue_craftery',
+        role: 'MANAGER',
+        staff: {
+          id: 'staff_craftery',
+          name: 'Craftery Manager',
+          role: 'MANAGER',
+        },
+      }));
+      sessionStorage.setItem('flock_active_venue', 'the-craftery-koramangala');
+    });
+
+    await page.route('**/api/v1/venues/the-craftery-koramangala', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 'venue_craftery',
+            slug: CRAFTERY_VENUE_SLUG,
+            name: 'The Craftery by Subko',
+            address: 'No. 68, 2-374 BBMP PID, 3rd Block, Koramangala',
+            city: 'Bengaluru',
+            tableReadyWindowMin: 15,
+            isQueueOpen: true,
+            depositPercent: 30,
+            brandConfig: {
+              displayName: 'The Craftery by Subko',
+              shortName: 'Craftery',
+              tagline: 'Waitlist · live updates · host desk',
+              themeKey: 'craftery',
+            },
+            featureConfig: {
+              guestQueue: true,
+              staffConsole: true,
+              adminConsole: true,
+              historyTab: true,
+            },
+            opsConfig: {
+              queueDispatchMode: 'MANUAL_NOTIFY',
+              tableSourceMode: 'MANUAL',
+              joinConfirmationMode: 'WEB_ONLY',
+              readyNotificationChannels: ['WHATSAPP'],
+            },
+            config: {
+              brandConfig: {
+                displayName: 'The Craftery by Subko',
+                shortName: 'Craftery',
+                tagline: 'Waitlist · live updates · host desk',
+                themeKey: 'craftery',
+              },
+              featureConfig: {
+                guestQueue: true,
+                staffConsole: true,
+                adminConsole: true,
+                historyTab: true,
+              },
+              opsConfig: {
+                queueDispatchMode: 'MANUAL_NOTIFY',
+                tableSourceMode: 'MANUAL',
+                joinConfirmationMode: 'WEB_ONLY',
+                readyNotificationChannels: ['WHATSAPP'],
+              },
+            },
+          },
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/queue/live', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: [
+            {
+              id: 'queue_0',
+              position: 1,
+              guestName: 'Ahead Guest',
+              guestPhone: uniquePhoneNumber(),
+              partySize: 2,
+              otp: '654321',
+              status: 'WAITING',
+              seatingPreference: 'FIRST_AVAILABLE',
+              estimatedWaitMin: 8,
+            },
+            {
+              id: 'queue_1',
+              position: 2,
+              guestName: 'Priority Smoke',
+              guestPhone: uniquePhoneNumber(),
+              partySize: 3,
+              otp: '123456',
+              status: 'WAITING',
+              seatingPreference: 'FIRST_AVAILABLE',
+              guestNotes: 'Checking host prioritization control.',
+              estimatedWaitMin: 12,
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/venues/stats/today', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            today: {
+              totalQueueJoins: 1,
+              avgWaitMin: 12,
+              totalRevenuePaise: 0,
+            },
+          },
+        }),
+      });
+    });
+
+    await page.goto(`/v/${CRAFTERY_VENUE_SLUG}/staff/dashboard`);
+    await page.waitForSelector('[data-prioritize-entry]');
+    const prioritizeButton = page.locator('[data-prioritize-entry]').first();
+    await expect(prioritizeButton).toBeVisible();
+    await expect(prioritizeButton).toContainText('Prioritize');
+    await noHorizontalOverflow(page);
   });
 });
 
@@ -83,6 +266,11 @@ test.describe('Staff dashboard', () => {
   test('queue tab renders without overflow', async ({ page }) => {
     await loginStaff(page);
     await noHorizontalOverflow(page);
+    await expect(page.getByText('Use the queue row to notify the next party')).toBeVisible();
+    const notifyButtons = page.locator('[data-notify-entry]');
+    if (await notifyButtons.count() > 0) {
+      await expect(notifyButtons.first()).toBeVisible();
+    }
     await expect(page).toHaveScreenshot('staff-queue-tab.png', { fullPage: true });
   });
 

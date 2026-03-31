@@ -2,10 +2,11 @@ import { prisma } from '../config/database';
 import { redis, PubSubChannels } from '../config/redis';
 import { Notify } from '../integrations/notifications';
 import { AppError } from '../middleware/errorHandler';
-import { TableStatus, QueueEntryStatus } from '@prisma/client';
+import { NotificationStatus, NotificationType, QueueEntryStatus, TableStatus } from '@prisma/client';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
+import { isManualQueueDispatchConfig, resolveVenueConfig } from './venueConfig.service';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -110,7 +111,23 @@ export async function resetAllTables(venueId: string): Promise<{ reset: number }
 export async function tryAdvanceQueue(venueId: string, tableId: string): Promise<void> {
   const table = await prisma.table.findUnique({ where: { id: tableId } });
   if (!table || table.status !== TableStatus.FREE) return;
-  const venue = await prisma.venue.findUnique({ where: { id: venueId } });
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      tableReadyWindowMin: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  if (venue && isManualQueueDispatchConfig(resolveVenueConfig(venue))) {
+    logger.debug(`Queue auto-advance skipped for manual-dispatch venue ${venueId}`);
+    return;
+  }
   const tableReadyWindowMin = venue?.tableReadyWindowMin ?? env.TABLE_READY_WINDOW_MINUTES;
 
   // Find the first waiting group that fits this table
@@ -176,6 +193,18 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
     logger.warn(`Guest ${entry.id} did not arrive within window — marking as NO_SHOW`);
 
     const releasedTableId = entry.table && entry.table.status === TableStatus.RESERVED ? entry.table.id : null;
+    const venue = await prisma.venue.findUnique({
+      where: { id: entry.venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    });
 
     await prisma.$transaction(async (tx) => {
       await tx.queueEntry.update({
@@ -204,6 +233,10 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
       }
     });
 
+    if (venue && resolveVenueConfig(venue).opsConfig.expiryNotificationEnabled) {
+      await Notify.queueNoShow(entry.venueId, entry.id, entry.guestPhone, entry.guestName, venue.name);
+    }
+
     await recompactQueuePositions(entry.venueId);
 
     if (releasedTableId) {
@@ -212,7 +245,105 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
   }
 }
 
+export async function sweepReadyReminderEntries(now = new Date()): Promise<void> {
+  const notifiedEntries = await prisma.queueEntry.findMany({
+    where: {
+      status: QueueEntryStatus.NOTIFIED,
+      tableReadyDeadlineAt: { gt: now },
+    },
+    orderBy: { tableReadyDeadlineAt: 'asc' },
+  });
+
+  if (!notifiedEntries.length) {
+    return;
+  }
+
+  const venueIds = Array.from(new Set(notifiedEntries.map((entry) => entry.venueId)));
+  const venues = await prisma.venue.findMany({
+    where: { id: { in: venueIds } },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venuesById = new Map(venues.map((venue) => [venue.id, venue]));
+
+  for (const entry of notifiedEntries) {
+    if (!entry.tableReadyDeadlineAt) {
+      continue;
+    }
+
+    const venue = venuesById.get(entry.venueId);
+    if (!venue) {
+      continue;
+    }
+
+    const venueConfig = resolveVenueConfig(venue);
+    if (!venueConfig.opsConfig.readyReminderEnabled) {
+      continue;
+    }
+
+    const reminderThreshold = new Date(
+      entry.tableReadyDeadlineAt.getTime() - (venueConfig.opsConfig.readyReminderOffsetMin * 60 * 1000),
+    );
+    if (now < reminderThreshold) {
+      continue;
+    }
+
+    const existingReminders = await prisma.notification.findMany({
+      where: {
+        queueEntryId: entry.id,
+        type: NotificationType.TABLE_READY,
+        status: { in: [NotificationStatus.PENDING, NotificationStatus.SENT] },
+      },
+      select: {
+        payload: true,
+      },
+    });
+
+    const reminderAlreadySent = existingReminders.some((notification) => {
+      if (!notification.payload || typeof notification.payload !== 'object' || Array.isArray(notification.payload)) {
+        return false;
+      }
+      return (notification.payload as Record<string, unknown>).kind === 'QUEUE_READY_REMINDER';
+    });
+
+    if (reminderAlreadySent) {
+      continue;
+    }
+
+    await Notify.queueReadyReminder(
+      entry.venueId,
+      entry.id,
+      entry.guestPhone,
+      entry.guestName,
+      entry.position,
+      entry.estimatedWaitMin ?? 0,
+      venue.name,
+    );
+  }
+}
+
 async function recompactQueuePositions(venueId: string): Promise<void> {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+
   const activeEntries = await prisma.queueEntry.findMany({
     where: {
       venueId,
@@ -226,7 +357,9 @@ async function recompactQueuePositions(venueId: string): Promise<void> {
       where: { id: entry.id },
       data: {
         position: index + 1,
-        estimatedWaitMin: Math.ceil((index + 1) * 55 * 0.7),
+        estimatedWaitMin: venueConfig?.opsConfig.guestWaitFormula === 'SUBKO_FIXED_V1'
+          ? Math.max(3, Math.min(8 + (3 * index), 30))
+          : Math.ceil((index + 1) * 55 * 0.7),
       },
     })
   ));
