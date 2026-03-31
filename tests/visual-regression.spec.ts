@@ -82,6 +82,9 @@ test.describe('Guest venue landing', () => {
     await page.waitForSelector('[data-wait-content="subko"]');
     await noHorizontalOverflow(page);
 
+    await expect(page.locator('.steps .step-label')).toHaveText(['Join', 'Wait', 'Called']);
+    await expect(page.getByRole('button', { name: 'Leave waitlist' })).toBeVisible();
+
     const waitContent = page.locator('[data-wait-content="subko"]');
     await expect(waitContent).toBeVisible();
     await expect(waitContent.locator('.wait-content-card')).toHaveCount(4);

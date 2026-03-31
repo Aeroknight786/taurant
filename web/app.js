@@ -712,6 +712,12 @@ async function renderGuestEntry(slug, entryId) {
   const partyShareEnabled = isVenueFeatureEnabled(venue, 'partyShare');
   const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
+  const leaveWaitlist = () => {
+    clearGuestSession(entryId);
+    clearGuestEntryId(slug);
+    setTableCart(entryId, {});
+    navigate(buildVenuePath(slug));
+  };
 
   if (!guestSession?.guestToken) {
     const flash = consumeFlash();
@@ -731,7 +737,7 @@ async function renderGuestEntry(slug, entryId) {
           </form>
           <div style="margin-top:14px; border-top:1px solid var(--border); padding-top:14px;">
             <div class="card-sub" style="margin-bottom:10px;">Testing or wrong device? Clear this session and start fresh.</div>
-            <button class="btn btn-ghost btn-full" id="clear-guest-session-btn" type="button">Leave queue &amp; start fresh</button>
+            <button class="btn btn-ghost btn-full" id="clear-guest-session-btn" type="button">Leave waitlist</button>
           </div>
         </div>
       `,
@@ -773,12 +779,7 @@ async function renderGuestEntry(slug, entryId) {
       }
     });
 
-    document.getElementById('clear-guest-session-btn')?.addEventListener('click', () => {
-      clearGuestSession(entryId);
-      clearGuestEntryId(slug);
-      setTableCart(entryId, {});
-      navigate(buildVenuePath(slug));
-    });
+    document.getElementById('clear-guest-session-btn')?.addEventListener('click', leaveWaitlist);
 
     return;
   }
@@ -842,7 +843,7 @@ async function renderGuestEntry(slug, entryId) {
 
   const hasDeposit = entry.depositPaid > 0;
   const activeStep = queueOnlyGuestExperience
-    ? (entry.status === 'COMPLETED' ? 4 : entry.status === 'SEATED' ? 3 : 2)
+    ? (entry.status === 'WAITING' ? 2 : 3)
     : entry.status === 'COMPLETED'
       ? 5
       : entry.status === 'SEATED'
@@ -886,6 +887,13 @@ async function renderGuestEntry(slug, entryId) {
       openShareSheet({ slug, joinToken: entry.partySession.joinToken });
     });
   }
+
+  document.getElementById('leave-waitlist-cta')?.addEventListener('click', () => {
+    clearGuestSession(entryId);
+    clearGuestEntryId(slug);
+    setTableCart(entryId, {});
+    navigate(buildVenuePath(slug));
+  });
 
   if (entry.status === 'SEATED' && !queueOnlyGuestExperience) {
     if (!['menu', 'bucket', 'ordered'].includes(uiState.guestTray)) {
@@ -3560,6 +3568,9 @@ function renderGuestStateHero(entry, guestSession, venue) {
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'Active'}</div>
         <div class="otp-label">${guestOtp ? 'Show this OTP when called' : 'Your seating code is active on this device'}</div>
       </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
+      </div>
     `;
   }
 
@@ -3579,6 +3590,9 @@ function renderGuestStateHero(entry, guestSession, venue) {
       <div class="otp-block">
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'Active'}</div>
         <div class="otp-label">${guestOtp ? 'Your reserved table is waiting' : 'Use your active seating code when you arrive'}</div>
+      </div>
+      <div class="row" style="margin-top:12px;">
+        <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
       </div>
     `;
   }

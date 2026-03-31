@@ -130,7 +130,7 @@ export function isManualDispatchVenue(venue) {
 
 export function getGuestJourneyStepLabels(venue) {
   return isQueueOnlyGuestExperience(venue)
-    ? ['Join', 'Wait', 'Seated', 'Done']
+    ? ['Join', 'Wait', 'Called']
     : ['Queue', 'Pre-order', 'Seated', 'Pay'];
 }
 

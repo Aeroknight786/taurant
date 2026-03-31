@@ -106,7 +106,7 @@ describe('frontend venue helpers', () => {
     expect(isQueueOnlyGuestExperience(venue)).toBe(true);
     expect(shouldShowVenueDepositPolicy(venue)).toBe(false);
     expect(shouldLoadVenueBills(venue)).toBe(false);
-    expect(getGuestJourneyStepLabels(venue)).toEqual(['Join', 'Wait', 'Seated', 'Done']);
+    expect(getGuestJourneyStepLabels(venue)).toEqual(['Join', 'Wait', 'Called']);
     expect(getVenueGuestSurfaceFlags(venue)).toEqual({
       queueOnlyGuestExperience: true,
       manualDispatchMode: true,
