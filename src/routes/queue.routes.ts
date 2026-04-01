@@ -10,6 +10,8 @@ router.post('/:entryId/session',     otpVerifyLimiter, requireVenueFeature('gues
 router.get ('/:entryId',             requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntry);
 router.delete('/:entryId/leave',     guestMutationLimiter, requireGuestAuth, requireVenueFeature('guestQueue'), Queue.leaveEntry);
 router.post('/:entryId/notify',      requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.notifyEntry);
+router.post('/:entryId/nudge',       requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.nudgeEntry);
+router.post('/:entryId/reorder',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.reorderEntry);
 router.post('/:entryId/prioritize',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.prioritizeEntry);
 router.post('/seat',                 requireAuth, requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.seatGuest);
 router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.cancelEntry);

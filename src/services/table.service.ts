@@ -56,13 +56,29 @@ export async function updateTableStatus(params: {
   if (!table) throw new AppError('Table not found', 404);
 
   const oldStatus = table.status;
+  const venue = await prisma.venue.findUnique({
+    where: { id: params.venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      tableReadyWindowMin: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+  const manualDispatch = venueConfig ? isManualQueueDispatchConfig(venueConfig) : false;
+  const shouldCompleteQueuedGuests = params.status === TableStatus.CLEARING || (params.status === TableStatus.FREE && !manualDispatch);
 
   await prisma.$transaction(async (tx) => {
     await tx.table.update({
       where: { id: params.tableId },
       data: {
         status: params.status,
-        occupiedSince:   params.status === TableStatus.OCCUPIED ? new Date() : (params.status === TableStatus.FREE ? null : table.occupiedSince),
+        occupiedSince:   params.status === TableStatus.OCCUPIED ? new Date() : null,
         estimatedFreeAt: null,
       },
     });
@@ -70,8 +86,8 @@ export async function updateTableStatus(params: {
       data: { tableId: params.tableId, fromStatus: oldStatus, toStatus: params.status, triggeredBy: params.triggeredBy ?? 'STAFF' },
     });
 
-    // When a table is cleared, auto-complete any stale SEATED entries for it
-    if (params.status === TableStatus.FREE) {
+    // When a table is clearing/freeing, close out any seated entries bound to it.
+    if (shouldCompleteQueuedGuests) {
       await tx.queueEntry.updateMany({
         where: { tableId: params.tableId, status: QueueEntryStatus.SEATED },
         data:  { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null },
@@ -83,7 +99,11 @@ export async function updateTableStatus(params: {
     type: 'TABLE_STATUS_CHANGED', tableId: params.tableId, from: oldStatus, to: params.status,
   }));
 
-  // If table just became free, try to advance queue
+  if (shouldCompleteQueuedGuests) {
+    await recompactQueuePositions(params.venueId);
+  }
+
+  // If table just became free, try to advance queue for non-manual venues only.
   if (params.status === TableStatus.FREE) {
     await tryAdvanceQueue(params.venueId, params.tableId);
   }

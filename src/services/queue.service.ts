@@ -15,6 +15,7 @@ import { generateDisplayRef } from '../utils/txnRef';
 import { ResolvedVenueConfig, isManualQueueDispatchConfig, resolveVenueConfig, shouldSendJoinQueueNotification } from './venueConfig.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
+type QueueReorderDirection = 'UP' | 'DOWN';
 
 // ── Join queue ────────────────────────────────────────────────────
 
@@ -267,11 +268,12 @@ export async function reissueGuestSession(entryId: string, otp: string) {
   };
 }
 
-export async function notifyQueueEntry(entryId: string, venueId: string): Promise<{
+export async function notifyQueueEntry(entryId: string, venueId: string, windowMin?: number): Promise<{
   entryId: string;
   status: QueueEntryStatus;
   notifiedAt: Date;
   tableReadyDeadlineAt: Date;
+  windowMin: number;
 }> {
   const [entry, venue] = await Promise.all([
     prisma.queueEntry.findFirst({
@@ -318,7 +320,10 @@ export async function notifyQueueEntry(entryId: string, venueId: string): Promis
   }
 
   const notifiedAt = new Date();
-  const tableReadyDeadlineAt = new Date(notifiedAt.getTime() + venue.tableReadyWindowMin * 60 * 1000);
+  const effectiveWindowMin = typeof windowMin === 'number'
+    ? windowMin
+    : (isManualQueueDispatchConfig(venueConfig) ? 3 : venue.tableReadyWindowMin);
+  const tableReadyDeadlineAt = new Date(notifiedAt.getTime() + effectiveWindowMin * 60 * 1000);
 
   await prisma.queueEntry.update({
     where: { id: entry.id },
@@ -341,7 +346,7 @@ export async function notifyQueueEntry(entryId: string, venueId: string): Promis
     entry.guestName,
     'Host desk',
     venue.name,
-    venue.tableReadyWindowMin,
+    effectiveWindowMin,
   );
 
   await logFlowEvent({
@@ -352,6 +357,7 @@ export async function notifyQueueEntry(entryId: string, venueId: string): Promis
       dispatchMode: venueConfig.opsConfig.queueDispatchMode,
       tableLabel: 'Host desk',
       tableId: entry.tableId,
+      windowMin: effectiveWindowMin,
     },
   });
 
@@ -360,6 +366,231 @@ export async function notifyQueueEntry(entryId: string, venueId: string): Promis
     status: QueueEntryStatus.NOTIFIED,
     notifiedAt,
     tableReadyDeadlineAt,
+    windowMin: effectiveWindowMin,
+  };
+}
+
+export async function nudgeQueueEntry(entryId: string, venueId: string): Promise<{
+  entryId: string;
+  status: QueueEntryStatus;
+  nudgedAt: Date;
+}> {
+  const [entry, venue] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: entryId, venueId },
+      select: {
+        id: true,
+        venueId: true,
+        status: true,
+        tableId: true,
+        guestName: true,
+        guestPhone: true,
+        position: true,
+        estimatedWaitMin: true,
+        notifiedAt: true,
+        tableReadyDeadlineAt: true,
+      },
+    }),
+    prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        tableReadyWindowMin: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    }),
+  ]);
+
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
+  }
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  const venueConfig = resolveVenueConfig(venue);
+  if (!isManualQueueDispatchConfig(venueConfig)) {
+    throw new AppError('Manual nudge is not enabled for this venue', 400, 'MANUAL_NOTIFY_DISABLED');
+  }
+
+  if (entry.status !== QueueEntryStatus.NOTIFIED) {
+    throw new AppError('Only notified guests can be nudged', 400, 'ENTRY_NOT_NOTIFIED');
+  }
+
+  const nudgedAt = new Date();
+  await Notify.queueReadyReminder(
+    venueId,
+    entry.id,
+    entry.guestPhone,
+    entry.guestName,
+    entry.position,
+    entry.estimatedWaitMin ?? 0,
+    venue.name,
+  );
+
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NUDGED', entryId: entry.id }))
+  );
+
+  await logFlowEvent({
+    queueEntryId: entry.id,
+    venueId,
+    type: OrderFlowEventType.TABLE_NOTIFIED,
+    snapshot: {
+      dispatchMode: venueConfig.opsConfig.queueDispatchMode,
+      tableLabel: 'Host desk',
+      tableId: entry.tableId,
+      reminder: true,
+      nudgedAt: nudgedAt.toISOString(),
+      notifiedAt: entry.notifiedAt?.toISOString() ?? null,
+      tableReadyDeadlineAt: entry.tableReadyDeadlineAt?.toISOString() ?? null,
+    },
+  });
+
+  return {
+    entryId: entry.id,
+    status: QueueEntryStatus.NOTIFIED,
+    nudgedAt,
+  };
+}
+
+export async function reorderQueueEntry(
+  entryId: string,
+  venueId: string,
+  direction: QueueReorderDirection,
+  staffId?: string,
+): Promise<{
+  entryId: string;
+  status: QueueEntryStatus;
+  position: number;
+  estimatedWaitMin: number;
+  reorderedAt: Date;
+}> {
+  const [entry, venue] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: entryId, venueId },
+      select: {
+        id: true,
+        venueId: true,
+        status: true,
+        position: true,
+        estimatedWaitMin: true,
+        guestName: true,
+      },
+    }),
+    prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    }),
+  ]);
+
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
+  }
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  const venueConfig = resolveVenueConfig(venue);
+  if (!isManualQueueDispatchConfig(venueConfig)) {
+    throw new AppError('Manual reordering is not enabled for this venue', 400, 'QUEUE_REORDER_DISABLED');
+  }
+
+  if (entry.status !== QueueEntryStatus.WAITING) {
+    throw new AppError('Only waiting guests can be reordered', 400, 'ENTRY_NOT_WAITING');
+  }
+
+  const activeEntries = await prisma.queueEntry.findMany({
+    where: { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+    orderBy: { position: 'asc' },
+    select: {
+      id: true,
+      status: true,
+      position: true,
+      estimatedWaitMin: true,
+    },
+  });
+
+  const notifiedEntries = activeEntries.filter((queueEntry) => queueEntry.status === QueueEntryStatus.NOTIFIED);
+  const waitingEntries = activeEntries.filter((queueEntry) => queueEntry.status === QueueEntryStatus.WAITING);
+  const waitingIndex = waitingEntries.findIndex((queueEntry) => queueEntry.id === entryId);
+
+  if (waitingIndex === -1) {
+    throw new AppError('Queue entry is not reorderable', 400, 'ENTRY_NOT_REORDERABLE');
+  }
+
+  const targetIndex = direction === 'UP' ? waitingIndex - 1 : waitingIndex + 1;
+  if (targetIndex < 0 || targetIndex >= waitingEntries.length) {
+    throw new AppError('Queue entry cannot move further in that direction', 400, 'ENTRY_NOT_MOVABLE');
+  }
+
+  const reorderedWaitingEntries = [...waitingEntries];
+  const [movingEntry] = reorderedWaitingEntries.splice(waitingIndex, 1);
+  reorderedWaitingEntries.splice(targetIndex, 0, movingEntry);
+
+  const orderedEntries = [...notifiedEntries, ...reorderedWaitingEntries];
+  await Promise.all(
+    orderedEntries.map((queueEntry, idx) =>
+      prisma.queueEntry.update({
+        where: { id: queueEntry.id },
+        data: {
+          position: idx + 1,
+          estimatedWaitMin: estimateWait(venueConfig, idx + 1),
+        },
+      })
+    )
+  );
+
+  const reorderedAt = new Date();
+  const newPosition = notifiedEntries.length + targetIndex + 1;
+  const estimatedWaitMin = estimateWait(venueConfig, newPosition);
+
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
+      type: 'ENTRY_REORDERED',
+      entryId,
+      direction,
+      position: newPosition,
+      reorderedAt: reorderedAt.toISOString(),
+    }))
+  );
+
+  await logFlowEvent({
+    queueEntryId: entry.id,
+    venueId,
+    type: OrderFlowEventType.QUEUE_PRIORITIZED,
+    snapshot: {
+      previousPosition: entry.position,
+      newPosition,
+      estimatedWaitMin,
+      guestName: entry.guestName,
+      staffId: staffId ?? null,
+      dispatchMode: venueConfig.opsConfig.queueDispatchMode,
+      movement: direction,
+    },
+  });
+
+  return {
+    entryId: entry.id,
+    status: QueueEntryStatus.WAITING,
+    position: newPosition,
+    estimatedWaitMin,
+    reorderedAt,
   };
 }
 

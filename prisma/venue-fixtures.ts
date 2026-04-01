@@ -1,4 +1,4 @@
-import { GstLicenceType, Prisma, PrismaClient, StaffRole } from '@prisma/client';
+import { GstLicenceType, Prisma, PrismaClient, StaffRole, VenueContentSlot } from '@prisma/client';
 
 type VenueFixture = {
   venue: {
@@ -21,6 +21,14 @@ type VenueFixture = {
     uiConfig: Prisma.InputJsonValue;
     opsConfig: Prisma.InputJsonValue;
   };
+  contentBlocks?: Array<{
+    slot: VenueContentSlot;
+    title: string;
+    body?: string;
+    imageUrl?: string | null;
+    isEnabled: boolean;
+    sortOrder: number;
+  }>;
   staff: Array<{
     name: string;
     phone: string;
@@ -87,6 +95,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         landingMode: 'venue',
         defaultGuestTray: 'menu',
         showContinueEntry: true,
+        showQueuePosition: true,
         supportCopy: 'Join the queue, pre-order before seating, and settle the balance once the table is live.',
       },
       opsConfig: {
@@ -180,7 +189,8 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         landingMode: 'venue',
         defaultGuestTray: 'ordered',
         showContinueEntry: true,
-        supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+        showQueuePosition: false,
+        supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
       },
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
@@ -277,6 +287,40 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
           { name: 'Notella Dark Chocolate', description: 'Housemade Notella, 70% dark chocolate, Maldon sea salt.', priceExGst: 38000, gstPercent: 5, isVeg: true, isAlcohol: false, sortOrder: 4 },
           { name: 'Butter Chicken Pot Pie', description: 'Flaky pot pie packed with creamy and smoky butter chicken.', priceExGst: 52000, gstPercent: 5, isVeg: false, isAlcohol: false, sortOrder: 5 },
         ],
+      },
+    ],
+    contentBlocks: [
+      {
+        slot: VenueContentSlot.MENU,
+        title: 'Current highlights',
+        body: 'A quick look at the categories and dishes currently showing at Craftery.',
+        imageUrl: null,
+        isEnabled: true,
+        sortOrder: 1,
+      },
+      {
+        slot: VenueContentSlot.MERCH,
+        title: 'Craftery',
+        body: 'Current venue touchpoints from Craftery in Bengaluru.',
+        imageUrl: null,
+        isEnabled: true,
+        sortOrder: 2,
+      },
+      {
+        slot: VenueContentSlot.STORIES,
+        title: 'Waitlist · live updates · host desk',
+        body: 'The venue profile stays anchored to the house copy and the address on file.',
+        imageUrl: null,
+        isEnabled: false,
+        sortOrder: 3,
+      },
+      {
+        slot: VenueContentSlot.EVENTS,
+        title: 'Today',
+        body: 'Queue updates are live. The host return window is 15 minutes and staff will nudge you when your turn comes up.',
+        imageUrl: null,
+        isEnabled: false,
+        sortOrder: 4,
       },
     ],
   },
@@ -376,11 +420,35 @@ export async function seedVenueFixture(prisma: PrismaClient, fixture: VenueFixtu
     }
   }
 
+  for (const blockFixture of fixture.contentBlocks || []) {
+    await prisma.venueContentBlock.upsert({
+      where: { venueId_slot: { venueId: venue.id, slot: blockFixture.slot } },
+      update: {
+        title: blockFixture.title,
+        body: blockFixture.body ?? null,
+        imageUrl: blockFixture.imageUrl ?? null,
+        isEnabled: blockFixture.isEnabled,
+        sortOrder: blockFixture.sortOrder,
+      },
+      create: {
+        id: `${venue.slug}-${blockFixture.slot.toLowerCase()}`,
+        venueId: venue.id,
+        slot: blockFixture.slot,
+        title: blockFixture.title,
+        body: blockFixture.body ?? null,
+        imageUrl: blockFixture.imageUrl ?? null,
+        isEnabled: blockFixture.isEnabled,
+        sortOrder: blockFixture.sortOrder,
+      },
+    });
+  }
+
   return {
     venue,
     staffCount: fixture.staff.length,
     tableCount: fixture.tables.length,
     categoryCount: fixture.categories.length,
     menuItemCount: fixture.categories.reduce((sum, category) => sum + category.items.length, 0),
+    contentBlockCount: (fixture.contentBlocks || []).length,
   };
 }

@@ -103,7 +103,7 @@ describe('venue service', () => {
         isQueueOpen: true,
         brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
         featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
-        uiConfig: { defaultGuestTray: 'ordered', supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.' },
+        uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.' },
       },
     ]);
     prismaMock.venue.findUnique.mockResolvedValue({
@@ -118,7 +118,13 @@ describe('venue service', () => {
       tableReadyWindowMin: 15,
       brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
       featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
-      uiConfig: { defaultGuestTray: 'ordered', supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.' },
+      uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.' },
+      contentBlocks: [
+        { slot: 'MENU', title: 'Current highlights', body: 'Menu highlights', imageUrl: null, isEnabled: true, sortOrder: 1 },
+        { slot: 'MERCH', title: 'Craftery', body: 'Merch card', imageUrl: 'https://cdn.example.com/merch.jpg', isEnabled: true, sortOrder: 2 },
+        { slot: 'STORIES', title: 'Stories', body: null, imageUrl: null, isEnabled: false, sortOrder: 3 },
+        { slot: 'EVENTS', title: 'Events', body: null, imageUrl: null, isEnabled: false, sortOrder: 4 },
+      ],
       menuCategories: [],
     });
 
@@ -137,7 +143,8 @@ describe('venue service', () => {
           adminConsole: true,
         }),
         uiConfig: expect.objectContaining({
-          supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+          supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+          showQueuePosition: false,
         }),
       }),
     ]));
@@ -149,5 +156,12 @@ describe('venue service', () => {
     expect(venue.config.featureConfig.bulkClear).toBe(false);
     expect(venue.config.featureConfig.adminConsole).toBe(true);
     expect(venue.config.uiConfig.defaultGuestTray).toBe('ordered');
+    expect(venue.config.uiConfig.showQueuePosition).toBe(false);
+    expect(venue.contentBlocks).toEqual([
+      expect.objectContaining({ slot: 'MENU', isEnabled: true, sortOrder: 1 }),
+      expect.objectContaining({ slot: 'MERCH', isEnabled: true, sortOrder: 2 }),
+      expect.objectContaining({ slot: 'STORIES', isEnabled: false, sortOrder: 3 }),
+      expect.objectContaining({ slot: 'EVENTS', isEnabled: false, sortOrder: 4 }),
+    ]);
   });
 });

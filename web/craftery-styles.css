@@ -384,6 +384,17 @@ button, input, select { font: inherit; }
   font-style: italic;
 }
 
+.wait-content-image {
+  width: 100%;
+  display: block;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  margin: 12px 0 10px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--border2);
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.02);
+}
+
 .wait-content-chip-row {
   display: flex;
   flex-wrap: wrap;
@@ -739,6 +750,18 @@ textarea.form-input {
   margin-top: 6px;
   line-height: 1.45;
 }
+.seat-context-card {
+  margin: 14px 0 18px;
+  padding: 14px;
+  border-radius: var(--r-sm);
+  border: 1.5px solid var(--blue-border);
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.02)), var(--blue-dim);
+}
+.seat-context-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 6px; }
+.seat-context-title { font-family: "Playfair Display", serif; font-size: 17px; font-weight: 700; color: var(--cream); }
+.seat-context-state { font-family: "DM Serif Text", serif; font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; color: #97b8d7; }
+.seat-context-meta { font-size: 12px; color: var(--cream-dim); margin-top: 3px; font-style: italic; }
+.seat-context-notes { font-size: 12px; color: var(--cream); margin-top: 8px; line-height: 1.55; }
 .q-row-countdown {
   display: inline-flex;
   align-items: center;
@@ -897,6 +920,9 @@ textarea.form-input {
 .share-qr-frame { min-height: 80px; }
 .share-qr-image { border-radius: var(--r-sm); border: 1.5px solid var(--border); }
 .share-qr-loading { font-size: 12px; color: var(--cream-dimmer); font-style: italic; padding: 24px; }
+.notify-sheet-panel { max-width: 440px; }
+.notify-sheet-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.notify-window-btn.active { background: var(--amber-dim); border-color: var(--amber); color: var(--cream); box-shadow: inset 0 0 0 1px rgba(255,255,255,0.04); }
 
 /* ── Pre-order layout ───────────────────────────────────────── */
 .preorder-page-shell { width: 100%; }
@@ -946,6 +972,7 @@ textarea.form-input {
   .tab  { flex: 0 0 auto; min-width: 120px; }
   .preorder-summary-card { display: none; }
   .wait-content-grid { grid-template-columns: 1fr; }
+  .notify-sheet-grid { grid-template-columns: 1fr; }
   .mobile-order-dock     { display: flex; }
   .preorder-grid { grid-template-columns: 1fr; }
 }

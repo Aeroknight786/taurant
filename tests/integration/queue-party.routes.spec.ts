@@ -13,6 +13,8 @@ const {
     reissueGuestSession: vi.fn(),
     leaveQueueEntry: vi.fn(),
     notifyQueueEntry: vi.fn(),
+    nudgeQueueEntry: vi.fn(),
+    reorderQueueEntry: vi.fn(),
     prioritizeQueueEntry: vi.fn(),
     seatGuest: vi.fn(),
     cancelQueueEntry: vi.fn(),
@@ -130,6 +132,19 @@ describe('queue and party-session routes', () => {
       status: 'NOTIFIED',
       notifiedAt: new Date('2026-03-31T10:00:00.000Z'),
       tableReadyDeadlineAt: new Date('2026-03-31T10:15:00.000Z'),
+      windowMin: 15,
+    });
+    queueServiceMock.nudgeQueueEntry.mockResolvedValue({
+      entryId: 'entry_1',
+      status: 'NOTIFIED',
+      nudgedAt: new Date('2026-03-31T10:05:00.000Z'),
+    });
+    queueServiceMock.reorderQueueEntry.mockResolvedValue({
+      entryId: 'entry_1',
+      status: 'WAITING',
+      position: 2,
+      estimatedWaitMin: 11,
+      reorderedAt: new Date('2026-03-31T10:04:00.000Z'),
     });
     queueServiceMock.prioritizeQueueEntry.mockResolvedValue({
       entryId: 'entry_1',
@@ -185,7 +200,24 @@ describe('queue and party-session routes', () => {
       method: 'POST',
       url: '/api/v1/queue/entry_1/notify',
       headers: { authorization: 'Bearer staff-token' },
+      body: { windowMin: 10 },
     })).status).toBe(200);
+    expect(queueServiceMock.notifyQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', 10);
+
+    expect((await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/entry_1/nudge',
+      headers: { authorization: 'Bearer staff-token' },
+    })).status).toBe(200);
+    expect(queueServiceMock.nudgeQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1');
+
+    expect((await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/entry_1/reorder',
+      headers: { authorization: 'Bearer staff-token-priority' },
+      body: { direction: 'UP' },
+    })).status).toBe(200);
+    expect(queueServiceMock.reorderQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', 'UP', 'staff_priority');
 
     expect((await invokeApp(app, {
       method: 'POST',
@@ -206,7 +238,7 @@ describe('queue and party-session routes', () => {
     })).status).toBe(200);
   });
 
-  it('guards guest-only queue entry access and covers seating/cancellation/checkout', async () => {
+  it('guards guest-only queue entry access and covers seating/cancellation', async () => {
     queueServiceMock.getQueueEntry.mockResolvedValue({ id: 'entry_1', status: 'WAITING' });
     queueServiceMock.seatGuest.mockResolvedValue({ entryId: 'entry_1', guestName: 'Neha', preOrderSync: { attempted: false, status: 'no_preorder' } });
     queueServiceMock.cancelQueueEntry.mockResolvedValue({ queueCancelled: true, refundStatus: 'not_needed' });
@@ -241,11 +273,6 @@ describe('queue and party-session routes', () => {
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
 
-    expect((await invokeApp(app, {
-      method: 'POST',
-      url: '/api/v1/queue/entry_1/checkout',
-      headers: { authorization: 'Bearer staff-token' },
-    })).status).toBe(200);
   });
 
   it('rejects guest leave attempts for mismatched queue entries', async () => {

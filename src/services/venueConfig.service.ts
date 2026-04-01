@@ -63,6 +63,7 @@ export const VenueUiConfigSchema = z.object({
   landingMode: z.enum(['venue']).optional(),
   defaultGuestTray: z.enum(['menu', 'bucket', 'ordered']).optional(),
   showContinueEntry: z.boolean().optional(),
+  showQueuePosition: z.boolean().optional(),
   supportCopy: optionalTrimmedString(240),
 }).strict();
 
@@ -97,6 +98,7 @@ export type ResolvedVenueUiConfig = {
   landingMode: 'venue';
   defaultGuestTray: 'menu' | 'bucket' | 'ordered';
   showContinueEntry: boolean;
+  showQueuePosition: boolean;
   supportCopy: string;
 };
 
@@ -161,6 +163,7 @@ const DEFAULT_VENUE_UI_CONFIG: ResolvedVenueUiConfig = {
   landingMode: 'venue',
   defaultGuestTray: 'menu',
   showContinueEntry: true,
+  showQueuePosition: true,
   supportCopy: 'No app download. Use your phone number as your queue identity and receive a seating OTP instantly.',
 };
 
@@ -318,6 +321,7 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
     uiConfig: {
       landingMode: config.uiConfig.landingMode,
       showContinueEntry: config.uiConfig.showContinueEntry,
+      showQueuePosition: config.uiConfig.showQueuePosition,
       supportCopy: config.uiConfig.supportCopy,
     },
   };

@@ -41,6 +41,13 @@ enum QueueSeatingPreference {
   FIRST_AVAILABLE
 }
 
+enum VenueContentSlot {
+  MENU
+  MERCH
+  STORIES
+  EVENTS
+}
+
 enum OrderType {
   PRE_ORDER
   TABLE_ORDER
@@ -174,6 +181,7 @@ model Venue {
   otpCodes            OtpCode[]
   partySessions       PartySession[]
   orderFlowEvents     OrderFlowEvent[]
+  contentBlocks       VenueContentBlock[]
   @@index([slug])
   @@index([city])
 }
@@ -275,6 +283,22 @@ model MenuItem {
   partyBucketItems PartyBucketItem[]
   @@index([venueId, isAvailable])
   @@unique([venueId, name])
+}
+
+model VenueContentBlock {
+  id        String           @id
+  venueId   String
+  slot      VenueContentSlot
+  title     String
+  body      String?
+  imageUrl  String?
+  isEnabled Boolean          @default(false)
+  sortOrder Int              @default(0)
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  venue     Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  @@unique([venueId, slot])
+  @@index([venueId, isEnabled, sortOrder])
 }
 
 model QueueEntry {

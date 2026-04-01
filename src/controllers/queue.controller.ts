@@ -20,6 +20,14 @@ const SeatSchema = z.object({
   tableId: z.string().min(1),
 });
 
+const NotifySchema = z.object({
+  windowMin: z.number().int().min(1).max(60).optional(),
+});
+
+const ReorderSchema = z.object({
+  direction: z.enum(['UP', 'DOWN']),
+});
+
 const SessionSchema = z.object({
   otp: z.string().length(6),
 });
@@ -67,7 +75,23 @@ export async function seatGuest(req: AuthenticatedRequest, res: Response, next: 
 
 export async function notifyEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await QueueService.notifyQueueEntry(req.params.entryId, req.venue!.id);
+    const { windowMin } = NotifySchema.parse(req.body ?? {});
+    const result = await QueueService.notifyQueueEntry(req.params.entryId, req.venue!.id, windowMin);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
+export async function nudgeEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.nudgeQueueEntry(req.params.entryId, req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
+export async function reorderEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { direction } = ReorderSchema.parse(req.body);
+    const result = await QueueService.reorderQueueEntry(req.params.entryId, req.venue!.id, direction, req.staff?.id);
     ok(res, result);
   } catch (e) { next(e); }
 }

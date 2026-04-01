@@ -298,7 +298,7 @@ describe('queue service', () => {
     }));
   });
 
-  it('notifies a waiting entry in manual-dispatch mode without requiring a table assignment', async () => {
+  it('notifies a waiting entry in manual-dispatch mode with the default 3 minute window', async () => {
     const { notifyQueueEntry } = await import('../../src/services/queue.service');
 
     prismaMock.queueEntry.findFirst.mockResolvedValue({
@@ -339,9 +339,236 @@ describe('queue service', () => {
       'Neha',
       'Host desk',
       'The Craftery by Subko',
-      15,
+      3,
     );
     expect(result.status).toBe(QueueEntryStatus.NOTIFIED);
+    expect(result.windowMin).toBe(3);
+  });
+
+  it('notifies a waiting entry with an explicit custom response window', async () => {
+    const { notifyQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: QueueEntryStatus.WAITING,
+      tableId: null,
+      guestName: 'Neha',
+      guestPhone: '9876543210',
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'The Craftery by Subko',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        readyNotificationChannels: ['WHATSAPP', 'IVR'],
+      },
+    });
+
+    const result = await notifyQueueEntry('entry_1', 'venue_1', 10);
+
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_1' },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.NOTIFIED,
+      }),
+    }));
+    expect(notifyMock.tableReady).toHaveBeenCalledWith(
+      'venue_1',
+      'entry_1',
+      '9876543210',
+      'Neha',
+      'Host desk',
+      'The Craftery by Subko',
+      10,
+    );
+    expect(result.windowMin).toBe(10);
+  });
+
+  it('nudges an already-notified entry without changing the deadline', async () => {
+    const { nudgeQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: QueueEntryStatus.NOTIFIED,
+      tableId: null,
+      guestName: 'Neha',
+      guestPhone: '9876543210',
+      position: 2,
+      estimatedWaitMin: 11,
+      notifiedAt: new Date('2026-03-31T10:00:00.000Z'),
+      tableReadyDeadlineAt: new Date('2026-03-31T10:15:00.000Z'),
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'The Craftery by Subko',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        readyNotificationChannels: ['WHATSAPP', 'IVR'],
+      },
+    });
+
+    const result = await nudgeQueueEntry('entry_1', 'venue_1');
+
+    expect(prismaMock.queueEntry.update).not.toHaveBeenCalled();
+    expect(notifyMock.queueReadyReminder).toHaveBeenCalledWith(
+      'venue_1',
+      'entry_1',
+      '9876543210',
+      'Neha',
+      2,
+      11,
+      'The Craftery by Subko',
+    );
+    expect(result).toEqual(expect.objectContaining({
+      entryId: 'entry_1',
+      status: QueueEntryStatus.NOTIFIED,
+    }));
+  });
+
+  it('reorders a waiting entry one slot at a time without moving ahead of notified entries', async () => {
+    const { reorderQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_target',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.WAITING,
+      position: 3,
+      estimatedWaitMin: 14,
+      guestName: 'Neha',
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      { id: 'entry_notified', position: 1, status: QueueEntryStatus.NOTIFIED, estimatedWaitMin: 8 },
+      { id: 'entry_other_1', position: 2, status: QueueEntryStatus.WAITING, estimatedWaitMin: 11 },
+      { id: 'entry_target', position: 3, status: QueueEntryStatus.WAITING, estimatedWaitMin: 14 },
+      { id: 'entry_other_2', position: 4, status: QueueEntryStatus.WAITING, estimatedWaitMin: 17 },
+    ]);
+
+    const result = await reorderQueueEntry('entry_target', 'venue_subko', 'UP', 'staff_priority');
+
+    expect(result).toEqual(expect.objectContaining({
+      entryId: 'entry_target',
+      status: QueueEntryStatus.WAITING,
+      position: 2,
+      estimatedWaitMin: 11,
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_notified' },
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 8 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_target' },
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 11 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_other_1' },
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 14 }),
+    }));
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_other_2' },
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 17 }),
+    }));
+  });
+
+  it('completes seated entries when a queue-only table enters CLEARING and leaves FREE as availability-only', async () => {
+    const { updateTableStatus } = await import('../../src/services/table.service');
+
+    prismaMock.table.findFirst.mockResolvedValue({
+      id: 'table_1',
+      venueId: 'venue_subko',
+      status: TableStatus.OCCUPIED,
+      occupiedSince: new Date('2026-03-31T10:00:00.000Z'),
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+      },
+    });
+    prismaMock.queueEntry.updateMany.mockResolvedValue({ count: 1 });
+    prismaMock.queueEntry.findMany.mockResolvedValue([]);
+
+    await updateTableStatus({
+      tableId: 'table_1',
+      venueId: 'venue_subko',
+      status: TableStatus.CLEARING,
+      triggeredBy: 'STAFF',
+    });
+
+    expect(prismaMock.queueEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: { tableId: 'table_1', status: QueueEntryStatus.SEATED },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.COMPLETED,
+        completedAt: expect.any(Date),
+        tableReadyDeadlineAt: null,
+      }),
+    }));
+
+    vi.clearAllMocks();
+    prismaMock.table.findFirst.mockResolvedValue({
+      id: 'table_1',
+      venueId: 'venue_subko',
+      status: TableStatus.CLEARING,
+      occupiedSince: null,
+    });
+    prismaMock.table.findUnique.mockResolvedValue({
+      id: 'table_1',
+      venueId: 'venue_subko',
+      status: TableStatus.FREE,
+      label: 'P1',
+      capacity: 4,
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+      },
+    });
+
+    await updateTableStatus({
+      tableId: 'table_1',
+      venueId: 'venue_subko',
+      status: TableStatus.FREE,
+      triggeredBy: 'STAFF',
+    });
+
+    expect(prismaMock.queueEntry.updateMany).not.toHaveBeenCalled();
+    expect(prismaMock.queueEntry.findFirst).not.toHaveBeenCalled();
   });
 
   it('prioritizes a waiting entry to the front of the waiting cohort and audits the action', async () => {

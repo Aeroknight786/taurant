@@ -84,6 +84,12 @@ export function createPrismaMock() {
       update: vi.fn(),
       delete: vi.fn(),
     },
+    venueContentBlock: {
+      findMany: vi.fn(),
+      findUnique: vi.fn(),
+      upsert: vi.fn(),
+      update: vi.fn(),
+    },
     partySession: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),

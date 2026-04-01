@@ -84,17 +84,19 @@ test.describe('Guest venue landing', () => {
 
     await expect(page.locator('.steps .step-label')).toHaveText(['Join', 'Wait', 'Called']);
     await expect(page.getByRole('button', { name: 'Leave waitlist' })).toBeVisible();
+    await expect(page.locator('.queue-pos-label')).toContainText('Estimated wait');
+    await expect(page.locator('text=Waitlist position')).toHaveCount(0);
 
     const waitContent = page.locator('[data-wait-content="subko"]');
     await expect(waitContent).toBeVisible();
-    await expect(waitContent.locator('.wait-content-card')).toHaveCount(4);
+    await expect(waitContent.locator('.wait-content-card')).toHaveCount(2);
     await expect(waitContent).toContainText('Menu');
     await expect(waitContent).toContainText('Merchandise');
-    await expect(waitContent).toContainText('Stories');
-    await expect(waitContent).toContainText('Events');
+    await expect(waitContent).not.toContainText('Stories');
+    await expect(waitContent).not.toContainText('Events');
   });
 
-  test('Craftery manual-dispatch queue rows expose a prioritize control', async ({ page }) => {
+  test('Craftery manual-dispatch queue rows expose reorder controls', async ({ page }) => {
     await page.goto('/');
     await page.evaluate(() => {
       localStorage.setItem('flock_staff_auth', JSON.stringify({
@@ -222,10 +224,10 @@ test.describe('Guest venue landing', () => {
     });
 
     await page.goto(`/v/${CRAFTERY_VENUE_SLUG}/staff/dashboard`);
-    await page.waitForSelector('[data-prioritize-entry]');
-    const prioritizeButton = page.locator('[data-prioritize-entry]').first();
-    await expect(prioritizeButton).toBeVisible();
-    await expect(prioritizeButton).toContainText('Prioritize');
+    await page.waitForSelector('[data-reorder-entry]');
+    const moveUpButton = page.locator('[data-reorder-entry][data-reorder-direction="UP"]').first();
+    await expect(moveUpButton).toBeVisible();
+    await expect(moveUpButton).toContainText('Move up');
     await noHorizontalOverflow(page);
   });
 });
@@ -270,7 +272,7 @@ test.describe('Staff dashboard', () => {
     await loginStaff(page);
     await noHorizontalOverflow(page);
     await expect(page.getByText('Use the queue row to notify the next party')).toBeVisible();
-    const notifyButtons = page.locator('[data-notify-entry]');
+    const notifyButtons = page.locator('[data-open-notify-sheet]');
     if (await notifyButtons.count() > 0) {
       await expect(notifyButtons.first()).toBeVisible();
     }

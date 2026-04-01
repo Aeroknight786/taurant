@@ -139,6 +139,12 @@ export async function getVenueBySlug(slug: string) {
           },
         },
       },
+      contentBlocks: {
+        orderBy: [
+          { sortOrder: 'asc' },
+          { slot: 'asc' },
+        ],
+      },
     },
   });
 

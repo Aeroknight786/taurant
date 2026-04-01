@@ -41,6 +41,7 @@ describe('venue config service', () => {
         landingMode: 'venue',
         defaultGuestTray: 'menu',
         showContinueEntry: true,
+        showQueuePosition: true,
       },
       opsConfig: {
         queueDispatchMode: 'AUTO_TABLE',
@@ -114,6 +115,7 @@ describe('venue config service', () => {
       },
       uiConfig: {
         defaultGuestTray: 'ordered',
+        showQueuePosition: false,
         supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
       },
       opsConfig: {
@@ -151,6 +153,7 @@ describe('venue config service', () => {
       },
       uiConfig: {
         defaultGuestTray: 'ordered',
+        showQueuePosition: false,
         supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
       },
       opsConfig: {

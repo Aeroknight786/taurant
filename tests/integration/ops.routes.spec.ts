@@ -119,10 +119,14 @@ describe('venue, menu, and table routes', () => {
     venueServiceMock.getVenueBySlug.mockResolvedValue({
       id: 'venue_1',
       slug: 'the-barrel-room-koramangala',
+      contentBlocks: [
+        { slot: 'MENU', title: 'Menu highlights', body: 'A quick menu view', imageUrl: null, isEnabled: true, sortOrder: 1 },
+        { slot: 'MERCH', title: 'Merch', body: 'House merch', imageUrl: null, isEnabled: true, sortOrder: 2 },
+      ],
       config: {
         brandConfig: { themeKey: 'default' },
         featureConfig: { guestQueue: true, adminConsole: true },
-        uiConfig: { landingMode: 'venue' },
+        uiConfig: { landingMode: 'venue', showQueuePosition: false },
       },
     });
     venueServiceMock.getVenueStats.mockResolvedValue({ today: { totalQueueJoins: 3 } });
@@ -150,10 +154,16 @@ describe('venue, menu, and table routes', () => {
       url: '/api/v1/venues/public',
     })).status).toBe(200);
 
-    expect((await invokeApp(app, {
+    const venueRead = await invokeApp(app, {
       method: 'GET',
       url: '/api/v1/venues/the-barrel-room-koramangala',
-    })).status).toBe(200);
+    });
+    expect(venueRead.status).toBe(200);
+    expect(venueRead.body.data.config.uiConfig.showQueuePosition).toBe(false);
+    expect(venueRead.body.data.contentBlocks).toEqual([
+      expect.objectContaining({ slot: 'MENU', isEnabled: true }),
+      expect.objectContaining({ slot: 'MERCH', isEnabled: true }),
+    ]);
 
     expect((await invokeApp(app, {
       method: 'GET',
