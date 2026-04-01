@@ -200,6 +200,7 @@ const uiState = {
   staffRecentTableEventsFetchedAt: 0,
   staffHistory: [],
   staffHistoryLoadedAt: 0,
+  staffDashboardRefreshToken: 0,
   adminTab: 'menu',
   adminMenu: {
     categories: [],
@@ -440,6 +441,73 @@ function getCurrentGuestRouteContext() {
     };
   }
   return null;
+}
+
+function isStaffDashboardRouteForSlug(slug) {
+  return Boolean(slug) && window.location.pathname === buildStaffDashboardPath(slug);
+}
+
+function shouldApplyStaffLiveRefresh({ activeSlug, scheduledTab, refreshToken }) {
+  return (
+    Boolean(getStaffAuth())
+    && isStaffDashboardRouteForSlug(activeSlug)
+    && uiState.staffTab === scheduledTab
+    && uiState.staffDashboardRefreshToken === refreshToken
+  );
+}
+
+function captureStaffLiveScrollAnchor() {
+  const anchors = Array.from(document.querySelectorAll('#staff-live-panel [data-staff-live-anchor]'));
+  const visibleAnchor = anchors.find((node) => {
+    const rect = node.getBoundingClientRect();
+    return rect.bottom > 0 && rect.top < window.innerHeight;
+  }) || anchors.find((node) => node.getBoundingClientRect().top >= 0) || null;
+
+  return {
+    windowScrollY: window.scrollY,
+    anchorId: visibleAnchor?.getAttribute('data-staff-live-anchor') || null,
+    anchorTop: visibleAnchor?.getBoundingClientRect().top || 0,
+  };
+}
+
+function findStaffLiveAnchor(anchorId) {
+  if (!anchorId) {
+    return null;
+  }
+
+  return Array.from(document.querySelectorAll('#staff-live-panel [data-staff-live-anchor]'))
+    .find((node) => node.getAttribute('data-staff-live-anchor') === anchorId) || null;
+}
+
+function preserveStaffLiveScroll(fn) {
+  const scrollState = captureStaffLiveScrollAnchor();
+  const restore = () => {
+    const anchor = findStaffLiveAnchor(scrollState.anchorId);
+    if (anchor) {
+      const delta = anchor.getBoundingClientRect().top - scrollState.anchorTop;
+      if (Math.abs(delta) > 1) {
+        window.scrollTo({
+          top: window.scrollY + delta,
+          behavior: 'auto',
+        });
+      }
+      return;
+    }
+
+    window.scrollTo({
+      top: scrollState.windowScrollY,
+      behavior: 'auto',
+    });
+  };
+
+  fn();
+  restore();
+  window.requestAnimationFrame(() => {
+    restore();
+    window.requestAnimationFrame(restore);
+  });
+  window.setTimeout(restore, 32);
+  window.setTimeout(restore, 96);
 }
 
 function renderPage(html, title = 'Flock') {
@@ -2027,6 +2095,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
     navigateToStaffDashboard(auth.venueSlug, { replace: true });
     return;
   }
+  const refreshToken = ++uiState.staffDashboardRefreshToken;
   let venue = {
     name: 'Venue unavailable',
     isQueueOpen: true,
@@ -2413,7 +2482,11 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
 
   if (currentTab !== 'seat' && currentTab !== 'manager' && !uiState.staffSeat.isSubmitting) {
     const refreshMs = resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings });
-    scheduleRefresh(() => refreshStaffDashboardLivePanel(activeSlug), refreshMs);
+    scheduleRefresh(() => refreshStaffDashboardLivePanel({
+      activeSlug,
+      scheduledTab: currentTab,
+      refreshToken,
+    }), refreshMs);
   }
 }
 
@@ -2720,7 +2793,7 @@ function renderQueueTab(waiting, tables, venue) {
   const waitingOnly = waiting.filter((entry) => entry.status === 'WAITING');
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
   return waiting.length ? waiting.map((entry) => `
-    <div class="q-row ${entry.status === 'NOTIFIED' ? 'highlight' : ''} ${entry.status === 'NOTIFIED' ? 'ready' : ''}">
+    <div class="q-row ${entry.status === 'NOTIFIED' ? 'highlight' : ''} ${entry.status === 'NOTIFIED' ? 'ready' : ''}" data-staff-live-anchor="${entry.id}">
       <div class="q-row-num">${entry.position || '-'}</div>
       <div class="q-row-info">
         <div class="q-row-name">
@@ -2768,7 +2841,7 @@ function renderSeatedTab(seated, seatedBills, venue) {
   return seated.length ? seated.map((entry) => {
     const bill = seatedBills[entry.id];
     return `
-      <div class="q-row">
+      <div class="q-row" data-staff-live-anchor="${entry.id}">
         <div class="q-row-num">${escapeHtml(entry.table?.label || '-')}</div>
         <div class="q-row-info">
           <div class="q-row-name">
@@ -2805,7 +2878,7 @@ function renderHistoryTab(venue) {
         ? '<span class="badge badge-danger">Cancelled</span>'
         : `<span class="badge badge-neutral">${escapeHtml(statusLabel[entry.status] || entry.status)}</span>`;
     return `
-      <div class="q-row">
+      <div class="q-row" data-staff-live-anchor="${entry.id}">
         <div class="q-row-num">${entry.table?.label ? escapeHtml(entry.table.label) : '-'}</div>
         <div class="q-row-info">
           <div class="q-row-name">
@@ -2842,7 +2915,7 @@ function renderTablesTab(tables, recentTableEvents, venue) {
     </div>
     <div class="tables-grid">
       ${tables.map((table) => `
-        <div class="table-card ${table.status.toLowerCase()}">
+        <div class="table-card ${table.status.toLowerCase()}" data-staff-live-anchor="${table.id}">
           <div class="table-num">${escapeHtml(table.label)}</div>
           <div class="table-cap">${table.capacity} seats${table.section ? ` · ${escapeHtml(table.section)}` : ''}</div>
           <div class="table-status-label">${escapeHtml(table.status)}</div>
@@ -3051,10 +3124,14 @@ function renderStaffActiveTabPanel({ currentTab, queueModuleEnabled, historyTabE
   return '';
 }
 
-async function refreshStaffDashboardLivePanel(activeSlug) {
+async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refreshToken }) {
   const auth = getStaffAuth();
   if (!auth) {
     navigateToStaffLogin(activeSlug, { replace: true });
+    return;
+  }
+
+  if (!shouldApplyStaffLiveRefresh({ activeSlug, scheduledTab, refreshToken })) {
     return;
   }
 
@@ -3072,6 +3149,10 @@ async function refreshStaffDashboardLivePanel(activeSlug) {
     throw error;
   });
   if (!venue) {
+    return;
+  }
+
+  if (!shouldApplyStaffLiveRefresh({ activeSlug, scheduledTab, refreshToken })) {
     return;
   }
 
@@ -3159,6 +3240,10 @@ async function refreshStaffDashboardLivePanel(activeSlug) {
     uiState.staffSeatedBills = seatedBills;
   }
 
+  if (!shouldApplyStaffLiveRefresh({ activeSlug, scheduledTab, refreshToken })) {
+    return;
+  }
+
   uiState.staffLastUpdatedAt = Date.now();
   applyVenueThemeForVenue(venue);
 
@@ -3168,32 +3253,37 @@ async function refreshStaffDashboardLivePanel(activeSlug) {
   const panelHost = document.getElementById('staff-live-panel');
 
   if (!warningHost || !bannerHost || !statsHost || !panelHost) {
-    await renderStaffDashboard(activeSlug);
     return;
   }
 
-  warningHost.innerHTML = renderDependencyWarnings(dependencyWarnings);
-  bannerHost.innerHTML = isManualDispatchVenue(venue)
-    ? `
-      <div class="alert alert-blue" style="margin-bottom:18px;">
-        <div>Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.</div>
-      </div>
-    `
-    : '';
-  statsHost.innerHTML = renderStaffStatsTiles(stats, venue);
-  panelHost.innerHTML = renderStaffActiveTabPanel({
-    currentTab,
-    queueModuleEnabled,
-    historyTabEnabled,
-    waiting,
-    seated,
-    seatedBills,
-    tables,
-    recentTableEvents,
-    venue,
+  preserveStaffLiveScroll(() => {
+    warningHost.innerHTML = renderDependencyWarnings(dependencyWarnings);
+    bannerHost.innerHTML = isManualDispatchVenue(venue)
+      ? `
+        <div class="alert alert-blue" style="margin-bottom:18px;">
+          <div>Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.</div>
+        </div>
+      `
+      : '';
+    statsHost.innerHTML = renderStaffStatsTiles(stats, venue);
+    panelHost.innerHTML = renderStaffActiveTabPanel({
+      currentTab,
+      queueModuleEnabled,
+      historyTabEnabled,
+      waiting,
+      seated,
+      seatedBills,
+      tables,
+      recentTableEvents,
+      venue,
+    });
   });
 
-  scheduleRefresh(() => refreshStaffDashboardLivePanel(activeSlug), resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings }));
+  scheduleRefresh(() => refreshStaffDashboardLivePanel({
+    activeSlug,
+    scheduledTab: currentTab,
+    refreshToken,
+  }), resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings }));
 }
 
 function renderAdminMenuTab(categories) {

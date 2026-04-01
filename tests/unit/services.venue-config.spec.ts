@@ -116,7 +116,7 @@ describe('venue config service', () => {
       uiConfig: {
         defaultGuestTray: 'ordered',
         showQueuePosition: false,
-        supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+        supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
       },
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
@@ -154,7 +154,7 @@ describe('venue config service', () => {
       uiConfig: {
         defaultGuestTray: 'ordered',
         showQueuePosition: false,
-        supportCopy: 'Join the waitlist, track your live position, and head back to the host desk once your table is ready.',
+        supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
       },
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',

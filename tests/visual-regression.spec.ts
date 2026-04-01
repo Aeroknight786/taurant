@@ -268,6 +268,172 @@ test.describe('Staff dashboard', () => {
     }
   }
 
+  test('queue tab preserves staff scroll position during polling', async ({ page }) => {
+    test.skip(
+      !/^https?:\/\/(127\.0\.0\.1|localhost)(:\d+)?/.test(process.env.FLOCK_TEST_URL || ''),
+      'This regression must run against the local frontend bundle, not the live deployed app.js.',
+    );
+
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem('flock_staff_auth', JSON.stringify({
+        token: 'mock_staff_token',
+        venueSlug: 'the-craftery-koramangala',
+        venueId: 'venue_craftery',
+        role: 'MANAGER',
+        staff: {
+          id: 'staff_craftery',
+          name: 'Craftery Manager',
+          role: 'MANAGER',
+        },
+      }));
+      sessionStorage.setItem('flock_active_venue', 'the-craftery-koramangala');
+    });
+
+    const queueRows = Array.from({ length: 24 }, (_, index) => ({
+      id: `queue_${index + 1}`,
+      position: index + 1,
+      guestName: `Scroll Guest ${index + 1}`,
+      guestPhone: `9${String(800000000 + index).padStart(9, '0')}`,
+      partySize: (index % 4) + 1,
+      otp: String(100000 + index),
+      status: 'WAITING',
+      seatingPreference: index % 2 === 0 ? 'INDOOR' : 'FIRST_AVAILABLE',
+      estimatedWaitMin: Math.min(30, 8 + (index * 3)),
+      displayRef: `FLK-SCROLL-${index + 1}`,
+      guestNotes: index === 10 ? 'Keep this row stable during polling.' : '',
+    }));
+
+    await page.route('**/api/v1/venues/the-craftery-koramangala', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            id: 'venue_craftery',
+            slug: CRAFTERY_VENUE_SLUG,
+            name: 'The Craftery by Subko',
+            address: 'No. 68, 2-374 BBMP PID, 3rd Block, Koramangala',
+            city: 'Bengaluru',
+            tableReadyWindowMin: 15,
+            isQueueOpen: true,
+            depositPercent: 30,
+            brandConfig: {
+              displayName: 'The Craftery by Subko',
+              shortName: 'Craftery',
+              tagline: 'Waitlist · live updates · host desk',
+              themeKey: 'craftery',
+            },
+            featureConfig: {
+              guestQueue: true,
+              staffConsole: true,
+              adminConsole: true,
+              historyTab: true,
+              preOrder: false,
+              finalPayment: false,
+            },
+            uiConfig: {
+              landingMode: 'venue',
+              showContinueEntry: true,
+              showQueuePosition: false,
+              supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+            },
+            opsConfig: {
+              queueDispatchMode: 'MANUAL_NOTIFY',
+              tableSourceMode: 'MANUAL',
+              joinConfirmationMode: 'WEB_ONLY',
+              readyNotificationChannels: ['WHATSAPP'],
+            },
+            config: {
+              brandConfig: {
+                displayName: 'The Craftery by Subko',
+                shortName: 'Craftery',
+                tagline: 'Waitlist · live updates · host desk',
+                themeKey: 'craftery',
+              },
+              featureConfig: {
+                guestQueue: true,
+                staffConsole: true,
+                adminConsole: true,
+                historyTab: true,
+                preOrder: false,
+                finalPayment: false,
+              },
+              uiConfig: {
+                landingMode: 'venue',
+                showContinueEntry: true,
+                showQueuePosition: false,
+                supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+              },
+              opsConfig: {
+                queueDispatchMode: 'MANUAL_NOTIFY',
+                tableSourceMode: 'MANUAL',
+                joinConfirmationMode: 'WEB_ONLY',
+                readyNotificationChannels: ['WHATSAPP'],
+              },
+            },
+          },
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/queue/live', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: queueRows,
+        }),
+      });
+    });
+
+    await page.route('**/api/v1/venues/stats/today', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          success: true,
+          data: {
+            today: {
+              totalQueueJoins: queueRows.length,
+              avgWaitMin: 18,
+              totalRevenuePaise: 0,
+            },
+          },
+        }),
+      });
+    });
+
+    await page.goto(`/v/${CRAFTERY_VENUE_SLUG}/staff/dashboard`);
+    await page.waitForSelector('.q-row');
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight * 0.65));
+    const beforeAnchor = await page.evaluate(() => {
+      const anchors = Array.from(document.querySelectorAll('#staff-live-panel [data-staff-live-anchor]'));
+      const anchor = anchors.find((node) => {
+        const rect = node.getBoundingClientRect();
+        return rect.bottom > 0 && rect.top < window.innerHeight;
+      }) || anchors.find((node) => node.getBoundingClientRect().top >= 0);
+      return anchor
+        ? {
+            id: anchor.getAttribute('data-staff-live-anchor'),
+            top: anchor.getBoundingClientRect().top,
+          }
+        : null;
+    });
+    expect(beforeAnchor?.id, 'A visible queue row should be available before polling').toBeTruthy();
+    await page.waitForTimeout(3500);
+    const afterTop = await page.evaluate((anchorId) => {
+      const anchor = Array.from(document.querySelectorAll('#staff-live-panel [data-staff-live-anchor]'))
+        .find((node) => node.getAttribute('data-staff-live-anchor') === anchorId);
+      return anchor ? anchor.getBoundingClientRect().top : null;
+    }, beforeAnchor?.id || '');
+
+    expect(afterTop, 'The same visible queue row should still exist after polling').not.toBeNull();
+    expect(Math.abs((afterTop || 0) - (beforeAnchor?.top || 0)), 'Visible queue rows should remain stable across live polling').toBeLessThan(20);
+  });
+
   test('queue tab renders without overflow', async ({ page }) => {
     await loginStaff(page);
     await noHorizontalOverflow(page);
