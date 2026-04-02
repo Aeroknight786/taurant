@@ -577,6 +577,8 @@ function prefillStaffSeatFromButton(button) {
 function handleStaffQueueMutation({ key, request, successMessage, nextTab = null }) {
   guardedAction(key, async () => {
     try {
+      clearTimer();
+      uiState.staffDashboardRefreshToken += 1;
       await request();
       uiState.staffHistory = [];
       uiState.staffHistoryLoadedAt = 0;
