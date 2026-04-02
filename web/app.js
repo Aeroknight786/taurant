@@ -574,12 +574,15 @@ function prefillStaffSeatFromButton(button) {
   renderStaffDashboard().catch(handleFatalError);
 }
 
-function handleStaffQueueMutation({ key, request, successMessage }) {
+function handleStaffQueueMutation({ key, request, successMessage, nextTab = null }) {
   guardedAction(key, async () => {
     try {
       await request();
       uiState.staffHistory = [];
       uiState.staffHistoryLoadedAt = 0;
+      if (nextTab) {
+        uiState.staffTab = nextTab;
+      }
       setFlash('green', successMessage);
       await renderStaffDashboard();
     } catch (error) {
@@ -724,6 +727,7 @@ function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = 
         body: { otp },
       }),
       successMessage: 'Guest marked arrived.',
+      nextTab: 'history',
     });
   });
 }
