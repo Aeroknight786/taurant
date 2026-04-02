@@ -578,6 +578,8 @@ function handleStaffQueueMutation({ key, request, successMessage }) {
   guardedAction(key, async () => {
     try {
       await request();
+      uiState.staffHistory = [];
+      uiState.staffHistoryLoadedAt = 0;
       setFlash('green', successMessage);
       await renderStaffDashboard();
     } catch (error) {
