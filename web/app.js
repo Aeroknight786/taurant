@@ -2358,6 +2358,10 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
     }
   }
 
+  if (refreshToken !== uiState.staffDashboardRefreshToken) {
+    return;
+  }
+
   renderPage(renderShell({
     pill: 'Staff',
     body: `
