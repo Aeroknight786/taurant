@@ -124,6 +124,7 @@ export async function getVenueBySlug(slug: string) {
       isQueueOpen: true,
       depositPercent: true,
       licenceType: true,
+      maxQueueSize: true,
       tableReadyWindowMin: true,
       brandConfig: true,
       featureConfig: true,

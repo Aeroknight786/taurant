@@ -103,7 +103,7 @@ describe('venue service', () => {
         isQueueOpen: true,
         brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
         featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
-        uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.' },
+        uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.' },
       },
     ]);
     prismaMock.venue.findUnique.mockResolvedValue({
@@ -118,7 +118,7 @@ describe('venue service', () => {
       tableReadyWindowMin: 15,
       brandConfig: { themeKey: 'craftery', shortName: 'Craftery', tagline: 'Waitlist · live updates · host desk' },
       featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
-      uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.' },
+      uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: false, supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.' },
       contentBlocks: [
         { slot: 'MENU', title: 'Current highlights', body: 'Menu highlights', imageUrl: null, isEnabled: true, sortOrder: 1 },
         { slot: 'MERCH', title: 'Craftery', body: 'Merch card', imageUrl: 'https://cdn.example.com/merch.jpg', isEnabled: true, sortOrder: 2 },
@@ -143,7 +143,7 @@ describe('venue service', () => {
           adminConsole: true,
         }),
         uiConfig: expect.objectContaining({
-          supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+          supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
           showQueuePosition: false,
         }),
       }),

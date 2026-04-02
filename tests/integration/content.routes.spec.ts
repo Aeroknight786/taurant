@@ -23,8 +23,9 @@ vi.mock('../../src/services/content.service', async () => {
 
 vi.mock('../../src/middleware/auth', () => ({
   requireAuth: (req: any, _res: any, next: any) => {
+    const venueSlug = req.header('x-venue-slug') || 'the-barrel-room-koramangala';
     req.staff = { id: 'staff_1', role: 'MANAGER', venueId: 'venue_1' };
-    req.venue = { id: 'venue_1', slug: 'the-craftery-koramangala' };
+    req.venue = { id: 'venue_1', slug: venueSlug };
     next();
   },
   requireGuestAuth: (_req: any, _res: any, next: any) => next(),
@@ -87,6 +88,22 @@ describe('content routes', () => {
       imageUrl: 'https://cdn.example.com/story.jpg',
       isEnabled: true,
     });
+  });
+
+  it('rejects content routes when venue content is disabled', async () => {
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/content/admin/current',
+      headers: {
+        authorization: 'Bearer staff-token',
+        'x-venue-slug': 'the-craftery-koramangala',
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('VENUE_FEATURE_DISABLED');
   });
 
   it('rejects invalid content slots', async () => {

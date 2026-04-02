@@ -13,6 +13,7 @@ import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { sweepExpiredTableReadyEntries, sweepReadyReminderEntries, tryAdvanceQueue, updateTableStatus } from '../services/table.service';
 import { TableStatus, TmsProvider } from '@prisma/client';
+import { resolveVenueConfig, shouldUseVenueTables } from '../services/venueConfig.service';
 
 interface TmsTableState {
   externalId: string;
@@ -68,10 +69,33 @@ async function simulateTableStates(venueId: string): Promise<TmsTableState[]> {
 // ── Main poll loop ────────────────────────────────────────────────
 
 async function pollVenue(venue: {
-  id: string; tmsProvider: TmsProvider; tmsApiKey: string | null;
-  tmsVenueId: string | null; isQueueOpen: boolean;
+  id: string;
+  name: string;
+  slug: string;
+  tmsProvider: TmsProvider;
+  tmsApiKey: string | null;
+  tmsVenueId: string | null;
+  isQueueOpen: boolean;
+  brandConfig?: unknown;
+  featureConfig?: unknown;
+  uiConfig?: unknown;
+  opsConfig?: unknown;
 }): Promise<void> {
   if (!venue.isQueueOpen) return;
+
+  const venueConfig = resolveVenueConfig({
+    id: venue.id,
+    name: venue.name,
+    slug: venue.slug,
+    brandConfig: venue.brandConfig as any,
+    featureConfig: venue.featureConfig as any,
+    uiConfig: venue.uiConfig as any,
+    opsConfig: venue.opsConfig as any,
+  });
+  if (!shouldUseVenueTables(venueConfig)) {
+    logger.debug(`TMS poller skipped for tableless venue ${venue.id}`);
+    return;
+  }
 
   let externalStates: TmsTableState[] = [];
 
@@ -149,7 +173,19 @@ export function startTmsPoller(): NodeJS.Timeout {
 
       const venues = await prisma.venue.findMany({
         where:  { isQueueOpen: true },
-        select: { id: true, tmsProvider: true, tmsApiKey: true, tmsVenueId: true, isQueueOpen: true },
+        select: {
+          id: true,
+          name: true,
+          slug: true,
+          tmsProvider: true,
+          tmsApiKey: true,
+          tmsVenueId: true,
+          isQueueOpen: true,
+          brandConfig: true,
+          featureConfig: true,
+          uiConfig: true,
+          opsConfig: true,
+        },
       });
 
       await Promise.allSettled(venues.map(pollVenue));

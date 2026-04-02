@@ -18,6 +18,7 @@ import {
   getVenueStaffSurfaceFlags,
   isManualDispatchVenue,
   isQueueOnlyGuestExperience,
+  isWaitlistOnlyVenue,
   isVenueFeatureEnabled,
   resolveLegacyVenueSlug,
   resolveVenueOpsConfig,
@@ -109,6 +110,7 @@ describe('frontend venue helpers', () => {
     expect(getGuestJourneyStepLabels(venue)).toEqual(['Join', 'Wait', 'Called']);
     expect(getVenueGuestSurfaceFlags(venue)).toEqual({
       queueOnlyGuestExperience: true,
+      waitlistOnlyVenue: false,
       manualDispatchMode: true,
       showPreOrderCta: false,
       showInviteAction: false,
@@ -118,6 +120,7 @@ describe('frontend venue helpers', () => {
     });
     expect(getVenueStaffSurfaceFlags(venue)).toEqual({
       queueOnlyGuestExperience: true,
+      waitlistOnlyVenue: false,
       manualDispatchMode: true,
       showFlowLog: false,
       showNotifyAction: true,
@@ -126,6 +129,9 @@ describe('frontend venue helpers', () => {
       showBulkClearTool: false,
       showDepositControls: false,
       showBillingSignals: false,
+      showTablesSurface: true,
+      showSeatSurface: true,
+      showSeatedSurface: true,
     });
   });
 
@@ -159,6 +165,59 @@ describe('frontend venue helpers', () => {
     });
     expect(isQueueOnlyGuestExperience(venue)).toBe(true);
     expect(isManualDispatchVenue(venue)).toBe(true);
+  });
+
+  it('treats DISABLED table source with queue completion as a waitlist-only venue', () => {
+    const venue = {
+      brandConfig: { themeKey: 'craftery' },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        joinConfirmationMode: 'WEB_ONLY',
+        contentMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+      },
+      config: {
+        featureConfig: {
+          guestQueue: true,
+          preOrder: false,
+          partyShare: false,
+          seatedOrdering: false,
+          finalPayment: false,
+          staffConsole: true,
+          adminConsole: true,
+        },
+      },
+    };
+
+    expect(isQueueOnlyGuestExperience(venue)).toBe(true);
+    expect(isWaitlistOnlyVenue(venue)).toBe(true);
+    expect(getGuestJourneyStepLabels(venue)).toEqual(['Join', 'Wait', 'Called']);
+    expect(getVenueGuestSurfaceFlags(venue)).toEqual({
+      queueOnlyGuestExperience: true,
+      waitlistOnlyVenue: true,
+      manualDispatchMode: true,
+      showPreOrderCta: false,
+      showInviteAction: false,
+      showTableOrdering: false,
+      showFinalPayment: false,
+      showBillingSignals: false,
+    });
+    expect(getVenueStaffSurfaceFlags(venue)).toEqual({
+      queueOnlyGuestExperience: true,
+      waitlistOnlyVenue: true,
+      manualDispatchMode: true,
+      showFlowLog: false,
+      showNotifyAction: true,
+      showRefundTool: false,
+      showOfflineSettleTool: false,
+      showBulkClearTool: false,
+      showDepositControls: false,
+      showBillingSignals: false,
+      showTablesSurface: false,
+      showSeatSurface: false,
+      showSeatedSurface: false,
+    });
   });
 
   it('persists active venue state and route-derived fallbacks', () => {

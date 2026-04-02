@@ -29,11 +29,12 @@ function optionalHexColor() {
 
 export const VenueThemeKeySchema = z.enum(['default', 'craftery']);
 export const VenueQueueDispatchModeSchema = z.enum(['AUTO_TABLE', 'MANUAL_NOTIFY']);
-export const VenueTableSourceModeSchema = z.enum(['MANUAL', 'TMS', 'HYBRID']);
+export const VenueTableSourceModeSchema = z.enum(['MANUAL', 'TMS', 'HYBRID', 'DISABLED']);
 export const VenueJoinConfirmationModeSchema = z.enum(['WEB_ONLY', 'WHATSAPP', 'WHATSAPP_SMS']);
 export const VenueReadyNotificationChannelSchema = z.enum(['WHATSAPP', 'SMS', 'IVR']);
 export const VenueGuestWaitFormulaSchema = z.enum(['LEGACY_TURN_HEURISTIC', 'SUBKO_FIXED_V1']);
-export const VenueContentModeSchema = z.enum(['DEFAULT', 'SUBKO_WAIT_CONTENT']);
+export const VenueContentModeSchema = z.enum(['DEFAULT', 'SUBKO_WAIT_CONTENT', 'DISABLED']);
+export const VenueArrivalCompletionModeSchema = z.enum(['TABLE_ASSIGN', 'QUEUE_COMPLETE']);
 
 export const VenueBrandConfigSchema = z.object({
   displayName: optionalTrimmedString(120),
@@ -77,6 +78,7 @@ export const VenueOpsConfigSchema = z.object({
   expiryNotificationEnabled: z.boolean().optional(),
   guestWaitFormula: VenueGuestWaitFormulaSchema.optional(),
   contentMode: VenueContentModeSchema.optional(),
+  arrivalCompletionMode: VenueArrivalCompletionModeSchema.optional(),
 }).strict();
 
 export type VenueBrandConfig = z.infer<typeof VenueBrandConfigSchema>;
@@ -112,6 +114,7 @@ export type ResolvedVenueOpsConfig = {
   expiryNotificationEnabled: boolean;
   guestWaitFormula: z.infer<typeof VenueGuestWaitFormulaSchema>;
   contentMode: z.infer<typeof VenueContentModeSchema>;
+  arrivalCompletionMode: z.infer<typeof VenueArrivalCompletionModeSchema>;
 };
 
 export type ResolvedVenueConfig = {
@@ -177,6 +180,19 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
   expiryNotificationEnabled: false,
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
   contentMode: 'DEFAULT',
+  arrivalCompletionMode: 'TABLE_ASSIGN',
+};
+
+const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
+const CRAFTERY_VENUE_UI_DEFAULTS = {
+  showQueuePosition: false,
+  supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
+};
+const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
+  queueDispatchMode: 'MANUAL_NOTIFY',
+  tableSourceMode: 'DISABLED',
+  arrivalCompletionMode: 'QUEUE_COMPLETE',
+  contentMode: 'DISABLED',
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -215,6 +231,7 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
 
   const themeKey = rawBrandConfig.themeKey ?? 'default';
   const themePreset = THEME_PRESET_DEFAULTS[themeKey];
+  const isCraftery = source.slug === CRAFTERY_VENUE_SLUG;
 
   return {
     brandConfig: {
@@ -231,10 +248,12 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
     },
     uiConfig: {
       ...DEFAULT_VENUE_UI_CONFIG,
+      ...(isCraftery ? CRAFTERY_VENUE_UI_DEFAULTS : {}),
       ...rawUiConfig,
     },
     opsConfig: {
       ...DEFAULT_VENUE_OPS_CONFIG,
+      ...(isCraftery ? CRAFTERY_VENUE_OPS_DEFAULTS : {}),
       ...rawOpsConfig,
     },
   };
@@ -324,6 +343,18 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       showQueuePosition: config.uiConfig.showQueuePosition,
       supportCopy: config.uiConfig.supportCopy,
     },
+    opsConfig: {
+      queueDispatchMode: config.opsConfig.queueDispatchMode,
+      tableSourceMode: config.opsConfig.tableSourceMode,
+      joinConfirmationMode: config.opsConfig.joinConfirmationMode,
+      readyNotificationChannels: config.opsConfig.readyNotificationChannels,
+      readyReminderEnabled: config.opsConfig.readyReminderEnabled,
+      readyReminderOffsetMin: config.opsConfig.readyReminderOffsetMin,
+      expiryNotificationEnabled: config.opsConfig.expiryNotificationEnabled,
+      guestWaitFormula: config.opsConfig.guestWaitFormula,
+      contentMode: config.opsConfig.contentMode,
+      arrivalCompletionMode: config.opsConfig.arrivalCompletionMode,
+    },
   };
 }
 
@@ -337,4 +368,19 @@ export function isManualQueueDispatchConfig(config: Pick<ResolvedVenueConfig, 'o
 export function shouldSendJoinQueueNotification(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
   const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
   return opsConfig.joinConfirmationMode !== 'WEB_ONLY';
+}
+
+export function shouldUseVenueTables(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.tableSourceMode !== 'DISABLED' && opsConfig.arrivalCompletionMode !== 'QUEUE_COMPLETE';
+}
+
+export function isQueueCompleteVenue(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.arrivalCompletionMode === 'QUEUE_COMPLETE';
+}
+
+export function shouldUseVenueContent(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.contentMode !== 'DISABLED';
 }

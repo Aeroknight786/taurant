@@ -116,18 +116,19 @@ describe('venue config service', () => {
       uiConfig: {
         defaultGuestTray: 'ordered',
         showQueuePosition: false,
-        supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+        supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
-        tableSourceMode: 'MANUAL',
+        tableSourceMode: 'DISABLED',
         joinConfirmationMode: 'WEB_ONLY',
         readyNotificationChannels: ['WHATSAPP', 'IVR'],
         readyReminderEnabled: true,
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
-        contentMode: 'SUBKO_WAIT_CONTENT',
+        contentMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
       },
     });
 
@@ -154,18 +155,19 @@ describe('venue config service', () => {
       uiConfig: {
         defaultGuestTray: 'ordered',
         showQueuePosition: false,
-        supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
+        supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
-        tableSourceMode: 'MANUAL',
+        tableSourceMode: 'DISABLED',
         joinConfirmationMode: 'WEB_ONLY',
         readyNotificationChannels: ['WHATSAPP', 'IVR'],
         readyReminderEnabled: true,
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
-        contentMode: 'SUBKO_WAIT_CONTENT',
+        contentMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
       },
     });
   });

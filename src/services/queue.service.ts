@@ -12,7 +12,14 @@ import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { generateDisplayRef } from '../utils/txnRef';
-import { ResolvedVenueConfig, isManualQueueDispatchConfig, resolveVenueConfig, shouldSendJoinQueueNotification } from './venueConfig.service';
+import {
+  ResolvedVenueConfig,
+  isManualQueueDispatchConfig,
+  isQueueCompleteVenue,
+  resolveVenueConfig,
+  shouldSendJoinQueueNotification,
+  shouldUseVenueTables,
+} from './venueConfig.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 type QueueReorderDirection = 'UP' | 'DOWN';
@@ -133,8 +140,26 @@ export async function joinQueue(params: {
 // ── Get live queue ─────────────────────────────────────────────────
 
 export async function getVenueQueue(venueId: string) {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
   const entries = await prisma.queueEntry.findMany({
-    where:   { venueId, status: { in: ['WAITING', 'NOTIFIED', 'SEATED'] } },
+    where:   {
+      venueId,
+      status: venueConfig && isQueueCompleteVenue(venueConfig)
+        ? { in: ['WAITING', 'NOTIFIED'] }
+        : { in: ['WAITING', 'NOTIFIED', 'SEATED'] },
+    },
     orderBy: { position: 'asc' },
     include: {
       table: {
@@ -687,46 +712,82 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
 export async function seatGuest(params: {
   venueId: string;
   otp:     string;
-  tableId: string;
+  tableId?: string;
 }): Promise<{ entryId: string; guestName: string; preOrderSync: { attempted: boolean; status: string; posOrderId?: string } }> {
+  const venue = await prisma.venue.findUnique({
+    where: { id: params.venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  if (!venue) throw new AppError('Venue not found', 404);
+
+  const venueConfig = resolveVenueConfig(venue);
+  const queueCompleteVenue = isQueueCompleteVenue(venueConfig);
+  const usesVenueTables = shouldUseVenueTables(venueConfig);
+
   const entry = await prisma.queueEntry.findFirst({
     where: { otp: params.otp, venueId: params.venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
   });
   if (!entry) throw new AppError('Invalid OTP or guest not in queue', 400, 'OTP_INVALID');
 
-  const table = await prisma.table.findFirst({ where: { id: params.tableId, venueId: params.venueId } });
-  if (!table) throw new AppError('Table not found', 404);
-  if (table.status !== TableStatus.FREE && table.status !== TableStatus.RESERVED) {
+  if (usesVenueTables && !params.tableId) {
+    throw new AppError('Table is required for this venue', 400, 'TABLE_REQUIRED');
+  }
+
+  const table = usesVenueTables && params.tableId
+    ? await prisma.table.findFirst({ where: { id: params.tableId, venueId: params.venueId } })
+    : null;
+
+  if (usesVenueTables && !table) throw new AppError('Table not found', 404);
+  if (table && table.status !== TableStatus.FREE && table.status !== TableStatus.RESERVED) {
     throw new AppError('Table is not available', 400, 'TABLE_NOT_AVAILABLE');
   }
+
+  const nextStatus = queueCompleteVenue ? QueueEntryStatus.COMPLETED : QueueEntryStatus.SEATED;
 
   await prisma.$transaction(async (tx) => {
     await tx.queueEntry.update({
       where: { id: entry.id },
       data:  {
-        status: QueueEntryStatus.SEATED,
-        tableId: params.tableId,
+        status: nextStatus,
+        tableId: queueCompleteVenue ? null : params.tableId ?? null,
         seatedAt: new Date(),
+        completedAt: queueCompleteVenue ? new Date() : null,
         tableReadyDeadlineAt: null,
       },
     });
-    await tx.table.update({
-      where: { id: params.tableId },
-      data:  { status: TableStatus.OCCUPIED, occupiedSince: new Date() },
-    });
-    await tx.tableEvent.create({
-      data: { tableId: params.tableId, fromStatus: table.status, toStatus: TableStatus.OCCUPIED, triggeredBy: 'OTP_SEAT' },
-    });
+
+    if (table && params.tableId) {
+      await tx.table.update({
+        where: { id: params.tableId },
+        data:  { status: TableStatus.OCCUPIED, occupiedSince: new Date() },
+      });
+      await tx.tableEvent.create({
+        data: { tableId: params.tableId, fromStatus: table.status, toStatus: TableStatus.OCCUPIED, triggeredBy: 'OTP_SEAT' },
+      });
+    }
   });
 
   // Recompact positions for remaining waiting guests
   await recompactPositions(params.venueId);
 
+  if (table && params.tableId) {
+    await safeRedisExec(() =>
+      redis.publish(PubSubChannels.tableUpdate(params.venueId), JSON.stringify({ type: 'TABLE_OCCUPIED', tableId: params.tableId }))
+    );
+  }
   await safeRedisExec(() =>
-    redis.publish(PubSubChannels.tableUpdate(params.venueId), JSON.stringify({ type: 'TABLE_OCCUPIED', tableId: params.tableId }))
-  );
-  await safeRedisExec(() =>
-    redis.publish(PubSubChannels.queueUpdate(params.venueId), JSON.stringify({ type: 'ENTRY_SEATED', entryId: entry.id }))
+    redis.publish(PubSubChannels.queueUpdate(params.venueId), JSON.stringify({
+      type: queueCompleteVenue ? 'ENTRY_COMPLETED' : 'ENTRY_SEATED',
+      entryId: entry.id,
+    }))
   );
 
   let preOrderSync: { attempted: boolean; status: string; posOrderId?: string } = {
@@ -734,22 +795,26 @@ export async function seatGuest(params: {
     status: 'no_preorder',
   };
 
-  try {
-    preOrderSync = await syncPendingPreOrderForSeating({
-      venueId: params.venueId,
-      queueEntryId: entry.id,
-      tableId: table.label,
-    });
-  } catch (err) {
-    logger.error('Pre-order sync after seating failed', { entryId: entry.id, err: String(err) });
-    preOrderSync = { attempted: true, status: 'manual_fallback' };
+  if (!queueCompleteVenue && table && params.tableId) {
+    try {
+      preOrderSync = await syncPendingPreOrderForSeating({
+        venueId: params.venueId,
+        queueEntryId: entry.id,
+        tableId: table.label,
+      });
+    } catch (err) {
+      logger.error('Pre-order sync after seating failed', { entryId: entry.id, err: String(err) });
+      preOrderSync = { attempted: true, status: 'manual_fallback' };
+    }
   }
 
   await logFlowEvent({
     queueEntryId: entry.id,
     venueId: params.venueId,
-    type: OrderFlowEventType.GUEST_SEATED,
-    snapshot: { tableId: params.tableId, tableLabel: table.label, preOrderSync },
+    type: queueCompleteVenue ? OrderFlowEventType.ENTRY_COMPLETED : OrderFlowEventType.GUEST_SEATED,
+    snapshot: queueCompleteVenue
+      ? { tableId: null, tableLabel: 'Host desk', preOrderSync }
+      : { tableId: params.tableId, tableLabel: table?.label, preOrderSync },
   });
 
   return { entryId: entry.id, guestName: entry.guestName, preOrderSync };
@@ -911,6 +976,21 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
   // Idempotency guard — if already completed, skip silently
   if (entry.status === QueueEntryStatus.COMPLETED) return;
 
+  const venue = await prisma.venue.findUnique({
+    where: { id: entry.venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+  const usesVenueTables = venueConfig ? shouldUseVenueTables(venueConfig) : Boolean(entry.tableId);
+
   await prisma.$transaction(async (tx) => {
     await tx.queueEntry.update({
       where: { id: entryId },
@@ -918,9 +998,10 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
         status: QueueEntryStatus.COMPLETED,
         completedAt: new Date(),
         tableReadyDeadlineAt: null,
+        tableId: usesVenueTables ? entry.tableId : null,
       },
     });
-    if (entry.tableId) {
+    if (usesVenueTables && entry.tableId) {
       await tx.table.update({
         where: { id: entry.tableId },
         data:  { status: TableStatus.CLEARING, occupiedSince: null },
@@ -931,7 +1012,7 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
     }
   });
 
-  if (entry.tableId) {
+  if (usesVenueTables && entry.tableId) {
     await safeRedisExec(() =>
       redis.publish(PubSubChannels.tableUpdate(entry.venueId), JSON.stringify({ type: 'TABLE_CLEARING', tableId: entry.tableId }))
     );
@@ -948,6 +1029,21 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
 // ── Bulk clear ───────────────────────────────────────────────────
 
 export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: number }> {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+  const useTables = venueConfig ? shouldUseVenueTables(venueConfig) : true;
+
   const active = await prisma.queueEntry.findMany({
     where: { venueId, status: { in: ['WAITING', 'NOTIFIED', 'SEATED'] } },
     select: { id: true, tableId: true, status: true },
@@ -964,9 +1060,11 @@ export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: 
     });
     await tx.queueEntry.updateMany({
       where: { venueId, status: QueueEntryStatus.SEATED },
-      data: { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null },
+      data: useTables
+        ? { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null }
+        : { status: QueueEntryStatus.COMPLETED, completedAt: new Date(), tableReadyDeadlineAt: null, tableId: null },
     });
-    if (tableIds.length) {
+    if (useTables && tableIds.length) {
       await tx.table.updateMany({
         where: { id: { in: tableIds } },
         data: { status: TableStatus.FREE, occupiedSince: null },

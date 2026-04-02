@@ -73,6 +73,7 @@ import {
   getVenueStaffSurfaceFlags,
   isManualDispatchVenue,
   isQueueOnlyGuestExperience,
+  isWaitlistOnlyVenue,
   getVenueSlugFromStaffAuth,
   isVenueFeatureEnabled,
   resolveLegacyVenueSlug,
@@ -223,6 +224,24 @@ document.addEventListener('click', (event) => {
   if (seatButton) {
     event.preventDefault();
     prefillStaffSeatFromButton(seatButton);
+    return;
+  }
+
+  const arriveButton = event.target.closest('[data-mark-arrived]');
+  if (arriveButton) {
+    event.preventDefault();
+    openArrivalSheet({
+      entryId: arriveButton.getAttribute('data-mark-arrived'),
+      guestName: arriveButton.closest('.q-row')?.querySelector('.q-row-name')?.childNodes?.[0]?.textContent?.trim() || 'Guest',
+      initialOtp: arriveButton.getAttribute('data-entry-otp') || '',
+      entrySummary: {
+        guestName: arriveButton.getAttribute('data-guest-name') || 'Guest',
+        partySize: Number(arriveButton.getAttribute('data-party-size') || 0),
+        preferenceLabel: arriveButton.getAttribute('data-preference-label') || 'First available',
+        guestNotes: arriveButton.getAttribute('data-guest-notes') || '',
+        stateLabel: arriveButton.getAttribute('data-entry-state-label') || 'Called',
+      },
+    });
     return;
   }
 
@@ -641,6 +660,72 @@ function openNotifyWindowSheet({ entryId, guestName }) {
   });
 }
 
+function closeArrivalSheet() {
+  document.getElementById('arrival-sheet-backdrop')?.remove();
+}
+
+function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = null }) {
+  closeArrivalSheet();
+  const backdrop = document.createElement('div');
+  backdrop.id = 'arrival-sheet-backdrop';
+  backdrop.className = 'share-sheet-backdrop';
+  backdrop.innerHTML = `
+    <div class="share-sheet-panel notify-sheet-panel arrival-sheet-panel">
+      <div class="share-sheet-handle"></div>
+      <div class="section-head share-sheet-head">
+        <div class="section-title">Mark ${escapeHtml(guestName || 'guest')} arrived</div>
+        <div class="section-sub">Enter the guest OTP to complete the queue journey. No table selection is needed for this venue.</div>
+      </div>
+      ${entrySummary ? `
+        <div class="seat-context-card" style="margin-bottom:16px;">
+          <div class="seat-context-top">
+            <div class="seat-context-title">${escapeHtml(entrySummary.guestName || guestName || 'Guest')}</div>
+            <div class="seat-context-state">${escapeHtml(entrySummary.stateLabel || 'Called')}</div>
+          </div>
+          <div class="seat-context-meta">${entrySummary.partySize || 0} pax · ${escapeHtml(entrySummary.preferenceLabel || 'First available')}</div>
+          ${entrySummary.guestNotes ? `<div class="seat-context-notes">Notes: ${escapeHtml(entrySummary.guestNotes)}</div>` : ''}
+        </div>
+      ` : ''}
+      <form id="arrival-sheet-form">
+        <div class="form-group">
+          <label class="form-label" for="arrival-sheet-otp">Guest OTP</label>
+          <input class="form-input mono" id="arrival-sheet-otp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(initialOtp)}" placeholder="123456">
+        </div>
+        <div class="row" style="margin-top:16px;">
+          <button class="btn btn-primary btn-full" type="submit">Mark arrived</button>
+          <button class="btn btn-secondary btn-full" id="arrival-sheet-close" type="button">Cancel</button>
+        </div>
+      </form>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeArrivalSheet();
+    }
+  });
+
+  backdrop.querySelector('#arrival-sheet-close')?.addEventListener('click', () => closeArrivalSheet());
+  backdrop.querySelector('#arrival-sheet-form')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const otp = String(backdrop.querySelector('#arrival-sheet-otp')?.value || '').trim();
+    if (!otp) {
+      return;
+    }
+    closeArrivalSheet();
+    handleStaffQueueMutation({
+      key: `arrival-${entryId}-${otp}`,
+      request: () => apiRequest('/queue/seat', {
+        method: 'POST',
+        auth: true,
+        body: { otp },
+      }),
+      successMessage: 'Guest marked arrived.',
+    });
+  });
+}
+
 function handleFatalError(error) {
   const message = describeClientError(error);
   renderPage(renderShell({
@@ -844,20 +929,21 @@ async function renderVenueLanding(slug) {
   const flash = consumeFlash();
   const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   const manualDispatchEnabled = isManualDispatchVenue(venue);
   const canContinueEntry = guestQueueEnabled && venue.config?.uiConfig?.showContinueEntry && activeEntryId;
   const venueName = resolveVenueDisplayName(venue);
   const venueSummary = shouldShowVenueDepositPolicy(venue)
     ? `${venue.address}, ${venue.city}. Deposit default: ${venue.depositPercent}%.`
     : resolveVenueLandingSummary(venue);
-  const guestJoinTitle = queueOnlyGuestExperience ? 'Join the waiting list' : 'Join the queue';
-  const guestJoinAction = queueOnlyGuestExperience ? 'Join waitlist' : 'Join queue';
+  const guestJoinTitle = queueOnlyGuestExperience || waitlistOnlyVenue ? 'Join the waitlist' : 'Join the queue';
+  const guestJoinAction = queueOnlyGuestExperience || waitlistOnlyVenue ? 'Join waitlist' : 'Join queue';
 
   renderPage(`
     <main id="landing">
       <div class="brand">
         <div class="brand-name">fl<em>o</em>ck</div>
-        <div class="brand-tag">${escapeHtml(venue.config?.brandConfig?.tagline || (manualDispatchEnabled ? 'Waitlist · host nudge · live updates' : 'Queue · Pre-order · Pay'))}</div>
+        <div class="brand-tag">${escapeHtml(venue.config?.brandConfig?.tagline || (waitlistOnlyVenue ? 'Waitlist · host call · live updates' : manualDispatchEnabled ? 'Waitlist · host nudge · live updates' : 'Queue · Pre-order · Pay'))}</div>
       </div>
       <div class="role-cards">
         <div class="role-card" style="cursor:default">
@@ -980,6 +1066,7 @@ async function renderGuestEntry(slug, entryId) {
   const partyShareEnabled = isVenueFeatureEnabled(venue, 'partyShare');
   const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   const leaveWaitlist = async (options = {}) => {
     const {
       serverSide = true,
@@ -1153,20 +1240,21 @@ async function renderGuestEntry(slug, entryId) {
           : 1;
   const stepLabels = getGuestJourneyStepLabels(venue);
 
-  const body = entry.status === 'SEATED' && !queueOnlyGuestExperience
+  const waitContentHtml = renderSubkoWaitContentBlock(venue, entry);
+  const body = entry.status === 'SEATED' && !queueOnlyGuestExperience && !waitlistOnlyVenue
     ? `
       ${renderStepBar(activeStep, stepLabels)}
       ${flash ? renderInlineFlash(flash) : ''}
       ${renderSeatedGuestShell({ entry, venue, bill, guestSession })}
     `
     : `
-      <div id="guest-live-banner">${entry.status === 'NOTIFIED' ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>` : ''}</div>
+      <div id="guest-live-banner">${entry.status === 'NOTIFIED' ? `<div class="banner">${queueOnlyGuestExperience ? 'Called' : `Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''}`} · Show your OTP to staff now</div>` : ''}</div>
       <div id="guest-live-stepbar">${renderStepBar(activeStep, stepLabels)}</div>
       ${flash ? renderInlineFlash(flash) : ''}
       <div id="guest-live-primary">
         <div id="guest-live-hero">${renderGuestStateHero(entry, guestSession, venue)}</div>
         <div id="guest-live-cards">${renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCartSummary })}</div>
-        <div id="guest-live-content">${renderSubkoWaitContentBlock(venue, entry)}</div>
+        ${waitContentHtml ? `<div id="guest-live-content">${waitContentHtml}</div>` : ''}
       </div>
     `;
 
@@ -1338,7 +1426,7 @@ async function refreshGuestLiveView(slug, entryId) {
   const stepLabels = getGuestJourneyStepLabels(venue);
 
   bannerHost.innerHTML = entry.status === 'NOTIFIED'
-    ? `<div class="banner">Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''} · Show your OTP to staff now</div>`
+    ? `<div class="banner">${isWaitlistOnlyVenue(venue) ? 'Called' : `Table ready${entry.table?.label ? ` · ${escapeHtml(entry.table.label)}` : ''}`} · Show your OTP to staff now</div>`
     : '';
   stepbarHost.innerHTML = renderStepBar(activeStep, stepLabels);
   heroHost.innerHTML = renderGuestStateHero(entry, guestSession, venue);
@@ -1350,7 +1438,10 @@ async function refreshGuestLiveView(slug, entryId) {
     guestSession,
     tableCartSummary: null,
   });
-  contentHost.innerHTML = renderSubkoWaitContentBlock(venue, entry);
+  if (contentHost) {
+    const waitContentHtml = renderSubkoWaitContentBlock(venue, entry);
+    contentHost.innerHTML = waitContentHtml;
+  }
 
   document.getElementById('leave-waitlist-cta')?.addEventListener('click', () => {
     const currentSession = getGuestSession(entryId);
@@ -2125,11 +2216,12 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   }
 
   const manualDispatchEnabled = isManualDispatchVenue(venue);
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   const queueModuleEnabled = Boolean(venue.config?.featureConfig?.guestQueue);
   const historyTabEnabled = Boolean(venue.config?.featureConfig?.historyTab);
   const validStaffTabs = [
-    ...(queueModuleEnabled ? ['queue', 'seated', ...(historyTabEnabled ? ['history'] : []), 'seat'] : []),
-    'tables',
+    ...(queueModuleEnabled ? ['queue', ...(historyTabEnabled ? ['history'] : []), ...(waitlistOnlyVenue ? [] : ['seated', 'seat'])] : []),
+    ...(waitlistOnlyVenue ? [] : ['tables']),
     'manager',
   ];
   if (!validStaffTabs.includes(currentTab)) {
@@ -2267,7 +2359,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
       <div id="staff-dependency-warnings">${renderDependencyWarnings(dependencyWarnings)}</div>
       <div id="staff-live-banner">${manualDispatchEnabled ? `
         <div class="alert alert-blue" style="margin-bottom:18px;">
-          <div>Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.</div>
+          <div>${waitlistOnlyVenue ? 'Waitlist-only mode is active. Notify the next party, then verify their OTP to complete the visit.' : 'Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.'}</div>
         </div>
       ` : ''}</div>
       <div class="section-head">
@@ -2277,10 +2369,10 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
       <div class="stats-grid" id="staff-stats-grid" style="margin-bottom:20px;">${renderStaffStatsTiles(stats, venue)}</div>
       <div class="tabs">
         ${queueModuleEnabled ? renderTabButton('queue', 'Queue', currentTab) : ''}
-        ${queueModuleEnabled ? renderTabButton('seated', 'Seated', currentTab) : ''}
+        ${queueModuleEnabled && !waitlistOnlyVenue ? renderTabButton('seated', 'Seated', currentTab) : ''}
         ${queueModuleEnabled && historyTabEnabled ? renderTabButton('history', 'History', currentTab) : ''}
-        ${renderTabButton('tables', 'Tables', currentTab)}
-        ${queueModuleEnabled ? renderTabButton('seat', 'Seat OTP', currentTab) : ''}
+        ${!waitlistOnlyVenue ? renderTabButton('tables', 'Tables', currentTab) : ''}
+        ${queueModuleEnabled && !waitlistOnlyVenue ? renderTabButton('seat', 'Seat OTP', currentTab) : ''}
         ${renderTabButton('manager', 'Manager', currentTab)}
       </div>
       <div id="staff-live-panel">${renderStaffActiveTabPanel({
@@ -2426,6 +2518,34 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
     }
   }));
 
+  document.getElementById('waitlist-settings-form')?.addEventListener('submit', guardedAction('waitlist-config-form', async (event) => {
+    event.preventDefault();
+    try {
+      await apiRequest('/venues/config', {
+        method: 'PATCH',
+        auth: true,
+        body: {
+          maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
+          tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
+          opsConfig: {
+            queueDispatchMode: 'MANUAL_NOTIFY',
+            tableSourceMode: 'DISABLED',
+            contentMode: 'DISABLED',
+            arrivalCompletionMode: 'QUEUE_COMPLETE',
+            readyReminderEnabled: document.getElementById('waitlist-ready-reminder-enabled').checked,
+            readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
+            expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
+          },
+        },
+      });
+      setFlash('green', 'Queue settings updated.');
+      await renderStaffDashboard();
+    } catch (error) {
+      setFlash('red', error.message);
+      await renderStaffDashboard();
+    }
+  }));
+
   document.getElementById('offline-settle-form')?.addEventListener('submit', guardedAction('offline-settle', async (event) => {
     event.preventDefault();
     try {
@@ -2543,15 +2663,15 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
   let contentBlocks = uiState.adminContentBlocks || [];
   let tables = uiState.adminTables || [];
 
-  const [venueResult, menuResult, contentResult] = await Promise.allSettled([
-    apiRequest(`/venues/${activeSlug}`),
-    apiRequest('/menu/admin/current', { auth: true }),
-    apiRequest('/content/admin/current', { auth: true }),
-  ]);
-
-  if (venueResult.status === 'fulfilled') {
-    venue = venueResult.value;
+  let venueFetchError = null;
+  try {
+    venue = await apiRequest(`/venues/${activeSlug}`);
     applyVenueThemeForVenue(venue);
+  } catch (error) {
+    venueFetchError = error;
+  }
+
+  if (!venueFetchError) {
     if (!isVenueFeatureEnabled(venue, 'adminConsole')) {
       renderPage(renderShell({
         pill: 'Admin',
@@ -2572,13 +2692,90 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
       });
       return;
     }
-  } else if (isAuthErrorMessage(venueResult.reason?.message)) {
+
+    if (isWaitlistOnlyVenue(venue)) {
+      const flash = consumeFlash();
+      renderPage(renderShell({
+        pill: 'Admin',
+        body: `
+          ${flash ? renderInlineFlash(flash) : ''}
+          <div class="section-head">
+            <div class="section-title">Queue settings</div>
+            <div class="section-sub">${escapeHtml(resolveVenueDisplayName(venue))} waitlist controls.</div>
+          </div>
+          <div class="grid grid-2">
+            <div class="card">
+              <div class="card-title">Minimal settings</div>
+              <div class="card-sub">Craftery is running as waitlist-only. Menu, content, and table admin stay hidden.</div>
+              ${renderWaitlistOnlySettingsForm(venue)}
+            </div>
+            <div class="card">
+              <div class="card-title">Operator note</div>
+              <div class="card-sub">Use this venue like a queue desk: call the next party, verify OTP, and move straight to history. No tables are assigned here.</div>
+            </div>
+          </div>
+        `,
+        right: `<button class="btn btn-secondary btn-sm" id="admin-logout">Logout</button>`,
+      }), `Flock | ${resolveVenueDisplayName(venue)} admin`);
+
+      document.getElementById('admin-logout')?.addEventListener('click', () => {
+        clearStaffAuth();
+        clearActiveVenueSlug();
+        navigateToAdminLogin(activeSlug, { replace: true });
+      });
+
+      document.getElementById('waitlist-settings-form')?.addEventListener('submit', guardedAction('waitlist-admin-config-form', async (event) => {
+        event.preventDefault();
+        try {
+          await apiRequest('/venues/config', {
+            method: 'PATCH',
+            auth: true,
+            body: {
+              maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
+              tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
+              opsConfig: {
+                queueDispatchMode: 'MANUAL_NOTIFY',
+                tableSourceMode: 'DISABLED',
+                contentMode: 'DISABLED',
+                arrivalCompletionMode: 'QUEUE_COMPLETE',
+                readyReminderEnabled: document.getElementById('waitlist-ready-reminder-enabled').checked,
+                readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
+                expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
+              },
+            },
+          });
+          setFlash('green', 'Queue settings updated.');
+          await renderAdminDashboard(activeSlug);
+        } catch (error) {
+          setFlash('red', error.message);
+          await renderAdminDashboard(activeSlug);
+        }
+      }));
+
+      document.getElementById('toggle-queue')?.addEventListener('click', guardedAction('toggle-admin-queue', async () => {
+        try {
+          await apiRequest('/venues/config', { method: 'PATCH', auth: true, body: { isQueueOpen: !venue.isQueueOpen } });
+          setFlash('green', `Queue ${venue.isQueueOpen ? 'closed' : 'opened'}.`);
+          await renderAdminDashboard(activeSlug);
+        } catch (error) {
+          setFlash('red', error.message);
+          await renderAdminDashboard(activeSlug);
+        }
+      }));
+      return;
+    }
+  } else if (isAuthErrorMessage(venueFetchError?.message)) {
     clearStaffAuth();
     navigateToAdminLogin(activeSlug, { replace: true });
     return;
   } else {
     dependencyWarnings.push('Venue details');
   }
+
+  const [menuResult, contentResult] = await Promise.allSettled([
+    apiRequest('/menu/admin/current', { auth: true }),
+    apiRequest('/content/admin/current', { auth: true }),
+  ]);
 
   if (menuResult.status === 'fulfilled') {
     menu = menuResult.value;
@@ -2639,10 +2836,10 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
         ${renderTabButton('content', 'Content', uiState.adminTab)}
         ${tablesTabEnabled ? renderTabButton('tables', 'Tables', uiState.adminTab) : ''}
       </div>
-      ${uiState.adminTab === 'menu' ? renderAdminMenuTab(menu.categories || []) : ''}
-      ${uiState.adminTab === 'add' ? renderAdminAddTab(menu.categories || []) : ''}
-      ${uiState.adminTab === 'content' ? renderAdminContentTab(contentBlocks) : ''}
-      ${uiState.adminTab === 'tables' && tablesTabEnabled ? renderAdminTablesTab(tables) : ''}
+      ${uiState.adminTab === 'menu' ? renderAdminMenuTab(menu.categories || [], venue) : ''}
+      ${uiState.adminTab === 'add' ? renderAdminAddTab(menu.categories || [], venue) : ''}
+      ${uiState.adminTab === 'content' ? renderAdminContentTab(contentBlocks, venue) : ''}
+      ${uiState.adminTab === 'tables' && tablesTabEnabled ? renderAdminTablesTab(tables, venue) : ''}
     `,
     right: `
       <a class="btn btn-secondary btn-sm" data-nav href="${buildStaffDashboardPath(activeSlug)}">Floor</a>
@@ -2789,10 +2986,60 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
 }
 
 function renderQueueTab(waiting, tables, venue) {
-  const { showFlowLog: flowLogEnabled, showBillingSignals, showNotifyAction, manualDispatchMode } = getVenueStaffSurfaceFlags(venue);
+  const { showFlowLog: flowLogEnabled, showBillingSignals, showNotifyAction, manualDispatchMode, waitlistOnlyVenue } = getVenueStaffSurfaceFlags(venue);
   const waitingOnly = waiting.filter((entry) => entry.status === 'WAITING');
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
-  return waiting.length ? waiting.map((entry) => `
+  const renderWaitlistRowActions = (entry) => {
+    if (entry.status === 'WAITING') {
+      return `
+        ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}">Notify</button>` : ''}
+        ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
+        ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
+        <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+      `;
+    }
+
+    if (entry.status === 'NOTIFIED') {
+      return `
+        ${showNotifyAction ? `<button class="btn btn-secondary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
+        ${waitlistOnlyVenue ? `
+          <button
+            class="btn btn-primary btn-sm"
+            data-mark-arrived="${entry.id}"
+            data-entry-otp="${escapeHtml(entry.otp)}"
+            data-guest-name="${escapeHtml(entry.guestName)}"
+            data-party-size="${entry.partySize}"
+            data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
+            data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
+            data-entry-state-label="Called"
+          >Mark arrived</button>
+        ` : `
+          <button
+            class="btn btn-secondary btn-sm"
+            data-prefill-seat="${escapeHtml(entry.otp)}"
+            data-entry-id="${entry.id}"
+            data-suggested-table="${getSuggestedTableId(entry, tables)}"
+            data-guest-name="${escapeHtml(entry.guestName)}"
+            data-party-size="${entry.partySize}"
+            data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
+            data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
+            data-entry-state-label="${escapeHtml(formatQueueEntryStateForStaff(entry))}"
+          >Seat</button>
+        `}
+        <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+      `;
+    }
+
+    return `
+      <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+    `;
+  };
+
+  if (!waiting.length) {
+    return '<div class="empty-state">No waiting or notified guests right now.</div>';
+  }
+
+  return waiting.map((entry) => `
     <div class="q-row ${entry.status === 'NOTIFIED' ? 'highlight' : ''} ${entry.status === 'NOTIFIED' ? 'ready' : ''}" data-staff-live-anchor="${entry.id}">
       <div class="q-row-num">${entry.position || '-'}</div>
       <div class="q-row-info">
@@ -2801,7 +3048,7 @@ function renderQueueTab(waiting, tables, venue) {
           ${renderStatusBadge(entry.status)}
           ${showBillingSignals && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           ${showBillingSignals && entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
-          ${entry.status === 'NOTIFIED' ? '<span class="badge badge-ready">Ready</span>' : ''}
+          ${entry.status === 'NOTIFIED' ? `<span class="badge badge-ready">${waitlistOnlyVenue ? 'Called' : 'Ready'}</span>` : ''}
           ${entry.status === 'NOTIFIED' && getQueueEntryReadyWindowState(entry).urgent ? '<span class="badge badge-danger">Expiring</span>' : ''}
         </div>
         <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
@@ -2809,34 +3056,39 @@ function renderQueueTab(waiting, tables, venue) {
         ${getQueueEntryGuestNotes(entry) ? `<div class="q-row-note">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
         <div class="q-row-countdown ${entry.status === 'NOTIFIED' && getQueueEntryReadyWindowState(entry).urgent ? 'urgent' : ''}">
           ${entry.status === 'NOTIFIED' ? `${getQueueEntryReadyWindowLabel(entry) || 'Host desk call active'}` : getQueueEntryEtaLabel(entry, venue)}
-          ${entry.table?.label ? ` · Reserved ${escapeHtml(entry.table.label)}` : ''}
+          ${!waitlistOnlyVenue && entry.table?.label ? ` · Reserved ${escapeHtml(entry.table.label)}` : ''}
         </div>
         ${showBillingSignals && entry.orders?.length ? `<div class="q-row-orders">Pre-order: ${escapeHtml(renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) || 'Locked items on file')}</div>` : ''}
       </div>
       <div class="q-row-actions">
-        ${manualDispatchMode && entry.status === 'WAITING' && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
-        ${manualDispatchMode && entry.status === 'WAITING' && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
-        <button
-          class="btn btn-secondary btn-sm"
-          data-prefill-seat="${escapeHtml(entry.otp)}"
-          data-entry-id="${entry.id}"
-          data-suggested-table="${getSuggestedTableId(entry, tables)}"
-          data-guest-name="${escapeHtml(entry.guestName)}"
-          data-party-size="${entry.partySize}"
-          data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
-          data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
-          data-entry-state-label="${escapeHtml(formatQueueEntryStateForStaff(entry))}"
-        >Seat</button>
-        ${showNotifyAction && entry.status === 'WAITING' ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}">Notify</button>` : ''}
-        ${showNotifyAction && entry.status === 'NOTIFIED' ? `<button class="btn btn-primary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
-        ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>` : ''}
-        <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+        ${waitlistOnlyVenue ? renderWaitlistRowActions(entry) : `
+          ${manualDispatchMode && entry.status === 'WAITING' && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
+          ${manualDispatchMode && entry.status === 'WAITING' && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
+          <button
+            class="btn btn-secondary btn-sm"
+            data-prefill-seat="${escapeHtml(entry.otp)}"
+            data-entry-id="${entry.id}"
+            data-suggested-table="${getSuggestedTableId(entry, tables)}"
+            data-guest-name="${escapeHtml(entry.guestName)}"
+            data-party-size="${entry.partySize}"
+            data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
+            data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
+            data-entry-state-label="${escapeHtml(formatQueueEntryStateForStaff(entry))}"
+          >Seat</button>
+          ${showNotifyAction && entry.status === 'WAITING' ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}">Notify</button>` : ''}
+          ${showNotifyAction && entry.status === 'NOTIFIED' ? `<button class="btn btn-primary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
+          ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>` : ''}
+          <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+        `}
       </div>
     </div>
-  `).join('') : '<div class="empty-state">No waiting or notified guests right now.</div>';
+  `).join('');
 }
 
 function renderSeatedTab(seated, seatedBills, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   const { showFlowLog: flowLogEnabled, showBillingSignals: showBillingSummary } = getVenueStaffSurfaceFlags(venue);
   return seated.length ? seated.map((entry) => {
     const bill = seatedBills[entry.id];
@@ -2866,6 +3118,7 @@ function renderSeatedTab(seated, seatedBills, venue) {
 function renderHistoryTab(venue) {
   const entries = uiState.staffHistory || [];
   const { showFlowLog: flowLogEnabled, showBillingSignals: showBillingSummary } = getVenueStaffSurfaceFlags(venue);
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   if (!entries.length) return '<div class="empty-state">No completed sessions found yet.</div>';
 
   const statusLabel = { COMPLETED: 'Completed', CANCELLED: 'Cancelled', NO_SHOW: 'No-show' };
@@ -2879,7 +3132,7 @@ function renderHistoryTab(venue) {
         : `<span class="badge badge-neutral">${escapeHtml(statusLabel[entry.status] || entry.status)}</span>`;
     return `
       <div class="q-row" data-staff-live-anchor="${entry.id}">
-        <div class="q-row-num">${entry.table?.label ? escapeHtml(entry.table.label) : '-'}</div>
+        <div class="q-row-num">${entry.table?.label ? escapeHtml(entry.table.label) : (waitlistOnlyVenue ? (entry.status === 'NO_SHOW' ? '!' : 'Done') : '-')}</div>
         <div class="q-row-info">
           <div class="q-row-name">
             ${escapeHtml(entry.guestName)}
@@ -2899,6 +3152,9 @@ function renderHistoryTab(venue) {
 }
 
 function renderTablesTab(tables, recentTableEvents, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   const manualDispatchEnabled = isManualDispatchVenue(venue);
   return `
     <div class="floor-plan-header">
@@ -2944,6 +3200,9 @@ function renderTablesTab(tables, recentTableEvents, venue) {
 }
 
 function renderSeatTab(tables, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   const available = tables.filter((table) => table.status === 'FREE' || table.status === 'RESERVED');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
   const entrySummary = uiState.staffSeat.entrySummary;
@@ -3006,9 +3265,49 @@ function renderSeatTab(tables, venue) {
   `;
 }
 
+function renderWaitlistOnlySettingsForm(venue) {
+  const opsConfig = resolveVenueOpsConfig(venue);
+  return `
+    <div class="row" style="margin-bottom:16px;">
+      <span class="badge ${venue.isQueueOpen ? 'badge-ready' : 'badge-neutral'}">${venue.isQueueOpen ? 'Queue open' : 'Queue closed'}</span>
+      <button class="btn btn-secondary btn-sm" id="toggle-queue">${venue.isQueueOpen ? 'Close queue' : 'Open queue'}</button>
+    </div>
+    <form id="waitlist-settings-form">
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="waitlist-max-queue-size">Max queue size</label>
+          <input class="form-input" id="waitlist-max-queue-size" type="number" min="10" max="500" value="${venue.maxQueueSize}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="waitlist-response-window">Response window (min)</label>
+          <input class="form-input" id="waitlist-response-window" type="number" min="3" max="60" value="${venue.tableReadyWindowMin}">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="display:flex; gap:12px; align-items:center; padding-top:24px;">
+          <label class="checkbox-row">
+            <input type="checkbox" id="waitlist-ready-reminder-enabled" ${opsConfig.readyReminderEnabled ? 'checked' : ''}>
+            Ready reminder
+          </label>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="waitlist-ready-reminder-offset">Reminder offset (min)</label>
+          <input class="form-input" id="waitlist-ready-reminder-offset" type="number" min="1" max="15" value="${opsConfig.readyReminderOffsetMin}">
+        </div>
+      </div>
+      <label class="checkbox-row" style="margin-bottom:16px;">
+        <input type="checkbox" id="waitlist-expiry-notification-enabled" ${opsConfig.expiryNotificationEnabled ? 'checked' : ''}>
+        Send expiry notification on no-show
+      </label>
+      <button class="btn btn-primary btn-full" type="submit">Save settings</button>
+    </form>
+  `;
+}
+
 function renderManagerTab({ auth, venue, queue }) {
   const isManager = auth.staff.role === 'OWNER' || auth.staff.role === 'MANAGER';
   const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   const {
     queueOnlyGuestExperience,
     showBulkClearTool: bulkClearEnabled,
@@ -3016,6 +3315,21 @@ function renderManagerTab({ auth, venue, queue }) {
     showOfflineSettleTool: offlineSettleEnabled,
     showRefundTool: refundsEnabled,
   } = getVenueStaffSurfaceFlags(venue);
+  if (waitlistOnlyVenue) {
+    return `
+      <div class="grid grid-2">
+        <div class="card">
+          <div class="card-title">Queue control</div>
+          <div class="card-sub">Queue-only controls for the host desk. Tables and seated flows stay hidden for this venue.</div>
+          ${isManager ? renderWaitlistOnlySettingsForm(venue) : '<div class="alert alert-blue"><div>Manager-only queue settings stay hidden for this staff role.</div></div>'}
+        </div>
+        <div class="card">
+          <div class="card-title">Operator note</div>
+          <div class="card-sub">Notify the next party manually, verify the OTP when they return, then move on to the next call. No table assignment is required here.</div>
+        </div>
+      </div>
+    `;
+  }
   return `
     <div class="grid grid-2">
       <div class="card">
@@ -3106,16 +3420,16 @@ function renderStaffActiveTabPanel({ currentTab, queueModuleEnabled, historyTabE
   if (currentTab === 'queue' && queueModuleEnabled) {
     return renderQueueTab(waiting, tables, venue);
   }
-  if (currentTab === 'seated' && queueModuleEnabled) {
+  if (currentTab === 'seated' && queueModuleEnabled && !isWaitlistOnlyVenue(venue)) {
     return renderSeatedTab(seated, seatedBills, venue);
   }
   if (currentTab === 'history' && queueModuleEnabled && historyTabEnabled) {
     return renderHistoryTab(venue);
   }
-  if (currentTab === 'tables') {
+  if (currentTab === 'tables' && !isWaitlistOnlyVenue(venue)) {
     return renderTablesTab(tables, recentTableEvents, venue);
   }
-  if (currentTab === 'seat' && queueModuleEnabled) {
+  if (currentTab === 'seat' && queueModuleEnabled && !isWaitlistOnlyVenue(venue)) {
     return renderSeatTab(tables, venue);
   }
   if (currentTab === 'manager') {
@@ -3261,7 +3575,7 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
     bannerHost.innerHTML = isManualDispatchVenue(venue)
       ? `
         <div class="alert alert-blue" style="margin-bottom:18px;">
-          <div>Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.</div>
+          <div>${isWaitlistOnlyVenue(venue) ? 'Waitlist-only mode is active. Notify the next party, then verify their OTP to complete the visit.' : 'Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.'}</div>
         </div>
       `
       : '';
@@ -3286,7 +3600,10 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
   }), resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings }));
 }
 
-function renderAdminMenuTab(categories) {
+function renderAdminMenuTab(categories, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   return `
     <div class="card">
       <div class="card-title">Live menu</div>
@@ -3320,7 +3637,10 @@ function renderAdminMenuTab(categories) {
   `;
 }
 
-function renderAdminAddTab(categories) {
+function renderAdminAddTab(categories, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   return `
     <div class="grid grid-2">
       <div class="card">
@@ -3384,7 +3704,10 @@ function renderAdminAddTab(categories) {
   `;
 }
 
-function renderAdminContentTab(blocks) {
+function renderAdminContentTab(blocks, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   const orderedBlocks = [...(blocks || [])].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0));
   return `
     <div class="grid grid-2">
@@ -3423,7 +3746,10 @@ function renderAdminContentTab(blocks) {
   `;
 }
 
-function renderAdminTablesTab(tables) {
+function renderAdminTablesTab(tables, venue) {
+  if (isWaitlistOnlyVenue(venue)) {
+    return '';
+  }
   return `
     <div class="grid grid-2">
       <div class="card">
@@ -4120,6 +4446,16 @@ function getQueueEntryReadyWindowLabel(entry) {
   return getQueueEntryReadyWindowState(entry).label;
 }
 
+function getQueueEntryReadyWindowMinutes(entry, fallbackMin = 3) {
+  const notifiedAtValue = entry?.notifiedAt ? new Date(entry.notifiedAt).getTime() : null;
+  const deadlineValue = entry?.tableReadyDeadlineAt ? new Date(entry.tableReadyDeadlineAt).getTime() : null;
+  if (!Number.isFinite(notifiedAtValue) || !Number.isFinite(deadlineValue) || deadlineValue <= notifiedAtValue) {
+    return fallbackMin;
+  }
+
+  return Math.max(1, Math.round((deadlineValue - notifiedAtValue) / 60000));
+}
+
 function isSubkoWaitContentVenue(venue) {
   return (venue?.config?.opsConfig?.contentMode || venue?.opsConfig?.contentMode) === 'SUBKO_WAIT_CONTENT';
 }
@@ -4130,7 +4466,7 @@ function getVenueBrandConfig(venue) {
 
 function shouldShowGuestQueuePosition(venue) {
   const uiConfig = venue?.config?.uiConfig || venue?.uiConfig || {};
-  return uiConfig.showQueuePosition !== false;
+  return uiConfig.showQueuePosition !== false && !isWaitlistOnlyVenue(venue);
 }
 
 function getVenueContentBlocks(venue) {
@@ -4150,11 +4486,11 @@ function resolveVenueLandingSummary(venue) {
 }
 
 function resolveGuestJoinCopy(venue) {
-  if (!isQueueOnlyGuestExperience(venue)) {
+  if (!isQueueOnlyGuestExperience(venue) && !isWaitlistOnlyVenue(venue)) {
     return venue.config?.uiConfig?.supportCopy || 'No app download. Use your phone number as your queue identity and receive a seating OTP instantly.';
   }
 
-  return 'Join the waitlist, keep your phone nearby, and return to the host desk when your table is called.';
+  return 'Join the waitlist, keep your phone nearby, and wait for the host call.';
 }
 
 function getVenueWaitContentMenuHighlights(venue) {
@@ -4284,7 +4620,7 @@ function getWaitContentSlotLabel(slot) {
 }
 
 function renderSubkoWaitContentBlock(venue, entry) {
-  if (!isQueueOnlyGuestExperience(venue) || !isSubkoWaitContentVenue(venue)) {
+  if (isWaitlistOnlyVenue(venue) || !isQueueOnlyGuestExperience(venue) || !isSubkoWaitContentVenue(venue)) {
     return '';
   }
 
@@ -4328,7 +4664,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
         <div class="queue-pos-num">${showQueuePosition ? entry.position : Math.max(etaMin, 0)}</div>
         <div class="queue-pos-label">${showQueuePosition ? (queueOnlyGuestExperience ? 'Waitlist position' : 'Queue position') : 'Estimated wait'}</div>
         <div class="queue-pos-sub">${queueOnlyGuestExperience
-          ? (manualDispatchEnabled ? 'The host desk will call your party when a suitable table is ready.' : 'We will message you once a suitable table is ready.')
+          ? (manualDispatchEnabled ? 'The host desk will call your party when it is your turn.' : 'We will message you once it is your turn.')
           : 'We will notify you when a matching table clears.'}</div>
         ${renderSessionRef(entry)}
       </div>
@@ -4350,12 +4686,13 @@ function renderGuestStateHero(entry, guestSession, venue) {
   if (entry.status === 'NOTIFIED') {
     const readyWindowLabel = getQueueEntryReadyWindowLabel(entry);
     const readyWindowState = getQueueEntryReadyWindowState(entry);
+    const readyWindowMin = getQueueEntryReadyWindowMinutes(entry, venue?.tableReadyWindowMin || 3);
     return `
       <div class="queue-hero">
-        <div class="queue-pos-num">${escapeHtml(entry.table?.label || 'Now')}</div>
-        <div class="queue-pos-label">Table ready</div>
+        <div class="queue-pos-num">${queueOnlyGuestExperience ? 'Called' : escapeHtml(entry.table?.label || 'Now')}</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Called to host desk' : 'Table ready'}</div>
         <div class="queue-pos-sub">${queueOnlyGuestExperience
-          ? `Return to the host desk within ${venue?.tableReadyWindowMin || 10} minutes and show the OTP to staff.`
+          ? `Return to the host desk within ${readyWindowMin} minutes and show the OTP to staff.`
           : 'Head to the entrance and show the OTP to staff.'}</div>
         ${renderSessionRef(entry)}
         ${readyWindowLabel ? `<div class="queue-countdown ${readyWindowState.urgent ? 'urgent' : ''}">${escapeHtml(readyWindowLabel)}</div>` : ''}
@@ -4373,9 +4710,9 @@ function renderGuestStateHero(entry, guestSession, venue) {
   if (entry.status === 'SEATED') {
     return `
       <div class="queue-hero">
-        <div class="queue-pos-num">${escapeHtml(entry.table?.label || 'Seated')}</div>
-        <div class="queue-pos-label">Now seated</div>
-        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'You are checked in. Our host team will take it from here while you enjoy the table.' : 'Your table is live. Add more items from your phone and clear the balance when ready.'}</div>
+        <div class="queue-pos-num">${queueOnlyGuestExperience ? 'Done' : escapeHtml(entry.table?.label || 'Seated')}</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Visit complete' : 'Now seated'}</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'This visit has been marked complete. Thanks for waiting with us.' : 'Your table is live. Add more items from your phone and clear the balance when ready.'}</div>
       </div>
     `;
   }
@@ -4414,8 +4751,8 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
         <div class="grid grid-2">
           <div class="card">
             <div class="card-title">Waiting list status</div>
-            <div class="card-sub">Your phone number is your queue identity. The host desk will call you once a matching table is ready.</div>
-            <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or the table may be reassigned.</div></div>
+            <div class="card-sub">Your phone number is your queue identity. The host desk will call you once it is your turn.</div>
+            <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or your turn may move on to the next party.</div></div>
           </div>
           <div class="card">
             <div class="card-title">Venue</div>
@@ -4461,9 +4798,9 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
       return `
         <div class="grid grid-2">
           <div class="card">
-            <div class="card-title">Table ready</div>
-            <div class="card-sub">${entry.table?.label ? `Reserved: ${escapeHtml(entry.table.label)}` : 'A suitable table is ready for you.'}</div>
-            <div class="alert alert-green"><div>Return to the host desk within ${venue.tableReadyWindowMin} minutes and show the OTP to staff.</div></div>
+            <div class="card-title">Called to host desk</div>
+            <div class="card-sub">A host is ready to verify the OTP and complete your visit.</div>
+            <div class="alert alert-green"><div>Return to the host desk within ${getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin)} minutes and show the OTP to staff.</div></div>
             ${readyWindowLabel ? `<div class="queue-countdown ${readyWindowState.urgent ? 'urgent' : ''}">${escapeHtml(readyWindowLabel)}</div>` : ''}
           </div>
           <div class="card">
@@ -4508,11 +4845,10 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
       return `
         <div class="grid grid-2">
           <div class="card">
-            <div class="card-title">${entry.table?.label ? `Table ${escapeHtml(entry.table.label)}` : 'Table assigned'}</div>
+            <div class="card-title">${entry.status === 'COMPLETED' ? 'Visit complete' : 'Called in'}</div>
             <div class="card-sub">${entry.status === 'COMPLETED'
-              ? 'This waitlist visit has been closed and the table can move to the next guest.'
-              : (manualDispatchEnabled ? 'You are checked in. The host team will continue service from here.' : 'You are checked in. The host team will continue service from here.')}</div>
-            ${entry.table?.section ? `<div class="muted" style="margin-bottom:14px;">Section: ${escapeHtml(entry.table.section)}</div>` : ''}
+              ? 'This waitlist visit has been closed. Thanks for waiting with us.'
+              : 'You have been called to the host desk. Show the OTP to complete verification.'}</div>
             <div class="alert alert-blue"><div>${entry.status === 'COMPLETED' ? 'No more actions are needed on this device.' : 'Keep this page handy in case the host desk needs to verify your session reference.'}</div></div>
             ${entry.status === 'COMPLETED' ? '<button class="btn btn-secondary btn-full" id="guest-done-cta" style="margin-top:16px;">Done</button>' : ''}
           </div>

@@ -298,6 +298,51 @@ describe('queue service', () => {
     }));
   });
 
+  it('completes a queue-only entry without requiring a table assignment', async () => {
+    const { seatGuest } = await import('../../src/services/queue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+        joinConfirmationMode: 'WEB_ONLY',
+      },
+    });
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      guestName: 'Neha',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.NOTIFIED,
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([]);
+
+    const result = await seatGuest({
+      venueId: 'venue_subko',
+      otp: '123456',
+    });
+
+    expect(prismaMock.table.findFirst).not.toHaveBeenCalled();
+    expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'entry_1' },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.COMPLETED,
+        tableId: null,
+        seatedAt: expect.any(Date),
+        completedAt: expect.any(Date),
+        tableReadyDeadlineAt: null,
+      }),
+    }));
+    expect(result.preOrderSync).toEqual({ attempted: false, status: 'no_preorder' });
+  });
+
   it('notifies a waiting entry in manual-dispatch mode with the default 3 minute window', async () => {
     const { notifyQueueEntry } = await import('../../src/services/queue.service');
 
@@ -493,7 +538,7 @@ describe('queue service', () => {
     }));
   });
 
-  it('completes seated entries when a queue-only table enters CLEARING and leaves FREE as availability-only', async () => {
+  it('rejects table lifecycle updates for waitlist-only venues', async () => {
     const { updateTableStatus } = await import('../../src/services/table.service');
 
     prismaMock.table.findFirst.mockResolvedValue({
@@ -512,26 +557,17 @@ describe('queue service', () => {
       uiConfig: null,
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
       },
     });
-    prismaMock.queueEntry.updateMany.mockResolvedValue({ count: 1 });
-    prismaMock.queueEntry.findMany.mockResolvedValue([]);
 
-    await updateTableStatus({
+    await expect(updateTableStatus({
       tableId: 'table_1',
       venueId: 'venue_subko',
       status: TableStatus.CLEARING,
       triggeredBy: 'STAFF',
-    });
-
-    expect(prismaMock.queueEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { tableId: 'table_1', status: QueueEntryStatus.SEATED },
-      data: expect.objectContaining({
-        status: QueueEntryStatus.COMPLETED,
-        completedAt: expect.any(Date),
-        tableReadyDeadlineAt: null,
-      }),
-    }));
+    })).rejects.toMatchObject({ code: 'VENUE_FEATURE_DISABLED', statusCode: 403 });
 
     vi.clearAllMocks();
     prismaMock.table.findFirst.mockResolvedValue({
@@ -557,18 +593,17 @@ describe('queue service', () => {
       uiConfig: null,
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
       },
     });
 
-    await updateTableStatus({
+    await expect(updateTableStatus({
       tableId: 'table_1',
       venueId: 'venue_subko',
       status: TableStatus.FREE,
       triggeredBy: 'STAFF',
-    });
-
-    expect(prismaMock.queueEntry.updateMany).not.toHaveBeenCalled();
-    expect(prismaMock.queueEntry.findFirst).not.toHaveBeenCalled();
+    })).rejects.toMatchObject({ code: 'VENUE_FEATURE_DISABLED', statusCode: 403 });
   });
 
   it('prioritizes a waiting entry to the front of the waiting cohort and audits the action', async () => {

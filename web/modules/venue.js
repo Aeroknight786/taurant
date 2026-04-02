@@ -43,6 +43,7 @@ const DEFAULT_VENUE_OPS_CONFIG = {
   expiryNotificationEnabled: false,
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
   contentMode: 'DEFAULT',
+  arrivalCompletionMode: 'TABLE_ASSIGN',
 };
 
 export function resolveVenueOpsConfig(venue) {
@@ -128,8 +129,13 @@ export function isManualDispatchVenue(venue) {
   return resolveVenueOpsConfig(venue).queueDispatchMode === 'MANUAL_NOTIFY';
 }
 
+export function isWaitlistOnlyVenue(venue) {
+  const opsConfig = resolveVenueOpsConfig(venue);
+  return opsConfig.tableSourceMode === 'DISABLED' || opsConfig.arrivalCompletionMode === 'QUEUE_COMPLETE';
+}
+
 export function getGuestJourneyStepLabels(venue) {
-  return isQueueOnlyGuestExperience(venue)
+  return isQueueOnlyGuestExperience(venue) || isWaitlistOnlyVenue(venue)
     ? ['Join', 'Wait', 'Called']
     : ['Queue', 'Pre-order', 'Seated', 'Pay'];
 }
@@ -137,6 +143,7 @@ export function getGuestJourneyStepLabels(venue) {
 export function getVenueGuestSurfaceFlags(venue) {
   return {
     queueOnlyGuestExperience: isQueueOnlyGuestExperience(venue),
+    waitlistOnlyVenue: isWaitlistOnlyVenue(venue),
     manualDispatchMode: isManualDispatchVenue(venue),
     showPreOrderCta: isVenueFeatureEnabled(venue, 'preOrder'),
     showInviteAction: isVenueFeatureEnabled(venue, 'partyShare'),
@@ -147,8 +154,10 @@ export function getVenueGuestSurfaceFlags(venue) {
 }
 
 export function getVenueStaffSurfaceFlags(venue) {
+  const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   return {
     queueOnlyGuestExperience: isQueueOnlyGuestExperience(venue),
+    waitlistOnlyVenue,
     manualDispatchMode: isManualDispatchVenue(venue),
     showNotifyAction: isManualDispatchVenue(venue),
     showFlowLog: isVenueFeatureEnabled(venue, 'flowLog'),
@@ -157,6 +166,9 @@ export function getVenueStaffSurfaceFlags(venue) {
     showBulkClearTool: isVenueFeatureEnabled(venue, 'bulkClear'),
     showDepositControls: shouldShowVenueDepositPolicy(venue),
     showBillingSignals: shouldLoadVenueBills(venue),
+    showTablesSurface: !waitlistOnlyVenue,
+    showSeatSurface: !waitlistOnlyVenue,
+    showSeatedSurface: !waitlistOnlyVenue,
   };
 }
 

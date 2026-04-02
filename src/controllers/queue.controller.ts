@@ -17,7 +17,7 @@ const JoinSchema = z.object({
 
 const SeatSchema = z.object({
   otp:     z.string().length(6),
-  tableId: z.string().min(1),
+  tableId: z.string().min(1).optional(),
 });
 
 const NotifySchema = z.object({

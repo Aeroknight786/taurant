@@ -85,12 +85,19 @@ vi.mock('../../src/middleware/auth', () => ({
       res.status(401).json({ success: false, error: 'Unauthorized' });
       return;
     }
+    const venueSlug = req.header('x-venue-slug') || 'the-barrel-room-koramangala';
+    let opsConfig = undefined;
+    try {
+      opsConfig = req.header('x-venue-ops-config') ? JSON.parse(req.header('x-venue-ops-config')) : undefined;
+    } catch (_error) {
+      opsConfig = undefined;
+    }
     req.staff = {
       id: authHeader.slice('Bearer '.length),
       role: 'MANAGER',
       venueId: 'venue_1',
     };
-    req.venue = { id: 'venue_1', slug: 'the-barrel-room-koramangala' };
+    req.venue = { id: 'venue_1', slug: venueSlug, opsConfig };
     next();
   },
   requireGuestAuth: (req: any, res: any, next: any) => {
@@ -293,5 +300,27 @@ describe('venue, menu, and table routes', () => {
       url: '/api/v1/tables/table_1/events',
       headers: authHeader('staff-table-read'),
     })).status).toBe(200);
+  });
+
+  it('rejects table routes when table management is disabled for the venue', async () => {
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/tables',
+      headers: {
+        ...authHeader('staff-table-read'),
+        'x-venue-slug': 'the-craftery-koramangala',
+        'x-venue-ops-config': JSON.stringify({
+          queueDispatchMode: 'MANUAL_NOTIFY',
+          tableSourceMode: 'DISABLED',
+          arrivalCompletionMode: 'QUEUE_COMPLETE',
+          contentMode: 'DISABLED',
+        }),
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('VENUE_FEATURE_DISABLED');
   });
 });

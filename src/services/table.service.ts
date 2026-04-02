@@ -6,7 +6,7 @@ import { NotificationStatus, NotificationType, QueueEntryStatus, TableStatus } f
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
-import { isManualQueueDispatchConfig, resolveVenueConfig } from './venueConfig.service';
+import { isManualQueueDispatchConfig, resolveVenueConfig, shouldUseVenueTables } from './venueConfig.service';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -70,6 +70,9 @@ export async function updateTableStatus(params: {
     },
   });
   const venueConfig = venue ? resolveVenueConfig(venue) : null;
+  if (venueConfig && !shouldUseVenueTables(venueConfig)) {
+    throw new AppError('Table management is disabled for this venue', 403, 'VENUE_FEATURE_DISABLED');
+  }
   const manualDispatch = venueConfig ? isManualQueueDispatchConfig(venueConfig) : false;
   const shouldCompleteQueuedGuests = params.status === TableStatus.CLEARING || (params.status === TableStatus.FREE && !manualDispatch);
 
@@ -144,9 +147,16 @@ export async function tryAdvanceQueue(venueId: string, tableId: string): Promise
       opsConfig: true,
     },
   });
-  if (venue && isManualQueueDispatchConfig(resolveVenueConfig(venue))) {
-    logger.debug(`Queue auto-advance skipped for manual-dispatch venue ${venueId}`);
-    return;
+  if (venue) {
+    const venueConfig = resolveVenueConfig(venue);
+    if (!shouldUseVenueTables(venueConfig)) {
+      logger.debug(`Queue auto-advance skipped for tableless venue ${venueId}`);
+      return;
+    }
+    if (isManualQueueDispatchConfig(venueConfig)) {
+      logger.debug(`Queue auto-advance skipped for manual-dispatch venue ${venueId}`);
+      return;
+    }
   }
   const tableReadyWindowMin = venue?.tableReadyWindowMin ?? env.TABLE_READY_WINDOW_MINUTES;
 
