@@ -264,9 +264,9 @@ describe('queue and party-session routes', () => {
       method: 'POST',
       url: '/api/v1/queue/seat',
       headers: { authorization: 'Bearer staff-token' },
-      body: { otp: '123456' },
+      body: { entryId: 'entry_1', otp: '123456' },
     })).status).toBe(200);
-    expect(queueServiceMock.seatGuest).toHaveBeenCalledWith({ venueId: 'venue_1', otp: '123456', tableId: undefined });
+    expect(queueServiceMock.seatGuest).toHaveBeenCalledWith({ venueId: 'venue_1', otp: '123456', entryId: 'entry_1', tableId: undefined });
 
     expect((await invokeApp(app, {
       method: 'DELETE',

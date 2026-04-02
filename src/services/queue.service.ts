@@ -712,6 +712,7 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
 export async function seatGuest(params: {
   venueId: string;
   otp:     string;
+  entryId?: string;
   tableId?: string;
 }): Promise<{ entryId: string; guestName: string; preOrderSync: { attempted: boolean; status: string; posOrderId?: string } }> {
   const venue = await prisma.venue.findUnique({
@@ -733,7 +734,12 @@ export async function seatGuest(params: {
   const usesVenueTables = shouldUseVenueTables(venueConfig);
 
   const entry = await prisma.queueEntry.findFirst({
-    where: { otp: params.otp, venueId: params.venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+    where: {
+      venueId: params.venueId,
+      otp: params.otp,
+      ...(params.entryId ? { id: params.entryId } : {}),
+      status: { in: ['WAITING', 'NOTIFIED'] },
+    },
   });
   if (!entry) throw new AppError('Invalid OTP or guest not in queue', 400, 'OTP_INVALID');
 

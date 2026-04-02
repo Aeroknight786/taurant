@@ -326,9 +326,17 @@ describe('queue service', () => {
 
     const result = await seatGuest({
       venueId: 'venue_subko',
+      entryId: 'entry_1',
       otp: '123456',
     });
 
+    expect(prismaMock.queueEntry.findFirst).toHaveBeenCalledWith(expect.objectContaining({
+      where: expect.objectContaining({
+        id: 'entry_1',
+        otp: '123456',
+        venueId: 'venue_subko',
+      }),
+    }));
     expect(prismaMock.table.findFirst).not.toHaveBeenCalled();
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_1' },

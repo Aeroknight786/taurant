@@ -17,6 +17,7 @@ const JoinSchema = z.object({
 
 const SeatSchema = z.object({
   otp:     z.string().length(6),
+  entryId: z.string().min(1).optional(),
   tableId: z.string().min(1).optional(),
 });
 
@@ -67,8 +68,8 @@ export async function reissueGuestSession(req: Request, res: Response, next: Nex
 
 export async function seatGuest(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const { otp, tableId } = SeatSchema.parse(req.body);
-    const result = await QueueService.seatGuest({ venueId: req.venue!.id, otp, tableId });
+    const { otp, entryId, tableId } = SeatSchema.parse(req.body);
+    const result = await QueueService.seatGuest({ venueId: req.venue!.id, otp, entryId, tableId });
     ok(res, result);
   } catch (e) { next(e); }
 }

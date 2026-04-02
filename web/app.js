@@ -724,7 +724,7 @@ function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = 
       request: () => apiRequest('/queue/seat', {
         method: 'POST',
         auth: true,
-        body: { otp },
+        body: { entryId, otp },
       }),
       successMessage: 'Guest marked arrived.',
       nextTab: 'history',
@@ -2434,7 +2434,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
       const result = await apiRequest('/queue/seat', {
         method: 'POST',
         auth: true,
-        body: { otp, tableId },
+        body: { entryId: uiState.staffSeat.prefilledFromQueueId || undefined, otp, tableId },
       });
       resetStaffSeatState();
       uiState.staffSeat.success = isVenueFeatureEnabled(venue, 'preOrder')
