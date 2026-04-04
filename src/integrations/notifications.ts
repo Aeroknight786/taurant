@@ -15,8 +15,10 @@ function otpMessage(otp: string, venueName: string): string {
   return `Your Flock OTP for ${venueName} is *${otp}*. Valid for 5 minutes. Do not share.`;
 }
 
-function queueJoinedMessage(name: string, position: number, waitMin: number, venueName: string): string {
-  return `Hi ${name}! You're #${position} in the queue at ${venueName}. Estimated wait: ~${waitMin} mins. We'll message you when your table's ready.`;
+function queueJoinedMessage(name: string, venueName: string, statusLink?: string, guestOtp?: string): string {
+  const linkLine = statusLink ? `\n\nTrack your status here: ${statusLink}` : '';
+  const otpLine = guestOtp ? `\nYour OTP is ${guestOtp}.` : '';
+  return `Hi ${name}, you're now on the waitlist at ${venueName}.${linkLine}${otpLine}`;
 }
 
 function queueReadyReminderMessage(name: string, venueName: string, position?: number, waitMin?: number): string {
@@ -33,9 +35,18 @@ function queueExpiredMessage(name: string, venueName: string, reason: 'EXPIRED' 
   return `Hi ${name}. Your host desk call window at ${venueName} expired. If you're still waiting, please check back in with the host desk.`;
 }
 
-function tableReadyMessage(name: string, venueName: string, windowMin: number, tableLabel?: string): string {
+function tableReadyMessage(
+  name: string,
+  venueName: string,
+  windowMin: number,
+  statusLink?: string,
+  guestOtp?: string,
+  tableLabel?: string,
+): string {
   const labelSuffix = tableLabel ? ` (${tableLabel})` : '';
-  return `Great news ${name}! Your table${labelSuffix} is ready at ${venueName}. Please head to the host desk within ${windowMin} minutes or it may be reassigned.`;
+  const linkLine = statusLink ? `\n\nCheck your status here: ${statusLink}` : '';
+  const otpLine = guestOtp ? `\nYour OTP is ${guestOtp}.` : '';
+  return `Hi ${name}, your table${labelSuffix} is ready at ${venueName}. Please head to the host desk within ${windowMin} minutes or it may be reassigned.${linkLine}${otpLine}`;
 }
 
 function orderConfirmedMessage(name: string, txnRef: string, amount: number): string {
@@ -219,9 +230,31 @@ export const Notify = {
   otp: (venueId: string, phone: string, otp: string, venueName: string) =>
     sendNotification({ venueId, type: NotificationType.OTP, to: phone, message: otpMessage(otp, venueName) }),
 
-  queueJoined: (venueId: string, entryId: string, phone: string, name: string, position: number, waitMin: number, venueName: string) =>
-    sendNotification({ venueId, queueEntryId: entryId, type: NotificationType.QUEUE_JOINED, to: phone,
-      message: queueJoinedMessage(name, position, waitMin, venueName) }),
+  queueJoined: (
+    venueId: string,
+    entryId: string,
+    phone: string,
+    name: string,
+    venueName: string,
+    options: {
+      statusLink?: string;
+      guestOtp?: string;
+    } = {},
+  ) =>
+    sendNotification({
+      venueId,
+      queueEntryId: entryId,
+      type: NotificationType.QUEUE_JOINED,
+      to: phone,
+      message: queueJoinedMessage(name, venueName, options.statusLink, options.guestOtp),
+      payload: {
+        kind: 'QUEUE_JOINED',
+        name,
+        venueName,
+        statusLink: options.statusLink ?? null,
+        guestOtp: options.guestOtp ?? null,
+      },
+    }),
 
   queueReadyReminder: async (
     venueId: string,
@@ -299,8 +332,20 @@ export const Notify = {
     await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_NO_SHOW');
   },
 
-  tableReady: async (venueId: string, entryId: string, phone: string, name: string, tableLabel: string | undefined, venueName: string, windowMin: number) => {
-    const message = tableReadyMessage(name, venueName, windowMin, tableLabel);
+  tableReady: async (
+    venueId: string,
+    entryId: string,
+    phone: string,
+    name: string,
+    tableLabel: string | undefined,
+    venueName: string,
+    windowMin: number,
+    options: {
+      statusLink?: string;
+      guestOtp?: string;
+    } = {},
+  ) => {
+    const message = tableReadyMessage(name, venueName, windowMin, options.statusLink, options.guestOtp, tableLabel);
 
     await sendQueueStatusNotification({
       venueId,
@@ -313,6 +358,8 @@ export const Notify = {
         tableLabel,
         venueName,
         windowMin,
+        statusLink: options.statusLink ?? null,
+        guestOtp: options.guestOtp ?? null,
       },
     });
 

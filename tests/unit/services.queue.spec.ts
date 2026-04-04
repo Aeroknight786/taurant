@@ -20,6 +20,11 @@ const syncPendingPreOrderForSeatingMock = vi.fn();
 const signGuestTokenMock = vi.fn(() => 'guest-token');
 const initiateRefundMock = vi.fn();
 const logFlowEventMock = vi.fn();
+const guestAccessLinkMock = {
+  issueQueueAccessLink: vi.fn(),
+  resolveGuestAccessModeFromQueueEntry: vi.fn(),
+  getGuestReadOnlySessionExpiresInSeconds: vi.fn(),
+};
 
 vi.mock('../../src/config/database', () => ({
   prisma: prismaMock,
@@ -51,6 +56,12 @@ vi.mock('../../src/services/order.service', () => ({
 
 vi.mock('../../src/utils/jwt', () => ({
   signGuestToken: signGuestTokenMock,
+}));
+
+vi.mock('../../src/services/guestAccessLink.service', () => ({
+  issueQueueAccessLink: guestAccessLinkMock.issueQueueAccessLink,
+  resolveGuestAccessModeFromQueueEntry: guestAccessLinkMock.resolveGuestAccessModeFromQueueEntry,
+  getGuestReadOnlySessionExpiresInSeconds: guestAccessLinkMock.getGuestReadOnlySessionExpiresInSeconds,
 }));
 
 vi.mock('../../src/integrations/razorpay', async () => {
@@ -85,6 +96,22 @@ describe('queue service', () => {
       attempted: false,
       status: 'no_preorder',
     });
+    guestAccessLinkMock.issueQueueAccessLink.mockResolvedValue({
+      token: 'opaque-token',
+      tokenHash: 'hashed-token',
+      issuedAt: new Date(),
+      statusLink: 'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=opaque-token',
+    });
+    guestAccessLinkMock.resolveGuestAccessModeFromQueueEntry.mockImplementation((entry) => {
+      if (['WAITING', 'NOTIFIED', 'SEATED'].includes(entry.status)) {
+        return 'ACTIVE';
+      }
+      if (['COMPLETED', 'CANCELLED', 'NO_SHOW'].includes(entry.status)) {
+        return 'READ_ONLY';
+      }
+      return null;
+    });
+    guestAccessLinkMock.getGuestReadOnlySessionExpiresInSeconds.mockReturnValue(3600);
   });
 
   it('joins the queue, assigns position, and issues a guest token', async () => {
@@ -135,6 +162,11 @@ describe('queue service', () => {
       }),
     }));
     expect(notifyMock.queueJoined).toHaveBeenCalled();
+    expect(guestAccessLinkMock.issueQueueAccessLink).toHaveBeenCalledWith(expect.objectContaining({
+      venueId: 'venue_1',
+      queueEntryId: 'entry_1',
+      messageKind: 'JOIN',
+    }));
   });
 
   it('uses the Subko fixed ETA formula for venues configured with SUBKO_FIXED_V1', async () => {
@@ -178,6 +210,7 @@ describe('queue service', () => {
       estimatedWaitMin: 14,
     }));
     expect(notifyMock.queueJoined).not.toHaveBeenCalled();
+    expect(guestAccessLinkMock.issueQueueAccessLink).not.toHaveBeenCalled();
   });
 
   it('rejects duplicate active phones in the queue', async () => {
@@ -393,7 +426,14 @@ describe('queue service', () => {
       'Host desk',
       'The Craftery by Subko',
       3,
+      expect.objectContaining({
+        statusLink: expect.stringContaining('/v/'),
+      }),
     );
+    expect(guestAccessLinkMock.issueQueueAccessLink).toHaveBeenCalledWith(expect.objectContaining({
+      queueEntryId: 'entry_1',
+      messageKind: 'NOTIFY',
+    }));
     expect(result.status).toBe(QueueEntryStatus.NOTIFIED);
     expect(result.windowMin).toBe(3);
   });
@@ -439,6 +479,9 @@ describe('queue service', () => {
       'Host desk',
       'The Craftery by Subko',
       10,
+      expect.objectContaining({
+        statusLink: expect.stringContaining('/v/'),
+      }),
     );
     expect(result.windowMin).toBe(10);
   });

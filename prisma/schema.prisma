@@ -48,6 +48,15 @@ enum VenueContentSlot {
   EVENTS
 }
 
+enum GuestAccessLinkChannel {
+  WHATSAPP
+}
+
+enum GuestAccessLinkMessageKind {
+  JOIN
+  NOTIFY
+}
+
 enum OrderType {
   PRE_ORDER
   TABLE_ORDER
@@ -182,6 +191,7 @@ model Venue {
   partySessions       PartySession[]
   orderFlowEvents     OrderFlowEvent[]
   contentBlocks       VenueContentBlock[]
+  guestAccessLinks    GuestAccessLink[]
   @@index([slug])
   @@index([city])
 }
@@ -301,6 +311,24 @@ model VenueContentBlock {
   @@index([venueId, isEnabled, sortOrder])
 }
 
+model GuestAccessLink {
+  id            String                     @id @default(uuid())
+  queueEntryId  String
+  venueId       String
+  tokenHash     String                     @unique
+  channel       GuestAccessLinkChannel     @default(WHATSAPP)
+  messageKind   GuestAccessLinkMessageKind
+  issuedAt      DateTime
+  lastUsedAt    DateTime?
+  invalidatedAt DateTime?
+  createdAt     DateTime                   @default(now())
+  queueEntry    QueueEntry                 @relation(fields: [queueEntryId], references: [id], onDelete: Cascade)
+  venue         Venue                      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  @@index([queueEntryId, createdAt])
+  @@index([venueId, invalidatedAt])
+  @@index([venueId, channel, messageKind, createdAt])
+}
+
 model QueueEntry {
   id               String           @id @default(uuid())
   venueId          String
@@ -331,6 +359,7 @@ model QueueEntry {
   notifications    Notification[]
   partySession     PartySession?
   orderFlowEvents  OrderFlowEvent[]
+  guestAccessLinks GuestAccessLink[]
   @@index([venueId, status])
   @@index([venueId, position])
   @@index([status, tableReadyDeadlineAt])

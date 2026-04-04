@@ -29,6 +29,7 @@ vi.mock('../../src/middleware/auth', () => ({
     next();
   },
   requireGuestAuth: (_req: any, _res: any, next: any) => next(),
+  requireGuestMutationAccess: (_req: any, _res: any, next: any) => next(),
   requireGuestOrStaffAuth: (_req: any, _res: any, next: any) => next(),
   requireRole: () => (_req: any, _res: any, next: any) => next(),
 }));

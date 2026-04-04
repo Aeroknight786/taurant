@@ -18,14 +18,18 @@ export interface GuestJwtPayload {
   participantId?: string;
 }
 
+export interface SignGuestTokenOptions {
+  expiresIn?: string | number;
+}
+
 export type JwtPayload = StaffJwtPayload | GuestJwtPayload;
 
 export function signStaffToken(payload: StaffJwtPayload): string {
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.JWT_EXPIRES_IN } as jwt.SignOptions);
 }
 
-export function signGuestToken(payload: GuestJwtPayload): string {
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: env.GUEST_JWT_EXPIRES_IN } as jwt.SignOptions);
+export function signGuestToken(payload: GuestJwtPayload, options: SignGuestTokenOptions = {}): string {
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: options.expiresIn ?? env.GUEST_JWT_EXPIRES_IN } as jwt.SignOptions);
 }
 
 export function signToken(payload: JwtPayload): string {

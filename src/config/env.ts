@@ -3,6 +3,8 @@ dotenv.config();
 
 const nodeEnv = process.env.NODE_ENV ?? 'development';
 const defaultProdOrigins = 'https://app.flock.in,https://flock.in';
+const port = parseInt(process.env.PORT ?? '3000', 10);
+const defaultAppPublicUrl = nodeEnv === 'production' ? 'https://app.flock.in' : `http://localhost:${port}`;
 
 function required(key: string): string {
   const val = process.env[key];
@@ -16,8 +18,9 @@ function optional(key: string, fallback = ''): string {
 
 export const env = {
   NODE_ENV:   optional('NODE_ENV', nodeEnv),
-  PORT:       parseInt(optional('PORT', '3000'), 10),
+  PORT:       port,
   API_VERSION: optional('API_VERSION', 'v1'),
+  APP_PUBLIC_URL: optional('APP_PUBLIC_URL', defaultAppPublicUrl),
   APP_ALLOWED_ORIGINS: optional('APP_ALLOWED_ORIGINS', nodeEnv === 'production' ? defaultProdOrigins : '')
     .split(',')
     .map((origin) => origin.trim())

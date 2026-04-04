@@ -462,6 +462,51 @@ function getCurrentGuestRouteContext() {
   return null;
 }
 
+function getGuestAccessTokenFromUrl() {
+  return new URL(window.location.href).searchParams.get('access');
+}
+
+function stripGuestAccessTokenFromUrl() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has('access')) {
+    return;
+  }
+
+  url.searchParams.delete('access');
+  const nextUrl = `${url.pathname}${url.search}${url.hash}`;
+  history.replaceState({}, '', nextUrl);
+}
+
+async function redeemGuestAccessToken({ slug, entryId, venue, accessToken }) {
+  if (!accessToken) {
+    return null;
+  }
+
+  try {
+    const redemption = await apiRequest(`/queue/${entryId}/access-link/redeem`, {
+      method: 'POST',
+      body: {
+        token: accessToken,
+      },
+    });
+
+    const guestSession = {
+      entryId,
+      venueSlug: slug,
+      venueId: redemption.venueId || venue.id,
+      guestToken: redemption.guestToken,
+    };
+
+    setGuestSession(guestSession);
+    stripGuestAccessTokenFromUrl();
+    setFlash('green', 'Guest session restored.');
+    return guestSession;
+  } catch (error) {
+    console.warn('Guest access redemption failed:', error);
+    return null;
+  }
+}
+
 function isStaffDashboardRouteForSlug(slug) {
   return Boolean(slug) && window.location.pathname === buildStaffDashboardPath(slug);
 }
@@ -1067,10 +1112,21 @@ async function renderVenueLanding(slug) {
 }
 
 async function renderGuestEntry(slug, entryId) {
-  const guestSession = getGuestSession(entryId);
+  let guestSession = getGuestSession(entryId);
   const venue = await apiRequest(`/venues/${slug}`);
   applyVenueThemeForVenue(venue);
   const venueName = resolveVenueDisplayName(venue);
+  const accessToken = getGuestAccessTokenFromUrl();
+  let accessRedeemed = false;
+
+  if (!guestSession?.guestToken && accessToken) {
+    const redeemedSession = await redeemGuestAccessToken({ slug, entryId, venue, accessToken });
+    if (redeemedSession?.guestToken) {
+      guestSession = redeemedSession;
+      accessRedeemed = true;
+    }
+  }
+
   const partyShareEnabled = isVenueFeatureEnabled(venue, 'partyShare');
   const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
@@ -1186,6 +1242,51 @@ async function renderGuestEntry(slug, entryId) {
       guestToken: guestSession.guestToken,
     });
   } catch (error) {
+    if (isAuthErrorMessage(error.message) && accessToken && !accessRedeemed) {
+      clearGuestSession(entryId);
+      const redeemedSession = await redeemGuestAccessToken({ slug, entryId, venue, accessToken });
+      if (redeemedSession?.guestToken) {
+        guestSession = redeemedSession;
+        accessRedeemed = true;
+        try {
+          entry = await apiRequest(`/queue/${entryId}`, {
+            auth: 'guest',
+            guestToken: guestSession.guestToken,
+          });
+        } catch (retryError) {
+          if (/Unauthorized|expired|invalid/i.test(retryError.message)) {
+            clearGuestSession(entryId);
+            setFlash('amber', 'Your guest session expired on this device. Restore it with the seating OTP.');
+            await renderGuestEntry(slug, entryId);
+            return;
+          }
+
+          renderPage(renderShell({
+            pill: 'Guest',
+            body: `
+              <div class="section-head">
+                <div class="section-title">Guest session unavailable</div>
+                <div class="section-sub">${escapeHtml(retryError.message || 'We could not refresh this table session right now.')}</div>
+              </div>
+              <div class="card">
+                <div class="card-sub">Your guest token is still kept on this device. This looks like a temporary server issue, not a lost session.</div>
+                <div class="row">
+                  <button class="btn btn-primary" id="retry-guest-route" type="button">Retry</button>
+                  <a class="btn btn-secondary" data-nav href="${buildVenuePath(slug)}">Venue</a>
+                </div>
+              </div>
+            `,
+            right: `<a class="btn btn-secondary btn-sm" data-nav href="/">Exit</a>`,
+          }), `Flock | ${venueName}`);
+
+          document.getElementById('retry-guest-route')?.addEventListener('click', () => {
+            renderGuestEntry(slug, entryId).catch(handleFatalError);
+          });
+          return;
+        }
+      }
+    }
+
     if (/Unauthorized|expired|invalid/i.test(error.message)) {
       clearGuestSession(entryId);
       setFlash('amber', 'Your guest session expired on this device. Restore it with the seating OTP.');
@@ -1218,6 +1319,9 @@ async function renderGuestEntry(slug, entryId) {
   }
 
   setGuestEntryId(slug, entryId);
+  if (accessToken) {
+    stripGuestAccessTokenFromUrl();
+  }
   if (entry.status === 'SEATED' && partyShareEnabled) {
     await loadPartySessionState(entry, guestSession);
   } else {
@@ -4862,7 +4966,6 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
               ? 'This waitlist visit has been closed. Thanks for waiting with us.'
               : 'You have been called to the host desk. Show the OTP to complete verification.'}</div>
             <div class="alert alert-blue"><div>${entry.status === 'COMPLETED' ? 'No more actions are needed on this device.' : 'Keep this page handy in case the host desk needs to verify your session reference.'}</div></div>
-            ${entry.status === 'COMPLETED' ? '<button class="btn btn-secondary btn-full" id="guest-done-cta" style="margin-top:16px;">Done</button>' : ''}
           </div>
           <div class="card">
             <div class="card-title">Visit summary</div>
@@ -4954,7 +5057,6 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
             ${(entry.status === 'COMPLETED') ? `
               <div class="alert alert-green" style="margin-top:16px;"><div>Final payment completed. The invoice generation path has already been triggered.</div></div>
               <div class="order-line" style="margin-top:10px;"><div class="order-line-name">Final amount settled</div><div class="order-line-price">${formatMoney(Math.max(0, ((bill.summary.totalIncGst || (bill.summary.subtotalExGst + bill.summary.cgst + bill.summary.sgst) || 0)) - (bill.summary.depositPaid || 0)))}</div></div>
-              <button class="btn btn-secondary btn-full" id="guest-done-cta" style="margin-top:16px;">Done</button>
             ` : ''}
           ` : '<div class="empty-state">Bill data unavailable.</div>'}
         </div>
@@ -4966,7 +5068,6 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
     <div class="card">
       <div class="card-title">Queue entry closed</div>
       <div class="card-sub">${entry.status === 'NO_SHOW' ? 'The reserved table timed out and the queue moved on.' : 'This guest entry is no longer available for actions.'}</div>
-      <a class="btn btn-primary" data-nav href="/v/${slug}">Start a new queue entry</a>
     </div>
   `;
 }

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import * as Queue from '../controllers/queue.controller';
-import { requireAuth, requireGuestAuth, requireRole } from '../middleware/auth';
+import * as GuestAccess from '../controllers/guestAccessLink.controller';
+import { requireAuth, requireGuestAuth, requireGuestMutationAccess, requireRole } from '../middleware/auth';
 import { guestMutationLimiter, guestPollReadLimiter, operatorReadLimiter, operatorWriteLimiter, otpVerifyLimiter } from '../middleware/rateLimiter';
 import { requireVenueFeature, resolveVenueIdFromQueueEntryParam } from '../middleware/venueFeature';
 const router = Router();
@@ -8,7 +9,8 @@ router.post('/',                     guestMutationLimiter, requireVenueFeature('
 router.get ('/live',                 requireAuth, requireVenueFeature('guestQueue'), operatorReadLimiter, Queue.getVenueQueue);
 router.post('/:entryId/session',     otpVerifyLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), Queue.reissueGuestSession);
 router.get ('/:entryId',             requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntry);
-router.delete('/:entryId/leave',     guestMutationLimiter, requireGuestAuth, requireVenueFeature('guestQueue'), Queue.leaveEntry);
+router.post('/:entryId/access-link/redeem', guestMutationLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), GuestAccess.redeemAccessLink);
+router.delete('/:entryId/leave',     guestMutationLimiter, requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('guestQueue'), Queue.leaveEntry);
 router.post('/:entryId/notify',      requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.notifyEntry);
 router.post('/:entryId/nudge',       requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.nudgeEntry);
 router.post('/:entryId/reorder',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.reorderEntry);

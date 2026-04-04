@@ -67,7 +67,13 @@ describe('payment service', () => {
   it('reuses an existing pending deposit payment', async () => {
     const { initiateDeposit } = await import('../../src/services/payment.service');
 
-    prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_1', venueId: 'venue_1' });
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: 'WAITING',
+      completedAt: null,
+      updatedAt: new Date(),
+    });
     prismaMock.order.findFirst.mockResolvedValue({ id: 'order_1', totalIncGst: 32_450, venueId: 'venue_1', queueEntryId: 'entry_1' });
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
@@ -106,7 +112,13 @@ describe('payment service', () => {
   it('creates a new deposit payment using venue deposit math', async () => {
     const { initiateDeposit } = await import('../../src/services/payment.service');
 
-    prismaMock.queueEntry.findFirst.mockResolvedValue({ id: 'entry_1', venueId: 'venue_1' });
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_1',
+      venueId: 'venue_1',
+      status: 'WAITING',
+      completedAt: null,
+      updatedAt: new Date(),
+    });
     prismaMock.order.findFirst.mockResolvedValue({ id: 'order_1', totalIncGst: 32_450, venueId: 'venue_1', queueEntryId: 'entry_1' });
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
@@ -160,6 +172,9 @@ describe('payment service', () => {
         totalIncGst: 32_450,
         queueEntryId: 'entry_1',
         queueEntry: {
+          status: 'WAITING',
+          completedAt: null,
+          updatedAt: new Date(),
           depositPaid: 0,
           guestPhone: '9876543210',
           guestName: 'Neha',

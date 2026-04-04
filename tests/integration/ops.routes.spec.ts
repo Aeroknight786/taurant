@@ -104,6 +104,7 @@ vi.mock('../../src/middleware/auth', () => ({
     req.guest = { queueEntryId: 'entry_1', venueId: 'venue_1', guestPhone: '9876543210' };
     next();
   },
+  requireGuestMutationAccess: (_req: any, _res: any, next: any) => next(),
   requireGuestOrStaffAuth: (req: any, res: any, next: any) => {
     req.staff = { id: 'staff_1', role: 'MANAGER', venueId: 'venue_1' };
     req.venue = { id: 'venue_1', slug: 'the-barrel-room-koramangala' };

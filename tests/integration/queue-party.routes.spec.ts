@@ -81,6 +81,7 @@ vi.mock('../../src/middleware/auth', () => ({
     };
     next();
   },
+  requireGuestMutationAccess: (_req: any, _res: any, next: any) => next(),
   requireGuestOrStaffAuth: (req: any, res: any, next: any) => {
     const auth = req.header('authorization');
     if (auth === 'Bearer staff-token' || auth === 'Bearer staff-token-priority') {

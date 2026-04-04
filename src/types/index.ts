@@ -1,12 +1,15 @@
 import { Request } from 'express';
 import { Staff, Venue } from '@prisma/client';
 
+export type GuestAccessMode = 'ACTIVE' | 'READ_ONLY';
+
 export interface GuestAuthContext {
   queueEntryId: string;
   venueId: string;
   guestPhone: string;
   partySessionId?: string;
   participantId?: string;
+  accessMode?: GuestAccessMode;
 }
 
 export interface AuthenticatedRequest extends Request {

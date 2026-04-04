@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import * as PartySession from '../controllers/partySession.controller';
-import { requireGuestAuth } from '../middleware/auth';
+import { requireGuestAuth, requireGuestMutationAccess } from '../middleware/auth';
 import { guestMutationLimiter, guestPollReadLimiter, partyJoinLimiter } from '../middleware/rateLimiter';
 import { requireVenueFeature, resolveVenueIdFromPartyJoinToken } from '../middleware/venueFeature';
 
@@ -11,6 +11,6 @@ router.get('/:sessionId/realtime', requireGuestAuth, requireVenueFeature('partyS
 router.get('/:sessionId', requireGuestAuth, requireVenueFeature('partyShare'), guestPollReadLimiter, PartySession.getPartySessionSummary);
 router.get('/:sessionId/participants', requireGuestAuth, requireVenueFeature('partyShare'), guestPollReadLimiter, PartySession.getPartyParticipants);
 router.get('/:sessionId/bucket', requireGuestAuth, requireVenueFeature('partyShare'), guestPollReadLimiter, PartySession.getPartyBucket);
-router.put('/:sessionId/bucket', requireGuestAuth, requireVenueFeature('partyShare'), guestMutationLimiter, PartySession.updatePartyBucket);
+router.put('/:sessionId/bucket', requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('partyShare'), guestMutationLimiter, PartySession.updatePartyBucket);
 
 export default router;

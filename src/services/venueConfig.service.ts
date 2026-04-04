@@ -191,6 +191,7 @@ const CRAFTERY_VENUE_UI_DEFAULTS = {
 const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   queueDispatchMode: 'MANUAL_NOTIFY',
   tableSourceMode: 'DISABLED',
+  joinConfirmationMode: 'WHATSAPP',
   arrivalCompletionMode: 'QUEUE_COMPLETE',
   contentMode: 'DISABLED',
 };

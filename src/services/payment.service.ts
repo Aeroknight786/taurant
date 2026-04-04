@@ -10,6 +10,7 @@ import { selectBillableOrders } from './order.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { env } from '../config/env';
 import { assertVenueFeatureEnabled } from './venueConfig.service';
+import { assertGuestSessionCanMutate } from './guestAccessLink.service';
 
 const paymentKeyId = env.USE_MOCK_PAYMENTS ? 'mock_key' : (env.RAZORPAY_KEY_ID || 'mock_key');
 
@@ -23,7 +24,10 @@ export async function initiateDeposit(params: {
   await assertVenueFeatureEnabled(params.venueId, 'preOrder');
 
   const [entry, order, venue] = await Promise.all([
-    prisma.queueEntry.findFirst({ where: { id: params.queueEntryId, venueId: params.venueId } }),
+    prisma.queueEntry.findFirst({
+      where: { id: params.queueEntryId, venueId: params.venueId },
+      select: { status: true, completedAt: true, updatedAt: true },
+    }),
     prisma.order.findFirst({ where: { id: params.orderId, venueId: params.venueId, queueEntryId: params.queueEntryId, type: OrderType.PRE_ORDER } }),
     prisma.venue.findUnique({ where: { id: params.venueId } }),
   ]);
@@ -31,6 +35,7 @@ export async function initiateDeposit(params: {
   if (!entry) throw new AppError('Queue entry not found', 404);
   if (!order) throw new AppError('Pre-order not found', 404);
   if (!venue) throw new AppError('Venue not found', 404);
+  assertGuestSessionCanMutate(entry);
 
   const existingCaptured = await prisma.payment.findFirst({
     where: {
@@ -143,6 +148,12 @@ export async function initiateFinalPayment(params: {
   await assertVenueFeatureEnabled(params.venueId, 'finalPayment');
 
   const bill = await getBillSummary(params.queueEntryId);
+  const entry = await prisma.queueEntry.findFirst({
+    where: { id: params.queueEntryId, venueId: params.venueId },
+    select: { status: true, completedAt: true, updatedAt: true },
+  });
+  if (!entry) throw new AppError('Queue entry not found', 404);
+  assertGuestSessionCanMutate(entry);
   if (bill.balanceDue <= 0) throw new AppError('No balance due — bill already settled', 400);
 
   // Find the primary order to attach the final payment to
@@ -428,6 +439,7 @@ async function capturePaymentByOrder(params: {
     include: { order: { include: { queueEntry: true } } },
   });
   if (!payment) throw new AppError('Payment record not found', 404);
+  assertGuestSessionCanMutate(payment.order.queueEntry);
   await assertVenueFeatureEnabled(payment.venueId, payment.type === PaymentType.DEPOSIT ? 'preOrder' : 'finalPayment');
   if (payment.type !== params.expectedType) {
     throw new AppError('Payment type mismatch for capture path', 400, 'PAYMENT_TYPE_MISMATCH');

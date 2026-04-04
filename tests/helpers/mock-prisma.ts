@@ -90,6 +90,13 @@ export function createPrismaMock() {
       upsert: vi.fn(),
       update: vi.fn(),
     },
+    guestAccessLink: {
+      findUnique: vi.fn(),
+      findMany: vi.fn(),
+      create: vi.fn(),
+      update: vi.fn(),
+      updateMany: vi.fn(),
+    },
     partySession: {
       findUnique: vi.fn(),
       findFirst: vi.fn(),

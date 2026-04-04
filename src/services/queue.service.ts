@@ -3,7 +3,7 @@ import { redis, RedisKeys, PubSubChannels, isRedisReady } from '../config/redis'
 import { generateSeatingOtp } from '../utils/otp';
 import { Notify } from '../integrations/notifications';
 import { AppError } from '../middleware/errorHandler';
-import { PaymentStatus, PaymentType, QueueEntryStatus, QueueSeatingPreference, TableStatus } from '@prisma/client';
+import { GuestAccessLinkMessageKind, PaymentStatus, PaymentType, QueueEntryStatus, QueueSeatingPreference, TableStatus } from '@prisma/client';
 import { QueuePositionInfo } from '../types';
 import { logger } from '../config/logger';
 import { syncPendingPreOrderForSeating } from './order.service';
@@ -20,6 +20,11 @@ import {
   shouldSendJoinQueueNotification,
   shouldUseVenueTables,
 } from './venueConfig.service';
+import {
+  getGuestReadOnlySessionExpiresInSeconds,
+  issueQueueAccessLink,
+  resolveGuestAccessModeFromQueueEntry,
+} from './guestAccessLink.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 type QueueReorderDirection = 'UP' | 'DOWN';
@@ -106,7 +111,23 @@ export async function joinQueue(params: {
   );
 
   if (shouldSendJoinQueueNotification(venueConfig)) {
-    await Notify.queueJoined(params.venueId, entry.id, params.guestPhone, params.guestName, position, estimatedWaitMin, venue.name);
+    const accessLink = await issueQueueAccessLink({
+      venueId: params.venueId,
+      queueEntryId: entry.id,
+      venueSlug: venue.slug,
+      messageKind: GuestAccessLinkMessageKind.JOIN,
+    });
+    await Notify.queueJoined(
+      params.venueId,
+      entry.id,
+      params.guestPhone,
+      params.guestName,
+      venue.name,
+      {
+        statusLink: accessLink.statusLink,
+        guestOtp: otp,
+      },
+    );
   }
 
   await logFlowEvent({
@@ -251,6 +272,8 @@ export async function reissueGuestSession(entryId: string, otp: string) {
       guestPhone: true,
       otp: true,
       status: true,
+      completedAt: true,
+      updatedAt: true,
       venue: {
         select: {
           id: true,
@@ -265,16 +288,21 @@ export async function reissueGuestSession(entryId: string, otp: string) {
     },
   });
 
-  if (!entry || !['WAITING', 'NOTIFIED', 'SEATED'].includes(entry.status)) {
-    throw new AppError('Queue entry not eligible for guest session recovery', 400, 'ENTRY_NOT_ACTIVE');
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
   }
 
   if (entry.otp !== otp) {
     throw new AppError('Incorrect OTP', 400, 'OTP_INCORRECT');
   }
 
+  const accessMode = resolveGuestAccessModeFromQueueEntry(entry);
+  if (!accessMode) {
+    throw new AppError('Queue entry not eligible for guest session recovery', 400, 'ENTRY_NOT_ACTIVE');
+  }
+
   const venueConfig = entry.venue ? resolveVenueConfig(entry.venue) : null;
-  const partySession = venueConfig?.featureConfig.partyShare
+  const partySession = accessMode === 'ACTIVE' && venueConfig?.featureConfig.partyShare
     ? await ensurePartySessionForQueueEntry({
         queueEntryId: entry.id,
         venueId: entry.venueId,
@@ -289,7 +317,10 @@ export async function reissueGuestSession(entryId: string, otp: string) {
       guestPhone: entry.guestPhone,
       partySessionId: partySession?.session.id,
       participantId: partySession?.hostParticipant.id,
+    }, {
+      expiresIn: getGuestReadOnlySessionExpiresInSeconds(entry) ?? undefined,
     }),
+    accessMode,
   };
 }
 
@@ -310,6 +341,7 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
         tableId: true,
         guestName: true,
         guestPhone: true,
+        otp: true,
       },
     }),
     prisma.venue.findUnique({
@@ -364,6 +396,13 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NOTIFIED', entryId: entry.id }))
   );
 
+  const accessLink = await issueQueueAccessLink({
+    venueId,
+    queueEntryId: entry.id,
+    venueSlug: venue.slug,
+    messageKind: GuestAccessLinkMessageKind.NOTIFY,
+  });
+
   await Notify.tableReady(
     venueId,
     entry.id,
@@ -372,6 +411,10 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
     'Host desk',
     venue.name,
     effectiveWindowMin,
+    {
+      statusLink: accessLink.statusLink,
+      guestOtp: entry.otp,
+    },
   );
 
   await logFlowEvent({
@@ -1164,7 +1207,9 @@ function issueGuestSessionToken(params: {
   guestPhone: string;
   partySessionId?: string;
   participantId?: string;
-}): string {
+}, options: {
+  expiresIn?: string | number;
+} = {}): string {
   return signGuestToken({
     kind: 'guest',
     queueEntryId: params.queueEntryId,
@@ -1172,5 +1217,5 @@ function issueGuestSessionToken(params: {
     guestPhone: params.guestPhone,
     partySessionId: params.partySessionId,
     participantId: params.participantId,
-  });
+  }, options);
 }

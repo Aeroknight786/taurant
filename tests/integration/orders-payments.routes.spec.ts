@@ -60,6 +60,7 @@ vi.mock('../../src/middleware/auth', () => ({
     req.guest = { queueEntryId: 'entry_1', venueId: 'venue_1', guestPhone: '9876543210' };
     next();
   },
+  requireGuestMutationAccess: (_req: any, _res: any, next: any) => next(),
   requireGuestOrStaffAuth: (req: any, res: any, next: any) => {
     if (req.header('authorization') === 'Bearer guest-token') {
       req.guest = { queueEntryId: 'entry_1', venueId: 'venue_1', guestPhone: '9876543210' };

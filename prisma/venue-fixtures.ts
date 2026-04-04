@@ -195,7 +195,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
       opsConfig: {
         queueDispatchMode: 'MANUAL_NOTIFY',
         tableSourceMode: 'DISABLED',
-        joinConfirmationMode: 'WEB_ONLY',
+        joinConfirmationMode: 'WHATSAPP',
         readyNotificationChannels: ['WHATSAPP', 'IVR'],
         readyReminderEnabled: true,
         readyReminderOffsetMin: 1,

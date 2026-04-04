@@ -1,11 +1,11 @@
 import { Router } from 'express';
 import * as Order from '../controllers/order.controller';
-import { requireAuth, requireGuestAuth, requireGuestOrStaffAuth } from '../middleware/auth';
+import { requireAuth, requireGuestAuth, requireGuestMutationAccess, requireGuestOrStaffAuth } from '../middleware/auth';
 import { guestMutationLimiter, guestPollReadLimiter, operatorWriteLimiter } from '../middleware/rateLimiter';
 import { requireVenueFeature } from '../middleware/venueFeature';
 const router = Router();
-router.post('/preorder',     requireGuestAuth, requireVenueFeature('preOrder'), guestMutationLimiter, Order.createPreOrder);
-router.post('/table/guest',  requireGuestAuth, requireVenueFeature('seatedOrdering'), guestMutationLimiter, Order.createGuestTableOrder);
+router.post('/preorder',     requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('preOrder'), guestMutationLimiter, Order.createPreOrder);
+router.post('/table/guest',  requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('seatedOrdering'), guestMutationLimiter, Order.createGuestTableOrder);
 router.post('/table',        requireAuth, requireVenueFeature('seatedOrdering'), operatorWriteLimiter, Order.createTableOrder);
 router.get ('/bill/:queueEntryId', requireGuestOrStaffAuth, guestPollReadLimiter, Order.getGuestBill);
 export default router;
