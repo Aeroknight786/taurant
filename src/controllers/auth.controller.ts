@@ -13,7 +13,7 @@ export async function sendGuestOtp(req: Request, res: Response, next: NextFuncti
     const otp = await AuthService.sendGuestOtp(phone, venueId);
     ok(res, {
       message: 'OTP sent',
-      ...(env.USE_MOCK_NOTIFICATIONS && env.EXPOSE_MOCK_OTP_IN_API ? { mockOtp: otp } : {}),
+      ...(env.USE_MOCK_AUTH_OTP_NOTIFICATIONS && env.EXPOSE_MOCK_OTP_IN_API ? { mockOtp: otp } : {}),
     });
   } catch (e) { next(e); }
 }
@@ -24,7 +24,7 @@ export async function sendStaffOtp(req: Request, res: Response, next: NextFuncti
     const otp = await AuthService.sendStaffOtp(phone, venueId);
     ok(res, {
       message: 'OTP sent',
-      ...(env.USE_MOCK_NOTIFICATIONS && env.EXPOSE_MOCK_OTP_IN_API ? { mockOtp: otp } : {}),
+      ...(env.USE_MOCK_AUTH_OTP_NOTIFICATIONS && env.EXPOSE_MOCK_OTP_IN_API ? { mockOtp: otp } : {}),
     });
   } catch (e) { next(e); }
 }

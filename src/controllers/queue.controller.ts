@@ -13,6 +13,8 @@ const JoinSchema = z.object({
   partySize:         z.number().int().min(1).max(20),
   seatingPreference: z.enum(['INDOOR', 'OUTDOOR', 'FIRST_AVAILABLE']).default('FIRST_AVAILABLE'),
   guestNotes:        z.string().trim().max(240).optional(),
+  whatsappConsentGiven: z.boolean().optional().default(false),
+  whatsappConsentTextVersion: z.string().trim().max(80).optional(),
 });
 
 const SeatSchema = z.object({

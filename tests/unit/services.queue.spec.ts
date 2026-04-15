@@ -144,6 +144,7 @@ describe('queue service', () => {
       partySize: 3,
       seatingPreference: QueueSeatingPreference.OUTDOOR,
       guestNotes: 'Near the patio if possible',
+      whatsappConsentGiven: false,
     });
 
     expect(result).toEqual(expect.objectContaining({
@@ -158,6 +159,9 @@ describe('queue service', () => {
         partySize: 3,
         seatingPreference: QueueSeatingPreference.OUTDOOR,
         guestNotes: 'Near the patio if possible',
+        whatsappConsentGiven: false,
+        whatsappConsentAt: null,
+        whatsappConsentTextVersion: null,
         displayRef: expect.stringMatching(/^FLK-/),
       }),
     }));
@@ -202,6 +206,8 @@ describe('queue service', () => {
       guestPhone: '9876543210',
       partySize: 2,
       seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: true,
+      whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
     });
 
     expect(result).toEqual(expect.objectContaining({
@@ -236,7 +242,78 @@ describe('queue service', () => {
       guestPhone: '9876543210',
       partySize: 2,
       seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: false,
     })).rejects.toMatchObject<AppError>({ code: 'ALREADY_IN_QUEUE' });
+  });
+
+  it('sends Craftery join WhatsApp only when consent is granted', async () => {
+    const { joinQueue } = await import('../../src/services/queue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      isQueueOpen: true,
+      maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WHATSAPP',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+    prismaMock.queueEntry.count.mockResolvedValue(0);
+    prismaMock.queueEntry.findFirst.mockResolvedValue(null);
+    prismaMock.queueEntry.create
+      .mockResolvedValueOnce({
+        id: 'entry_subko_with_consent',
+        venueId: 'venue_subko',
+        guestName: 'Aarav',
+        guestPhone: '9876543210',
+        whatsappConsentGiven: true,
+      })
+      .mockResolvedValueOnce({
+        id: 'entry_subko_without_consent',
+        venueId: 'venue_subko',
+        guestName: 'Aarav',
+        guestPhone: '9876543210',
+        whatsappConsentGiven: false,
+      });
+
+    await joinQueue({
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: true,
+      whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
+    });
+    await joinQueue({
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543211',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: false,
+    });
+
+    expect(notifyMock.queueJoined).toHaveBeenCalledTimes(1);
+    expect(notifyMock.queueJoined).toHaveBeenCalledWith(
+      'venue_subko',
+      'entry_subko_with_consent',
+      '9876543210',
+      'Aarav',
+      'The Craftery by Subko',
+      expect.objectContaining({
+        venueSlug: 'the-craftery-koramangala',
+        queuePosition: 1,
+        estimatedWaitMin: 8,
+        guestOtp: expect.any(String),
+      }),
+    );
   });
 
   it('seats a guest, re-compacts the queue, and syncs preorder state', async () => {
@@ -252,6 +329,20 @@ describe('queue service', () => {
       id: 'table_1',
       label: 'T1',
       status: TableStatus.FREE,
+    });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'Flock',
+      slug: 'the-barrel-room-koramangala',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'AUTO_TABLE',
+        tableSourceMode: 'MANUAL',
+        arrivalCompletionMode: 'TABLE_ASSIGN',
+      },
     });
     prismaMock.queueEntry.findMany.mockResolvedValue([
       { id: 'entry_2', joinedAt: new Date('2026-03-09T10:00:00.000Z') },
@@ -394,6 +485,8 @@ describe('queue service', () => {
       tableId: null,
       guestName: 'Neha',
       guestPhone: '9876543210',
+      otp: '123456',
+      whatsappConsentGiven: true,
     });
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
@@ -448,6 +541,8 @@ describe('queue service', () => {
       tableId: null,
       guestName: 'Neha',
       guestPhone: '9876543210',
+      otp: '123456',
+      whatsappConsentGiven: true,
     });
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
@@ -500,6 +595,7 @@ describe('queue service', () => {
       estimatedWaitMin: 11,
       notifiedAt: new Date('2026-03-31T10:00:00.000Z'),
       tableReadyDeadlineAt: new Date('2026-03-31T10:15:00.000Z'),
+      whatsappConsentGiven: true,
     });
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_1',
@@ -526,6 +622,9 @@ describe('queue service', () => {
       2,
       11,
       'The Craftery by Subko',
+      expect.objectContaining({
+        enableWhatsApp: true,
+      }),
     );
     expect(result).toEqual(expect.objectContaining({
       entryId: 'entry_1',
@@ -901,6 +1000,9 @@ describe('queue service', () => {
       '9876543210',
       'Neha',
       'The Craftery by Subko',
+      expect.objectContaining({
+        enableWhatsApp: false,
+      }),
     );
   });
 
@@ -950,6 +1052,10 @@ describe('queue service', () => {
       2,
       11,
       'The Craftery by Subko',
+      expect.objectContaining({
+        venueSlug: 'the-craftery-koramangala',
+        enableWhatsApp: false,
+      }),
     );
   });
 

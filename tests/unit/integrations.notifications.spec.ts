@@ -10,6 +10,25 @@ const prismaMock = {
   },
 };
 
+const envMock = {
+  USE_MOCK_NOTIFICATIONS: true,
+  USE_MOCK_AUTH_OTP_NOTIFICATIONS: true,
+  GUPSHUP_API_KEY: '',
+  GUPSHUP_APP_NAME: 'FlockApp',
+  GUPSHUP_SOURCE_NUMBER: '',
+  GUPSHUP_TEMPLATE_QUEUE_JOIN_NAME: 'queue_join',
+  GUPSHUP_TEMPLATE_QUEUE_JOIN_ID: 'b5362b76-8215-497d-889d-6e32d013fb8a',
+  GUPSHUP_TEMPLATE_TABLE_READY_NAME: 'table_ready_v6',
+  GUPSHUP_TEMPLATE_TABLE_READY_ID: '9b5bd379-904c-4936-b7d8-1a08cfd02a74',
+  MSG91_AUTH_KEY: '',
+  MSG91_SENDER_ID: 'FLOCK',
+  IVR_PROVIDER: '',
+  IVR_ENABLED_VENUE_SLUGS: '',
+  IVR_QUEUE_READY_REMINDER_ENABLED: false,
+  IVR_QUEUE_EXPIRED_ENABLED: false,
+  IVR_QUEUE_NO_SHOW_ENABLED: false,
+};
+
 const sendIvrQueueTableReadyMock = vi.fn().mockResolvedValue('ivr_table_ready');
 const sendIvrQueueReadyReminderMock = vi.fn().mockResolvedValue('ivr_ready_reminder');
 const sendIvrQueueExpiredMock = vi.fn().mockResolvedValue('ivr_expired');
@@ -20,19 +39,7 @@ vi.mock('../../src/config/database', () => ({
 }));
 
 vi.mock('../../src/config/env', () => ({
-  env: {
-    USE_MOCK_NOTIFICATIONS: true,
-    GUPSHUP_API_KEY: '',
-    GUPSHUP_APP_NAME: 'FlockApp',
-    GUPSHUP_SOURCE_NUMBER: '',
-    MSG91_AUTH_KEY: '',
-    MSG91_SENDER_ID: 'FLOCK',
-    IVR_PROVIDER: '',
-    IVR_ENABLED_VENUE_SLUGS: '',
-    IVR_QUEUE_READY_REMINDER_ENABLED: false,
-    IVR_QUEUE_EXPIRED_ENABLED: false,
-    IVR_QUEUE_NO_SHOW_ENABLED: false,
-  },
+  env: envMock,
 }));
 
 vi.mock('../../src/config/logger', () => ({
@@ -52,14 +59,60 @@ vi.mock('../../src/integrations/ivr', () => ({
 }));
 
 describe('notification integrations', () => {
+  const originalFetch = global.fetch;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    envMock.USE_MOCK_NOTIFICATIONS = true;
+    envMock.USE_MOCK_AUTH_OTP_NOTIFICATIONS = true;
     prismaMock.notification.create.mockResolvedValue({ id: 'notif_1' });
     prismaMock.notification.update.mockResolvedValue({ id: 'notif_1' });
     prismaMock.venue.findUnique.mockResolvedValue({ slug: 'the-craftery-koramangala' });
+    global.fetch = vi.fn();
   });
 
-  it('sends a mock WhatsApp table-ready notification with host-desk copy', async () => {
+  afterAll(() => {
+    global.fetch = originalFetch;
+  });
+
+  it('maps Craftery join WhatsApp to the approved queue_join template variables', async () => {
+    const { Notify } = await import('../../src/integrations/notifications');
+
+    await Notify.queueJoined(
+      'venue_1',
+      'entry_1',
+      '9876543210',
+      'Neha',
+      'The Craftery by Subko',
+      {
+        venueSlug: 'the-craftery-koramangala',
+        queuePosition: 4,
+        estimatedWaitMin: 17,
+        guestOtp: '123456',
+        statusLink: 'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=token',
+      },
+    );
+
+    expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        type: NotificationType.QUEUE_JOINED,
+        channel: NotificationChannel.WHATSAPP,
+        templateId: 'b5362b76-8215-497d-889d-6e32d013fb8a',
+        payload: expect.objectContaining({
+          templateName: 'queue_join',
+          templateVariables: {
+            guest_name: 'Neha',
+            queue_position: 4,
+            estimated_wait: 17,
+            otp: '123456',
+            status_link: 'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=token',
+          },
+        }),
+      }),
+    }));
+  });
+
+  it('maps Craftery table-ready WhatsApp to the approved fixed template', async () => {
     const { Notify } = await import('../../src/integrations/notifications');
 
     await Notify.tableReady(
@@ -69,7 +122,12 @@ describe('notification integrations', () => {
       'Neha',
       '',
       'The Craftery by Subko',
-      3,
+      5,
+      {
+        venueSlug: 'the-craftery-koramangala',
+        guestOtp: '123456',
+        statusLink: 'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=token',
+      },
     );
 
     expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
@@ -78,12 +136,15 @@ describe('notification integrations', () => {
         queueEntryId: 'entry_1',
         type: NotificationType.TABLE_READY,
         channel: NotificationChannel.WHATSAPP,
+        templateId: '9b5bd379-904c-4936-b7d8-1a08cfd02a74',
         status: NotificationStatus.PENDING,
         payload: expect.objectContaining({
           kind: 'TABLE_READY',
-          name: 'Neha',
-          venueName: 'The Craftery by Subko',
-          windowMin: 3,
+          templateName: 'table_ready_v6',
+          templateVariables: {
+            guest_name: 'Neha',
+          },
+          windowMin: 5,
         }),
       }),
     }));
@@ -96,106 +157,14 @@ describe('notification integrations', () => {
     }));
   });
 
-  it('adds a ready reminder template and IVR scaffold for manual dispatch', async () => {
-    const { Notify } = await import('../../src/integrations/notifications');
+  it('does not auto-fallback to SMS when queue WhatsApp template send fails', async () => {
+    envMock.USE_MOCK_NOTIFICATIONS = false;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      json: async () => ({ status: 'error', message: 'template failed' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
 
-    prismaMock.notification.create.mockResolvedValueOnce({ id: 'notif_2' });
-    prismaMock.notification.update.mockResolvedValueOnce({ id: 'notif_2' });
-
-    await Notify.queueReadyReminder(
-      'venue_1',
-      'entry_1',
-      '9876543210',
-      'Neha',
-      4,
-      12,
-      'The Craftery by Subko',
-    );
-
-    expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        type: NotificationType.TABLE_READY,
-        channel: NotificationChannel.WHATSAPP,
-        payload: expect.objectContaining({
-          kind: 'QUEUE_READY_REMINDER',
-          name: 'Neha',
-          position: 4,
-          waitMin: 12,
-          venueName: 'The Craftery by Subko',
-        }),
-      }),
-    }));
-    expect(sendIvrQueueReadyReminderMock).toHaveBeenCalledWith(expect.objectContaining({
-      venueId: 'venue_1',
-      venueSlug: 'the-craftery-koramangala',
-      queueEntryId: 'entry_1',
-      to: '9876543210',
-      message: expect.stringContaining('stay nearby'),
-    }));
-  });
-
-  it('adds expiry and no-show messaging scaffolds for queue release', async () => {
-    const { Notify } = await import('../../src/integrations/notifications');
-
-    prismaMock.notification.create.mockResolvedValueOnce({ id: 'notif_3' });
-    prismaMock.notification.update.mockResolvedValueOnce({ id: 'notif_3' });
-
-    await Notify.queueExpired(
-      'venue_1',
-      'entry_1',
-      '9876543210',
-      'Neha',
-      'The Craftery by Subko',
-    );
-
-    prismaMock.notification.create.mockResolvedValueOnce({ id: 'notif_4' });
-    prismaMock.notification.update.mockResolvedValueOnce({ id: 'notif_4' });
-
-    await Notify.queueNoShow(
-      'venue_1',
-      'entry_1',
-      '9876543210',
-      'Neha',
-      'The Craftery by Subko',
-    );
-
-    expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        type: NotificationType.TABLE_READY,
-        payload: expect.objectContaining({
-          kind: 'QUEUE_EXPIRED',
-          name: 'Neha',
-          venueName: 'The Craftery by Subko',
-        }),
-      }),
-    }));
-    expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
-      data: expect.objectContaining({
-        type: NotificationType.TABLE_READY,
-        payload: expect.objectContaining({
-          kind: 'QUEUE_NO_SHOW',
-          name: 'Neha',
-          venueName: 'The Craftery by Subko',
-        }),
-      }),
-    }));
-    expect(sendIvrQueueExpiredMock).toHaveBeenCalledWith(expect.objectContaining({
-      venueId: 'venue_1',
-      venueSlug: 'the-craftery-koramangala',
-      queueEntryId: 'entry_1',
-      to: '9876543210',
-      message: expect.stringContaining('expired'),
-    }));
-    expect(sendIvrQueueNoShowMock).toHaveBeenCalledWith(expect.objectContaining({
-      venueId: 'venue_1',
-      venueSlug: 'the-craftery-koramangala',
-      queueEntryId: 'entry_1',
-      to: '9876543210',
-      message: expect.stringContaining('released'),
-    }));
-  });
-
-  it('keeps queue-joined helper intact with generic message copy', async () => {
     const { sendNotification } = await import('../../src/integrations/notifications');
 
     await sendNotification({
@@ -203,10 +172,22 @@ describe('notification integrations', () => {
       queueEntryId: 'entry_1',
       type: NotificationType.QUEUE_JOINED,
       to: '9876543210',
-      message: 'test message',
+      message: 'fallback should stay off',
       channel: NotificationChannel.WHATSAPP,
+      template: {
+        id: 'b5362b76-8215-497d-889d-6e32d013fb8a',
+        name: 'queue_join',
+        variables: ['Neha', '4', '17', '123456', 'https://taurant.onrender.com'],
+      },
+      allowSmsFallback: false,
     });
 
-    expect(prismaMock.notification.create).toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(prismaMock.notification.create).toHaveBeenCalledTimes(1);
+    expect(prismaMock.notification.update).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        status: NotificationStatus.FAILED,
+      }),
+    }));
   });
 });

@@ -338,6 +338,9 @@ model QueueEntry {
   partySize        Int
   seatingPreference QueueSeatingPreference @default(FIRST_AVAILABLE)
   guestNotes       String?
+  whatsappConsentGiven Boolean        @default(false)
+  whatsappConsentAt DateTime?
+  whatsappConsentTextVersion String?
   position         Int
   otp              String
   status           QueueEntryStatus @default(WAITING)

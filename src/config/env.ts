@@ -49,6 +49,10 @@ export const env = {
   GUPSHUP_API_KEY:       optional('GUPSHUP_API_KEY'),
   GUPSHUP_APP_NAME:      optional('GUPSHUP_APP_NAME', 'FlockApp'),
   GUPSHUP_SOURCE_NUMBER: optional('GUPSHUP_SOURCE_NUMBER'),
+  GUPSHUP_TEMPLATE_QUEUE_JOIN_NAME: optional('GUPSHUP_TEMPLATE_QUEUE_JOIN_NAME', 'queue_join'),
+  GUPSHUP_TEMPLATE_QUEUE_JOIN_ID: optional('GUPSHUP_TEMPLATE_QUEUE_JOIN_ID', 'b5362b76-8215-497d-889d-6e32d013fb8a'),
+  GUPSHUP_TEMPLATE_TABLE_READY_NAME: optional('GUPSHUP_TEMPLATE_TABLE_READY_NAME', 'table_ready_v6'),
+  GUPSHUP_TEMPLATE_TABLE_READY_ID: optional('GUPSHUP_TEMPLATE_TABLE_READY_ID', '9b5bd379-904c-4936-b7d8-1a08cfd02a74'),
 
   MSG91_AUTH_KEY:          optional('MSG91_AUTH_KEY'),
   MSG91_SENDER_ID:         optional('MSG91_SENDER_ID', 'FLOCK'),
@@ -76,6 +80,7 @@ export const env = {
   // Feature flags — default to mock in dev
   USE_MOCK_PAYMENTS:      optional('USE_MOCK_PAYMENTS', 'true') === 'true',
   USE_MOCK_NOTIFICATIONS: optional('USE_MOCK_NOTIFICATIONS', 'true') === 'true',
+  USE_MOCK_AUTH_OTP_NOTIFICATIONS: optional('USE_MOCK_AUTH_OTP_NOTIFICATIONS', optional('USE_MOCK_NOTIFICATIONS', 'true')) === 'true',
   USE_MOCK_GST:           optional('USE_MOCK_GST', 'true') === 'true',
   USE_MOCK_POS:           optional('USE_MOCK_POS', 'true') === 'true',
 

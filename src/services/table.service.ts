@@ -264,7 +264,9 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
     });
 
     if (venue && resolveVenueConfig(venue).opsConfig.expiryNotificationEnabled) {
-      await Notify.queueNoShow(entry.venueId, entry.id, entry.guestPhone, entry.guestName, venue.name);
+      await Notify.queueNoShow(entry.venueId, entry.id, entry.guestPhone, entry.guestName, venue.name, {
+        enableWhatsApp: venue.slug !== 'the-craftery-koramangala',
+      });
     }
 
     await recompactQueuePositions(entry.venueId);
@@ -355,6 +357,10 @@ export async function sweepReadyReminderEntries(now = new Date()): Promise<void>
       entry.position,
       entry.estimatedWaitMin ?? 0,
       venue.name,
+      {
+        venueSlug: venue.slug,
+        enableWhatsApp: venue.slug !== 'the-craftery-koramangala',
+      },
     );
   }
 }

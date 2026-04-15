@@ -169,12 +169,16 @@ describe('queue and party-session routes', () => {
         partySize: 2,
         seatingPreference: 'OUTDOOR',
         guestNotes: 'Need stroller space',
+        whatsappConsentGiven: true,
+        whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
       },
     });
     expect(joined.status).toBe(201);
     expect(queueServiceMock.joinQueue).toHaveBeenCalledWith(expect.objectContaining({
       seatingPreference: 'OUTDOOR',
       guestNotes: 'Need stroller space',
+      whatsappConsentGiven: true,
+      whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
     }));
 
     const live = await invokeApp(app, {

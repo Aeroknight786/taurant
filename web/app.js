@@ -991,6 +991,8 @@ async function renderVenueLanding(slug) {
     : resolveVenueLandingSummary(venue);
   const guestJoinTitle = queueOnlyGuestExperience || waitlistOnlyVenue ? 'Join the waitlist' : 'Join the queue';
   const guestJoinAction = queueOnlyGuestExperience || waitlistOnlyVenue ? 'Join waitlist' : 'Join queue';
+  const showWhatsAppConsent = shouldPromptForWhatsAppConsent(venue);
+  const whatsappConsentTextVersion = 'craftery_waitlist_whatsapp_v1';
 
   renderPage(`
     <main id="landing">
@@ -1045,6 +1047,12 @@ async function renderVenueLanding(slug) {
                   <textarea class="form-input guest-notes-input" id="guest-notes" maxlength="240" rows="3" placeholder="Optional notes for the host desk."></textarea>
                 </div>
               </div>
+              ${showWhatsAppConsent ? `
+                <label class="checkbox-row" style="margin: 0 0 14px;">
+                  <input type="checkbox" id="guest-whatsapp-consent">
+                  <span>I agree to receive WhatsApp updates about my waitlist status from ${escapeHtml(venueName)} on this number.</span>
+                </label>
+              ` : ''}
               <button class="btn btn-primary btn-full" type="submit" ${venue.isQueueOpen ? '' : 'disabled'}>
                 ${venue.isQueueOpen ? guestJoinAction : 'Queue closed'}
               </button>
@@ -1079,6 +1087,7 @@ async function renderVenueLanding(slug) {
     const partySize = Number(document.getElementById('party-size').value);
     const seatingPreference = document.getElementById('guest-seating-preference')?.value || 'FIRST_AVAILABLE';
     const guestNotes = document.getElementById('guest-notes')?.value.trim() || '';
+    const whatsappConsentGiven = Boolean(document.getElementById('guest-whatsapp-consent')?.checked);
 
     try {
       const entry = await apiRequest('/queue', {
@@ -1090,6 +1099,8 @@ async function renderVenueLanding(slug) {
           partySize,
           seatingPreference,
           guestNotes: guestNotes || undefined,
+          whatsappConsentGiven,
+          whatsappConsentTextVersion: whatsappConsentGiven ? whatsappConsentTextVersion : undefined,
         },
       });
       setGuestEntryId(slug, entry.id);
@@ -4607,6 +4618,16 @@ function resolveGuestJoinCopy(venue) {
   }
 
   return 'Join the waitlist, keep your phone nearby, and wait for the host call.';
+}
+
+function shouldPromptForWhatsAppConsent(venue) {
+  const opsConfig = resolveVenueOpsConfig(venue);
+  if (!venue?.slug || venue.slug !== 'the-craftery-koramangala') {
+    return false;
+  }
+
+  return opsConfig.joinConfirmationMode !== 'WEB_ONLY'
+    || (Array.isArray(opsConfig.readyNotificationChannels) && opsConfig.readyNotificationChannels.includes('WHATSAPP'));
 }
 
 function getVenueWaitContentMenuHighlights(venue) {

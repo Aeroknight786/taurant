@@ -28,6 +28,12 @@ import {
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 type QueueReorderDirection = 'UP' | 'DOWN';
+const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
+const DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION = 'craftery_waitlist_whatsapp_v1';
+
+function requiresCrafteryWhatsAppConsent(venueSlug?: string | null): boolean {
+  return venueSlug === CRAFTERY_VENUE_SLUG;
+}
 
 // ── Join queue ────────────────────────────────────────────────────
 
@@ -38,6 +44,8 @@ export async function joinQueue(params: {
   partySize:         number;
   seatingPreference: QueueSeatingPreference;
   guestNotes?:       string;
+  whatsappConsentGiven?: boolean;
+  whatsappConsentTextVersion?: string;
 }): Promise<{ id: string; otp: string; position: number; estimatedWaitMin: number; guestToken: string }> {
   const venue = await prisma.venue.findUnique({ where: { id: params.venueId } });
   if (!venue) throw new AppError('Venue not found', 404);
@@ -81,6 +89,11 @@ export async function joinQueue(params: {
       partySize:       params.partySize,
       seatingPreference: params.seatingPreference,
       guestNotes:      params.guestNotes?.trim() || null,
+      whatsappConsentGiven: Boolean(params.whatsappConsentGiven),
+      whatsappConsentAt: params.whatsappConsentGiven ? new Date() : null,
+      whatsappConsentTextVersion: params.whatsappConsentGiven
+        ? (params.whatsappConsentTextVersion?.trim() || DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION)
+        : null,
       position,
       otp,
       estimatedWaitMin,
@@ -110,7 +123,10 @@ export async function joinQueue(params: {
     redis.publish(PubSubChannels.queueUpdate(params.venueId), JSON.stringify({ type: 'ENTRY_ADDED', position }))
   );
 
-  if (shouldSendJoinQueueNotification(venueConfig)) {
+  const shouldSendJoinNotification = shouldSendJoinQueueNotification(venueConfig)
+    && (!requiresCrafteryWhatsAppConsent(venue.slug) || entry.whatsappConsentGiven);
+
+  if (shouldSendJoinNotification) {
     const accessLink = await issueQueueAccessLink({
       venueId: params.venueId,
       queueEntryId: entry.id,
@@ -124,10 +140,18 @@ export async function joinQueue(params: {
       params.guestName,
       venue.name,
       {
+        venueSlug: venue.slug,
+        queuePosition: position,
+        estimatedWaitMin,
         statusLink: accessLink.statusLink,
         guestOtp: otp,
       },
     );
+  } else if (requiresCrafteryWhatsAppConsent(venue.slug) && !entry.whatsappConsentGiven) {
+    logger.info('Craftery join WhatsApp skipped because consent was not granted', {
+      venueId: params.venueId,
+      queueEntryId: entry.id,
+    });
   }
 
   await logFlowEvent({
@@ -338,11 +362,12 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
         id: true,
         venueId: true,
         status: true,
-        tableId: true,
-        guestName: true,
-        guestPhone: true,
-        otp: true,
-      },
+      tableId: true,
+      guestName: true,
+      guestPhone: true,
+      otp: true,
+      whatsappConsentGiven: true,
+    },
     }),
     prisma.venue.findUnique({
       where: { id: venueId },
@@ -396,26 +421,36 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NOTIFIED', entryId: entry.id }))
   );
 
-  const accessLink = await issueQueueAccessLink({
-    venueId,
-    queueEntryId: entry.id,
-    venueSlug: venue.slug,
-    messageKind: GuestAccessLinkMessageKind.NOTIFY,
-  });
+  const shouldSendReadyWhatsApp = !requiresCrafteryWhatsAppConsent(venue.slug) || entry.whatsappConsentGiven;
+  let accessLink: Awaited<ReturnType<typeof issueQueueAccessLink>> | null = null;
+  if (shouldSendReadyWhatsApp) {
+    accessLink = await issueQueueAccessLink({
+      venueId,
+      queueEntryId: entry.id,
+      venueSlug: venue.slug,
+      messageKind: GuestAccessLinkMessageKind.NOTIFY,
+    });
 
-  await Notify.tableReady(
-    venueId,
-    entry.id,
-    entry.guestPhone,
-    entry.guestName,
-    'Host desk',
-    venue.name,
-    effectiveWindowMin,
-    {
-      statusLink: accessLink.statusLink,
-      guestOtp: entry.otp,
-    },
-  );
+    await Notify.tableReady(
+      venueId,
+      entry.id,
+      entry.guestPhone,
+      entry.guestName,
+      'Host desk',
+      venue.name,
+      effectiveWindowMin,
+      {
+        venueSlug: venue.slug,
+        statusLink: accessLink.statusLink,
+        guestOtp: entry.otp,
+      },
+    );
+  } else {
+    logger.info('Craftery table-ready WhatsApp skipped because consent was not granted', {
+      venueId,
+      queueEntryId: entry.id,
+    });
+  }
 
   await logFlowEvent({
     queueEntryId: entry.id,
@@ -457,6 +492,7 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
         estimatedWaitMin: true,
         notifiedAt: true,
         tableReadyDeadlineAt: true,
+        whatsappConsentGiven: true,
       },
     }),
     prisma.venue.findUnique({
@@ -500,6 +536,10 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
     entry.position,
     entry.estimatedWaitMin ?? 0,
     venue.name,
+    {
+      venueSlug: venue.slug,
+      enableWhatsApp: !requiresCrafteryWhatsAppConsent(venue.slug),
+    },
   );
 
   await safeRedisExec(() =>

@@ -9,6 +9,14 @@ import {
   sendIvrQueueTableReady,
 } from './ivr';
 
+const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
+
+type WhatsAppTemplatePayload = {
+  id: string;
+  name: string;
+  variables: string[];
+};
+
 // ── Template builders ──────────────────────────────────────────────
 
 function otpMessage(otp: string, venueName: string): string {
@@ -55,8 +63,15 @@ function orderConfirmedMessage(name: string, txnRef: string, amount: number): st
 
 // ── Gupshup WhatsApp sender ────────────────────────────────────────
 
-async function sendWhatsApp(to: string, message: string): Promise<string> {
-  if (env.USE_MOCK_NOTIFICATIONS) {
+function shouldUseMockNotification(type: NotificationType): boolean {
+  if (type === NotificationType.OTP) {
+    return env.USE_MOCK_AUTH_OTP_NOTIFICATIONS;
+  }
+  return env.USE_MOCK_NOTIFICATIONS;
+}
+
+async function sendWhatsAppText(to: string, message: string, mockMode: boolean): Promise<string> {
+  if (mockMode) {
     logger.debug(`[MOCK WhatsApp → ${to}]: ${message}`);
     return `mock_wa_${Date.now()}`;
   }
@@ -81,10 +96,46 @@ async function sendWhatsApp(to: string, message: string): Promise<string> {
   return data.messageId ?? 'unknown';
 }
 
+async function sendWhatsAppTemplate(
+  to: string,
+  template: WhatsAppTemplatePayload,
+  mockMode: boolean,
+): Promise<string> {
+  if (mockMode) {
+    logger.debug(`[MOCK WhatsApp Template → ${to}]: ${template.name} ${JSON.stringify(template.variables)}`);
+    return `mock_wa_tpl_${Date.now()}`;
+  }
+
+  if (!template.id) {
+    throw new Error(`Gupshup template "${template.name}" is not configured`);
+  }
+
+  const url = 'https://api.gupshup.io/wa/api/v1/template/msg';
+  const body = new URLSearchParams({
+    source: env.GUPSHUP_SOURCE_NUMBER,
+    destination: to,
+    template: JSON.stringify({
+      id: template.id,
+      params: template.variables,
+    }),
+    'src.name': env.GUPSHUP_APP_NAME,
+  });
+
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { apikey: env.GUPSHUP_API_KEY, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: body.toString(),
+  });
+
+  const data = await res.json() as { messageId?: string; status?: string };
+  if (!res.ok) throw new Error(`Gupshup template error: ${JSON.stringify(data)}`);
+  return data.messageId ?? 'unknown';
+}
+
 // ── MSG91 SMS sender ───────────────────────────────────────────────
 
-async function sendSms(to: string, message: string): Promise<string> {
-  if (env.USE_MOCK_NOTIFICATIONS) {
+async function sendSms(to: string, message: string, mockMode: boolean): Promise<string> {
+  if (mockMode) {
     logger.debug(`[MOCK SMS → ${to}]: ${message}`);
     return `mock_sms_${Date.now()}`;
   }
@@ -119,10 +170,13 @@ export interface SendNotificationParams {
   message:      string;
   channel?:     NotificationChannel;
   payload?:     Record<string, unknown>;
+  template?:    WhatsAppTemplatePayload;
+  allowSmsFallback?: boolean;
 }
 
 export async function sendNotification(params: SendNotificationParams): Promise<void> {
   const channel = params.channel ?? NotificationChannel.WHATSAPP;
+  const mockMode = shouldUseMockNotification(params.type);
   const log = await prisma.notification.create({
     data: {
       venueId:      params.venueId,
@@ -130,6 +184,7 @@ export async function sendNotification(params: SendNotificationParams): Promise<
       type:         params.type,
       channel,
       to:           params.to,
+      templateId:   params.template?.id,
       payload:      params.payload as Prisma.InputJsonValue | undefined,
       status:       NotificationStatus.PENDING,
     },
@@ -138,9 +193,11 @@ export async function sendNotification(params: SendNotificationParams): Promise<
   try {
     let externalRef: string;
     if (channel === NotificationChannel.WHATSAPP) {
-      externalRef = await sendWhatsApp(params.to, params.message);
+      externalRef = params.template
+        ? await sendWhatsAppTemplate(params.to, params.template, mockMode)
+        : await sendWhatsAppText(params.to, params.message, mockMode);
     } else {
-      externalRef = await sendSms(params.to, params.message);
+      externalRef = await sendSms(params.to, params.message, mockMode);
     }
 
     await prisma.notification.update({
@@ -155,8 +212,8 @@ export async function sendNotification(params: SendNotificationParams): Promise<
       data:  { status: NotificationStatus.FAILED, error },
     });
     // Try SMS fallback if WhatsApp fails
-    if (channel === NotificationChannel.WHATSAPP) {
-      await sendNotification({ ...params, channel: NotificationChannel.SMS });
+    if (channel === NotificationChannel.WHATSAPP && params.allowSmsFallback !== false) {
+      await sendNotification({ ...params, channel: NotificationChannel.SMS, template: undefined, allowSmsFallback: false });
     }
   }
 }
@@ -213,6 +270,8 @@ async function sendQueueStatusNotification(params: {
   phone: string;
   message: string;
   payload: Record<string, unknown>;
+  template?: WhatsAppTemplatePayload;
+  allowSmsFallback?: boolean;
 }): Promise<void> {
   await sendNotification({
     venueId: params.venueId,
@@ -221,6 +280,8 @@ async function sendQueueStatusNotification(params: {
     to: params.phone,
     message: params.message,
     payload: params.payload,
+    template: params.template,
+    allowSmsFallback: params.allowSmsFallback,
   });
 }
 
@@ -237,6 +298,9 @@ export const Notify = {
     name: string,
     venueName: string,
     options: {
+      venueSlug?: string;
+      queuePosition?: number;
+      estimatedWaitMin?: number;
       statusLink?: string;
       guestOtp?: string;
     } = {},
@@ -247,12 +311,38 @@ export const Notify = {
       type: NotificationType.QUEUE_JOINED,
       to: phone,
       message: queueJoinedMessage(name, venueName, options.statusLink, options.guestOtp),
+      template: options.venueSlug === CRAFTERY_VENUE_SLUG
+        ? {
+            id: env.GUPSHUP_TEMPLATE_QUEUE_JOIN_ID,
+            name: env.GUPSHUP_TEMPLATE_QUEUE_JOIN_NAME,
+            variables: [
+              name,
+              String(options.queuePosition ?? ''),
+              String(options.estimatedWaitMin ?? ''),
+              String(options.guestOtp ?? ''),
+              String(options.statusLink ?? ''),
+            ],
+          }
+        : undefined,
+      allowSmsFallback: options.venueSlug === CRAFTERY_VENUE_SLUG ? false : undefined,
       payload: {
         kind: 'QUEUE_JOINED',
         name,
         venueName,
+        queuePosition: options.queuePosition ?? null,
+        estimatedWaitMin: options.estimatedWaitMin ?? null,
         statusLink: options.statusLink ?? null,
         guestOtp: options.guestOtp ?? null,
+        templateName: options.venueSlug === CRAFTERY_VENUE_SLUG ? env.GUPSHUP_TEMPLATE_QUEUE_JOIN_NAME : null,
+        templateVariables: options.venueSlug === CRAFTERY_VENUE_SLUG
+          ? {
+              guest_name: name,
+              queue_position: options.queuePosition ?? null,
+              estimated_wait: options.estimatedWaitMin ?? null,
+              otp: options.guestOtp ?? null,
+              status_link: options.statusLink ?? null,
+            }
+          : null,
       },
     }),
 
@@ -264,22 +354,28 @@ export const Notify = {
     position: number,
     waitMin: number,
     venueName: string,
+    options: {
+      venueSlug?: string;
+      enableWhatsApp?: boolean;
+    } = {},
   ) => {
     const message = queueReadyReminderMessage(name, venueName, position, waitMin);
 
-    await sendQueueStatusNotification({
-      venueId,
-      queueEntryId: entryId,
-      phone,
-      message,
-      payload: {
-        kind: 'QUEUE_READY_REMINDER',
-        name,
-        position,
-        waitMin,
-        venueName,
-      },
-    });
+    if (options.enableWhatsApp !== false) {
+      await sendQueueStatusNotification({
+        venueId,
+        queueEntryId: entryId,
+        phone,
+        message,
+        payload: {
+          kind: 'QUEUE_READY_REMINDER',
+          name,
+          position,
+          waitMin,
+          venueName,
+        },
+      });
+    }
 
     await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_READY_REMINDER');
   },
@@ -290,20 +386,25 @@ export const Notify = {
     phone: string,
     name: string,
     venueName: string,
+    options: {
+      enableWhatsApp?: boolean;
+    } = {},
   ) => {
     const message = queueExpiredMessage(name, venueName, 'EXPIRED');
 
-    await sendQueueStatusNotification({
-      venueId,
-      queueEntryId: entryId,
-      phone,
-      message,
-      payload: {
-        kind: 'QUEUE_EXPIRED',
-        name,
-        venueName,
-      },
-    });
+    if (options.enableWhatsApp !== false) {
+      await sendQueueStatusNotification({
+        venueId,
+        queueEntryId: entryId,
+        phone,
+        message,
+        payload: {
+          kind: 'QUEUE_EXPIRED',
+          name,
+          venueName,
+        },
+      });
+    }
 
     await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_EXPIRED');
   },
@@ -314,20 +415,25 @@ export const Notify = {
     phone: string,
     name: string,
     venueName: string,
+    options: {
+      enableWhatsApp?: boolean;
+    } = {},
   ) => {
     const message = queueExpiredMessage(name, venueName, 'NO_SHOW');
 
-    await sendQueueStatusNotification({
-      venueId,
-      queueEntryId: entryId,
-      phone,
-      message,
-      payload: {
-        kind: 'QUEUE_NO_SHOW',
-        name,
-        venueName,
-      },
-    });
+    if (options.enableWhatsApp !== false) {
+      await sendQueueStatusNotification({
+        venueId,
+        queueEntryId: entryId,
+        phone,
+        message,
+        payload: {
+          kind: 'QUEUE_NO_SHOW',
+          name,
+          venueName,
+        },
+      });
+    }
 
     await maybeSendIvrForQueueMessage(venueId, entryId, phone, message, 'QUEUE_NO_SHOW');
   },
@@ -341,6 +447,7 @@ export const Notify = {
     venueName: string,
     windowMin: number,
     options: {
+      venueSlug?: string;
       statusLink?: string;
       guestOtp?: string;
     } = {},
@@ -352,6 +459,14 @@ export const Notify = {
       queueEntryId: entryId,
       phone,
       message,
+      template: options.venueSlug === CRAFTERY_VENUE_SLUG
+        ? {
+            id: env.GUPSHUP_TEMPLATE_TABLE_READY_ID,
+            name: env.GUPSHUP_TEMPLATE_TABLE_READY_NAME,
+            variables: [name],
+          }
+        : undefined,
+      allowSmsFallback: options.venueSlug === CRAFTERY_VENUE_SLUG ? false : undefined,
       payload: {
         kind: 'TABLE_READY',
         name,
@@ -360,6 +475,10 @@ export const Notify = {
         windowMin,
         statusLink: options.statusLink ?? null,
         guestOtp: options.guestOtp ?? null,
+        templateName: options.venueSlug === CRAFTERY_VENUE_SLUG ? env.GUPSHUP_TEMPLATE_TABLE_READY_NAME : null,
+        templateVariables: options.venueSlug === CRAFTERY_VENUE_SLUG
+          ? { guest_name: name }
+          : null,
       },
     });
 
