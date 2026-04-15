@@ -185,7 +185,7 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
 
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
 const CRAFTERY_VENUE_UI_DEFAULTS = {
-  showQueuePosition: false,
+  showQueuePosition: true,
   supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
 };
 const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {

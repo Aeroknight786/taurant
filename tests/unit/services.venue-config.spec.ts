@@ -115,7 +115,7 @@ describe('venue config service', () => {
       },
       uiConfig: {
         defaultGuestTray: 'ordered',
-        showQueuePosition: false,
+        showQueuePosition: true,
         supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {
@@ -154,7 +154,7 @@ describe('venue config service', () => {
       },
       uiConfig: {
         defaultGuestTray: 'ordered',
-        showQueuePosition: false,
+        showQueuePosition: true,
         supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {

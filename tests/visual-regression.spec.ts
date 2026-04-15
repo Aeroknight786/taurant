@@ -60,7 +60,7 @@ test.describe('Guest venue landing', () => {
     await expect(page.locator('#final-pay-cta')).toHaveCount(0);
   });
 
-  test('Craftery wait page shows the Subko content block', async ({ page }) => {
+  test('Craftery wait page shows queue position without guest content cards', async ({ page }) => {
     await page.goto(`/v/${CRAFTERY_VENUE_SLUG}`);
     await page.waitForSelector('#join-form');
 
@@ -73,27 +73,19 @@ test.describe('Guest venue landing', () => {
 
     const guestNotes = page.locator('#guest-notes');
     if (await guestNotes.count()) {
-      await guestNotes.fill('Testing the wait-content block.');
+      await guestNotes.fill('Testing queue position visibility.');
     }
 
     await page.click('#join-form button[type="submit"]');
 
     await page.waitForURL(/\/v\/the-craftery-koramangala\/e\//);
-    await page.waitForSelector('[data-wait-content="subko"]');
+    await page.waitForSelector('.queue-hero');
     await noHorizontalOverflow(page);
 
     await expect(page.locator('.steps .step-label')).toHaveText(['Join', 'Wait', 'Called']);
     await expect(page.getByRole('button', { name: 'Leave waitlist' })).toBeVisible();
-    await expect(page.locator('.queue-pos-label')).toContainText('Estimated wait');
-    await expect(page.locator('text=Waitlist position')).toHaveCount(0);
-
-    const waitContent = page.locator('[data-wait-content="subko"]');
-    await expect(waitContent).toBeVisible();
-    await expect(waitContent.locator('.wait-content-card')).toHaveCount(2);
-    await expect(waitContent).toContainText('Menu');
-    await expect(waitContent).toContainText('Merchandise');
-    await expect(waitContent).not.toContainText('Stories');
-    await expect(waitContent).not.toContainText('Events');
+    await expect(page.locator('.queue-pos-label')).toContainText('Waitlist position');
+    await expect(page.locator('[data-wait-content="subko"]')).toHaveCount(0);
   });
 
   test('Craftery manual-dispatch queue rows expose reorder controls', async ({ page }) => {
@@ -336,7 +328,7 @@ test.describe('Staff dashboard', () => {
             uiConfig: {
               landingMode: 'venue',
               showContinueEntry: true,
-              showQueuePosition: false,
+              showQueuePosition: true,
               supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
             },
             opsConfig: {
@@ -363,7 +355,7 @@ test.describe('Staff dashboard', () => {
               uiConfig: {
                 landingMode: 'venue',
                 showContinueEntry: true,
-                showQueuePosition: false,
+                showQueuePosition: true,
                 supportCopy: 'Join the waitlist, keep your phone nearby, and head back to the host desk once your table is ready.',
               },
               opsConfig: {

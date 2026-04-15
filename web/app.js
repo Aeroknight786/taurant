@@ -4582,7 +4582,7 @@ function getVenueBrandConfig(venue) {
 
 function shouldShowGuestQueuePosition(venue) {
   const uiConfig = venue?.config?.uiConfig || venue?.uiConfig || {};
-  return uiConfig.showQueuePosition !== false && !isWaitlistOnlyVenue(venue);
+  return uiConfig.showQueuePosition !== false;
 }
 
 function getVenueContentBlocks(venue) {

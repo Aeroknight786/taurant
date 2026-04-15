@@ -189,7 +189,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         landingMode: 'venue',
         defaultGuestTray: 'ordered',
         showContinueEntry: true,
-        showQueuePosition: false,
+        showQueuePosition: true,
         supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {
