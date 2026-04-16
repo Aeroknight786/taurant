@@ -17,6 +17,17 @@ type WhatsAppTemplatePayload = {
   variables: string[];
 };
 
+function normalizeWhatsAppDestination(phone: string): string {
+  const digits = phone.replace(/\D/g, '');
+  if (/^[6-9]\d{9}$/.test(digits)) {
+    return `91${digits}`;
+  }
+  if (/^91[6-9]\d{9}$/.test(digits)) {
+    return digits;
+  }
+  return digits;
+}
+
 // ── Template builders ──────────────────────────────────────────────
 
 function otpMessage(otp: string, venueName: string): string {
@@ -76,11 +87,13 @@ async function sendWhatsAppText(to: string, message: string, mockMode: boolean):
     return `mock_wa_${Date.now()}`;
   }
 
+  const destination = normalizeWhatsAppDestination(to);
+
   const url = 'https://api.gupshup.io/sm/api/v1/msg';
   const body = new URLSearchParams({
     channel:    'whatsapp',
     source:     env.GUPSHUP_SOURCE_NUMBER,
-    destination: to,
+    destination,
     message:    JSON.stringify({ type: 'text', text: message }),
     'src.name': env.GUPSHUP_APP_NAME,
   });
@@ -110,10 +123,12 @@ async function sendWhatsAppTemplate(
     throw new Error(`Gupshup template "${template.name}" is not configured`);
   }
 
+  const destination = normalizeWhatsAppDestination(to);
+
   const url = 'https://api.gupshup.io/wa/api/v1/template/msg';
   const body = new URLSearchParams({
     source: env.GUPSHUP_SOURCE_NUMBER,
-    destination: to,
+    destination,
     template: JSON.stringify({
       id: template.id,
       params: template.variables,

@@ -190,4 +190,35 @@ describe('notification integrations', () => {
       }),
     }));
   });
+
+  it('normalizes Indian WhatsApp destinations to include country code for template sends', async () => {
+    envMock.USE_MOCK_NOTIFICATIONS = false;
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: 'submitted', messageId: 'wa_123' }),
+    });
+    global.fetch = fetchMock as unknown as typeof fetch;
+
+    const { sendNotification } = await import('../../src/integrations/notifications');
+
+    await sendNotification({
+      venueId: 'venue_1',
+      queueEntryId: 'entry_1',
+      type: NotificationType.QUEUE_JOINED,
+      to: '9876543210',
+      message: 'unused templated path',
+      channel: NotificationChannel.WHATSAPP,
+      template: {
+        id: 'b5362b76-8215-497d-889d-6e32d013fb8a',
+        name: 'queue_join',
+        variables: ['Neha', '4', '17', '123456', 'https://taurant.onrender.com'],
+      },
+      allowSmsFallback: false,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [, requestInit] = fetchMock.mock.calls[0];
+    const body = new URLSearchParams(String(requestInit?.body ?? ''));
+    expect(body.get('destination')).toBe('919876543210');
+  });
 });
