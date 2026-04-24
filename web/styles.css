@@ -202,6 +202,20 @@ button, input, select {
   gap: 12px;
 }
 
+.header-link {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-dim);
+  transition: color 0.2s ease, transform 0.2s ease;
+}
+
+.header-link:hover,
+.header-link:focus-visible {
+  color: var(--amber);
+  transform: translateY(-1px);
+}
+
 .header-logo {
   font-family: "Fraunces", serif;
   font-size: 21px;

@@ -3988,7 +3988,10 @@ function renderShell({ pill, body, right = '' }) {
           <div class="header-logo">fl<em>o</em>ck</div>
           <div class="header-pill">${escapeHtml(pill)}</div>
         </div>
-        <div class="header-right">${right}</div>
+        <div class="header-right">
+          <a class="header-link" href="/about" target="_blank" rel="noopener noreferrer">About</a>
+          ${right}
+        </div>
       </header>
       <section class="app-body">${body}</section>
     </main>
