@@ -960,6 +960,9 @@ async function renderHome() {
       <div class="brand">
         <div class="brand-name">fl<em>o</em>ck</div>
         <div class="brand-tag">Select a venue and open only the modules that venue actually uses.</div>
+        <div class="brand-actions">
+          <a class="landing-about-link" href="/about" target="_blank" rel="noopener noreferrer">About</a>
+        </div>
       </div>
       <div class="role-cards">
         ${venues.length ? venues.map((venue) => renderVenueSelectorCard(venue)).join('') : `
@@ -999,6 +1002,9 @@ async function renderVenueLanding(slug) {
       <div class="brand">
         <div class="brand-name">fl<em>o</em>ck</div>
         <div class="brand-tag">${escapeHtml(venue.config?.brandConfig?.tagline || (waitlistOnlyVenue ? 'Waitlist · host call · live updates' : manualDispatchEnabled ? 'Waitlist · host nudge · live updates' : 'Queue · Pre-order · Pay'))}</div>
+        <div class="brand-actions">
+          <a class="landing-about-link" href="/about" target="_blank" rel="noopener noreferrer">About</a>
+        </div>
       </div>
       <div class="role-cards">
         <div class="role-card" style="cursor:default">

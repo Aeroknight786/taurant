@@ -113,6 +113,40 @@ button, input, select {
   color: var(--cream-dim);
 }
 
+.brand-actions {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+}
+
+.landing-about-link,
+.header-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 38px;
+  padding: 0 14px;
+  border-radius: 999px;
+  border: 1px solid var(--border2);
+  background: rgba(36, 32, 24, 0.82);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cream);
+  transition: border-color 0.2s ease, color 0.2s ease, transform 0.2s ease, background 0.2s ease;
+}
+
+.landing-about-link:hover,
+.landing-about-link:focus-visible,
+.header-link:hover,
+.header-link:focus-visible {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(44, 40, 32, 0.92);
+  transform: translateY(-1px);
+}
+
 .role-cards {
   display: flex;
   gap: 14px;
@@ -200,20 +234,6 @@ button, input, select {
   display: flex;
   align-items: center;
   gap: 12px;
-}
-
-.header-link {
-  font-size: 11px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--cream-dim);
-  transition: color 0.2s ease, transform 0.2s ease;
-}
-
-.header-link:hover,
-.header-link:focus-visible {
-  color: var(--amber);
-  transform: translateY(-1px);
 }
 
 .header-logo {
