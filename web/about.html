@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Flock is a digital queue management product for restaurants, built to help venues manage guest waitlists and transactional WhatsApp updates.">
+  <title>Flock | About</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #fff7f5;
+      --text: #1f1f1f;
+      --muted: #5b5b5b;
+      --border: #efd6d1;
+      --accent: #E8452C;
+      --accent-soft: #fff1ed;
+      --shadow: 0 20px 48px rgba(0, 0, 0, 0.08);
+      --radius: 20px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.6;
+    }
+
+    body {
+      min-height: 100vh;
+    }
+
+    main {
+      width: min(920px, calc(100vw - 32px));
+      margin: 0 auto;
+      padding: 40px 0 64px;
+    }
+
+    .hero {
+      background: linear-gradient(180deg, #ffffff 0%, var(--surface) 100%);
+      border: 1px solid var(--border);
+      border-radius: 28px;
+      padding: 32px;
+      box-shadow: var(--shadow);
+    }
+
+    .eyebrow {
+      display: inline-block;
+      margin-bottom: 14px;
+      padding: 6px 12px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+
+    h1, h2 {
+      margin: 0;
+      line-height: 1.2;
+    }
+
+    h1 {
+      font-size: clamp(36px, 8vw, 56px);
+      letter-spacing: -0.04em;
+    }
+
+    .tagline {
+      margin-top: 8px;
+      font-size: clamp(18px, 3vw, 24px);
+      font-weight: 600;
+      color: var(--accent);
+    }
+
+    .hero p {
+      margin: 18px 0 0;
+      max-width: 64ch;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .section-grid {
+      display: grid;
+      gap: 18px;
+      margin-top: 24px;
+    }
+
+    section.card {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 24px;
+      background: #fff;
+    }
+
+    .section-title {
+      margin-bottom: 14px;
+      font-size: 22px;
+      color: var(--accent);
+    }
+
+    ol {
+      margin: 0;
+      padding-left: 20px;
+    }
+
+    li + li {
+      margin-top: 12px;
+    }
+
+    .message-list {
+      display: grid;
+      gap: 14px;
+      margin-top: 10px;
+    }
+
+    .message-item {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 16px;
+      background: #fffdfa;
+    }
+
+    .message-item strong {
+      display: block;
+      margin-bottom: 6px;
+      color: var(--text);
+    }
+
+    .meta-note {
+      color: var(--muted);
+    }
+
+    .contact {
+      font-weight: 600;
+    }
+
+    a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    @media (max-width: 640px) {
+      main {
+        width: min(100vw - 20px, 920px);
+        padding: 20px 0 40px;
+      }
+
+      .hero,
+      section.card {
+        padding: 20px;
+        border-radius: 18px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="hero" aria-labelledby="about-title">
+      <div class="eyebrow">Product Overview</div>
+      <h1 id="about-title">Flock</h1>
+      <div class="tagline">Digital queue management for restaurants</div>
+      <p>
+        Flock helps high-volume F&amp;B venues in India manage guest waitlists digitally.
+        Guests join a queue by scanning a QR code at the venue, track their wait time in real time,
+        and receive a WhatsApp notification when their table is ready.
+      </p>
+    </section>
+
+    <div class="section-grid">
+      <section class="card" aria-labelledby="how-it-works-title">
+        <h2 class="section-title" id="how-it-works-title">How it works</h2>
+        <ol>
+          <li>Guest scans a QR code at the venue and enters their name, phone number, and party size.</li>
+          <li>Guest sees their queue position and estimated wait time on a live status page.</li>
+          <li>When their table is ready, staff notifies them and the guest receives a WhatsApp message instantly.</li>
+        </ol>
+      </section>
+
+      <section class="card" aria-labelledby="whatsapp-title">
+        <h2 class="section-title" id="whatsapp-title">WhatsApp use case</h2>
+        <p class="meta-note">
+          Flock sends two transactional, guest-initiated WhatsApp messages once a guest has entered the waitlist and provided explicit consent.
+        </p>
+        <div class="message-list">
+          <div class="message-item">
+            <strong>Join confirmation</strong>
+            Sent when a guest joins the waitlist. Includes their queue position and a link to their live status page.
+          </div>
+          <div class="message-item">
+            <strong>Table-ready notification</strong>
+            Sent when staff marks their table as ready. Prompts the guest to return to the host desk within 3 minutes.
+          </div>
+        </div>
+      </section>
+
+      <section class="card" aria-labelledby="pilot-title">
+        <h2 class="section-title" id="pilot-title">Current pilot venue</h2>
+        <p>
+          Flock is currently being piloted at <strong>The Craftery by Subko</strong>, Koramangala, Bengaluru,
+          a high-volume specialty coffee and dining venue.
+        </p>
+      </section>
+
+      <section class="card" aria-labelledby="contact-title">
+        <h2 class="section-title" id="contact-title">Contact</h2>
+        <p class="contact">
+          <a href="mailto:rushali.c1710@gmail.com">rushali.c1710@gmail.com</a>
+        </p>
+      </section>
+    </div>
+  </main>
+</body>
+</html>

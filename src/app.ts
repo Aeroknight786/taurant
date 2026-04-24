@@ -92,6 +92,10 @@ const webDir = path.join(process.cwd(), 'web');
 if (fs.existsSync(webDir)) {
   app.use(express.static(webDir));
 
+  app.get('/about', (_req, res) => {
+    res.sendFile(path.join(webDir, 'about.html'));
+  });
+
   app.get('*', (req, res, next) => {
     if (req.path.startsWith('/api/')) {
       next();

@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import { createPrismaMock } from '../helpers/mock-prisma';
 import { invokeApp } from '../helpers/invoke-app';
 
@@ -79,5 +81,20 @@ describe('index routes', () => {
     const response = await invokeApp(app, { method: 'GET', url: '/api/v1/does-not-exist' });
     expect(response.status).toBe(404);
     expect(response.body.code).toBe('ROUTE_NOT_FOUND');
+  });
+
+  it('serves a public about page for Meta business verification', async () => {
+    const app = (await import('../../src/app')).default;
+    const aboutHtml = fs.readFileSync(path.join(process.cwd(), 'web', 'about.html'), 'utf8');
+
+    const response = await invokeApp(app, { method: 'GET', url: '/about' });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toMatch(/text\/html/);
+    expect(aboutHtml).toContain('Flock');
+    expect(aboutHtml).toContain('Digital queue management for restaurants');
+    expect(aboutHtml).toContain('The Craftery by Subko');
+    expect(aboutHtml).toContain('Join confirmation');
+    expect(aboutHtml).toContain('Table-ready notification');
   });
 });
