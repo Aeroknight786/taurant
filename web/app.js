@@ -4765,6 +4765,38 @@ function getWaitContentSlotLabel(slot) {
   }
 }
 
+const CRAFTERY_GUEST_LEAFLET_URL = '/assets/craftery/coffee-leaflet.pdf';
+const CRAFTERY_GOOGLE_MAPS_URL = 'https://www.google.com/search?newwindow=1&sca_esv=b0ad820cda66d8b0&rlz=1C1GCEA_enIN1148IN1148&sxsrf=ANbL-n7T055xMtF1iMLkN4LGwQhylczmrg:1775742522240&kgmid=/g/11xdjtv8d5&q=The+Craftery+By+Subko,+BLR&shndl=30&source=sh/x/loc/uni/m1/1&kgs=0cca30c8ceb8b1ff&utm_source=sh/x/loc/uni/m1/1';
+
+function renderCrafteryGuestResources(venue, entry) {
+  if (venue?.slug !== 'the-craftery-koramangala' || !['WAITING', 'NOTIFIED'].includes(entry?.status)) {
+    return '';
+  }
+
+  return `
+    <section class="guest-resource-section" data-craftery-resources>
+      <div class="section-head guest-resource-head">
+        <div class="section-title">Explore Craftery</div>
+        <div class="section-sub">Open the latest coffee leaflet or venue listing while you wait.</div>
+      </div>
+      <div class="guest-resource-grid">
+        <article class="guest-resource-card">
+          <div class="guest-resource-label">Coffee</div>
+          <div class="guest-resource-title">Coffee leaflet</div>
+          <div class="guest-resource-copy">Browse the current Craftery coffee leaflet in a new tab.</div>
+          <a class="btn btn-secondary btn-full" href="${CRAFTERY_GUEST_LEAFLET_URL}" target="_blank" rel="noopener noreferrer">Coffee leaflet</a>
+        </article>
+        <article class="guest-resource-card">
+          <div class="guest-resource-label">Venue</div>
+          <div class="guest-resource-title">Find Craftery</div>
+          <div class="guest-resource-copy">Open the Google listing for directions and venue details.</div>
+          <a class="btn btn-secondary btn-full" href="${CRAFTERY_GOOGLE_MAPS_URL}" target="_blank" rel="noopener noreferrer">Find Craftery</a>
+        </article>
+      </div>
+    </section>
+  `;
+}
+
 function renderSubkoWaitContentBlock(venue, entry) {
   if (isWaitlistOnlyVenue(venue) || !isQueueOnlyGuestExperience(venue) || !isSubkoWaitContentVenue(venue)) {
     return '';
@@ -4894,20 +4926,23 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
   if (entry.status === 'WAITING') {
     if (queueOnlyGuestExperience) {
       return `
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-title">Waiting list status</div>
-            <div class="card-sub">Your phone number is your queue identity. The host desk will call you once it is your turn.</div>
-            <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or your turn may move on to the next party.</div></div>
+        <div class="grid">
+          <div class="grid grid-2">
+            <div class="card">
+              <div class="card-title">Waiting list status</div>
+              <div class="card-sub">Your phone number is your queue identity. The host desk will call you once it is your turn.</div>
+              <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or your turn may move on to the next party.</div></div>
+            </div>
+            <div class="card">
+              <div class="card-title">Venue</div>
+              <div class="card-sub">${escapeHtml(venue.name)} · ${escapeHtml(venue.city)}</div>
+              <div class="muted">Party size: ${entry.partySize} pax</div>
+              <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
+              ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
+              <div class="muted">Response window: ${venue.tableReadyWindowMin} minutes</div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-title">Venue</div>
-            <div class="card-sub">${escapeHtml(venue.name)} · ${escapeHtml(venue.city)}</div>
-            <div class="muted">Party size: ${entry.partySize} pax</div>
-            <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
-            ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-            <div class="muted">Response window: ${venue.tableReadyWindowMin} minutes</div>
-          </div>
+          ${renderCrafteryGuestResources(venue, entry)}
         </div>
       `;
     }
@@ -4942,21 +4977,24 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
       const readyWindowLabel = getQueueEntryReadyWindowLabel(entry);
       const readyWindowState = getQueueEntryReadyWindowState(entry);
       return `
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-title">Called to host desk</div>
-            <div class="card-sub">A host is ready to verify the OTP and complete your visit.</div>
-            <div class="alert alert-green"><div>Return to the host desk within ${getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin)} minutes and show the OTP to staff.</div></div>
-            ${readyWindowLabel ? `<div class="queue-countdown ${readyWindowState.urgent ? 'urgent' : ''}">${escapeHtml(readyWindowLabel)}</div>` : ''}
+        <div class="grid">
+          <div class="grid grid-2">
+            <div class="card">
+              <div class="card-title">Called to host desk</div>
+              <div class="card-sub">A host is ready to verify the OTP and complete your visit.</div>
+              <div class="alert alert-green"><div>Return to the host desk within ${getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin)} minutes and show the OTP to staff.</div></div>
+              ${readyWindowLabel ? `<div class="queue-countdown ${readyWindowState.urgent ? 'urgent' : ''}">${escapeHtml(readyWindowLabel)}</div>` : ''}
+            </div>
+            <div class="card">
+              <div class="card-title">Guest snapshot</div>
+              <div class="muted">${entry.partySize} pax</div>
+              <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
+              <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
+              ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
+              <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
+            </div>
           </div>
-          <div class="card">
-            <div class="card-title">Guest snapshot</div>
-            <div class="muted">${entry.partySize} pax</div>
-            <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
-            <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
-            ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-            <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
-          </div>
+          ${renderCrafteryGuestResources(venue, entry)}
         </div>
       `;
     }

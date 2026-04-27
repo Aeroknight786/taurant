@@ -1400,6 +1400,52 @@ textarea.form-input {
   gap: 12px;
 }
 
+.guest-resource-section {
+  display: grid;
+  gap: 14px;
+}
+
+.guest-resource-head {
+  margin-bottom: 0;
+}
+
+.guest-resource-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.guest-resource-card {
+  background: var(--surface2);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
+  padding: 16px;
+  box-shadow: var(--shadow);
+  min-width: 0;
+}
+
+.guest-resource-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  margin-bottom: 8px;
+}
+
+.guest-resource-title {
+  font-family: "Instrument Serif", serif;
+  font-size: 22px;
+  margin-bottom: 6px;
+}
+
+.guest-resource-copy {
+  font-size: 13px;
+  color: var(--cream-dim);
+  line-height: 1.55;
+  margin-bottom: 14px;
+}
+
 .order-total-label {
   font-size: 12px;
   font-weight: 600;
@@ -1771,6 +1817,11 @@ textarea.form-input {
   .grid-3,
   .form-row,
   .stats-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .guest-resource-grid,
+  .wait-content-grid {
     grid-template-columns: 1fr;
   }
 

@@ -97,4 +97,19 @@ describe('index routes', () => {
     expect(aboutHtml).toContain('Join confirmation');
     expect(aboutHtml).toContain('Table-ready notification');
   });
+
+  it('serves the Craftery coffee leaflet as a public static asset', async () => {
+    const app = (await import('../../src/app')).default;
+    const leafletPath = path.join(process.cwd(), 'web', 'assets', 'craftery', 'coffee-leaflet.pdf');
+
+    expect(fs.existsSync(leafletPath)).toBe(true);
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      url: '/assets/craftery/coffee-leaflet.pdf',
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toMatch(/application\/pdf/);
+  });
 });
