@@ -454,22 +454,9 @@ test.describe('Staff dashboard', () => {
     }
   });
 
-  test('manager tab form is not wiped by polling', async ({ page }) => {
+  test('staff dashboard no longer exposes a manager tab', async ({ page }) => {
     await loginStaff(page);
-    const managerTab = page.locator('[data-tab="manager"]');
-    if (await managerTab.isVisible()) {
-      await managerTab.click();
-      await page.waitForTimeout(1500);
-
-      const depositInput = page.locator('#manager-deposit');
-      if (await depositInput.isVisible()) {
-        await depositInput.fill('50');
-        await page.waitForTimeout(5000);
-        const val = await depositInput.inputValue();
-        expect(val, 'Manager form value should survive 5s without polling wipe').toBe('50');
-      }
-      await expect(page).toHaveScreenshot('staff-manager-tab.png', { fullPage: true });
-    }
+    await expect(page.locator('[data-tab="manager"]')).toHaveCount(0);
   });
 });
 

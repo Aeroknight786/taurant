@@ -203,6 +203,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         guestWaitFormula: 'SUBKO_FIXED_V1',
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
+        postWindowHandlingMode: 'MANUAL_REMOVE',
       },
     },
     staff: [

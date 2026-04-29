@@ -206,6 +206,9 @@ Proposed `opsConfig` fields:
   - `SUBKO_FIXED_V1`
 - `contentMode`
   - `SUBKO_WAIT_CONTENT`
+- `postWindowHandlingMode`
+  - `AUTO_NO_SHOW`
+  - `MANUAL_REMOVE`
 
 For Craftery / Subko, the intended values are:
 
@@ -218,6 +221,11 @@ For Craftery / Subko, the intended values are:
 - `expiryNotificationEnabled: optional, to confirm`
 - `guestWaitFormula: SUBKO_FIXED_V1`
 - `contentMode: SUBKO_WAIT_CONTENT`
+- `postWindowHandlingMode: MANUAL_REMOVE`
+
+Operational note:
+- `AUTO_NO_SHOW` remains the shared automatic timeout mode.
+- Craftery now uses `MANUAL_REMOVE`, where a called guest who misses the return window stays visible to staff as a manual cleanup decision until staff removes them as `No-show`.
 
 ## Roadmap
 

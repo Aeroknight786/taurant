@@ -13,6 +13,7 @@ router.post('/:entryId/access-link/redeem', guestMutationLimiter, requireVenueFe
 router.delete('/:entryId/leave',     guestMutationLimiter, requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('guestQueue'), Queue.leaveEntry);
 router.post('/:entryId/notify',      requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.notifyEntry);
 router.post('/:entryId/nudge',       requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.nudgeEntry);
+router.post('/:entryId/no-show',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.markNoShowEntry);
 router.post('/:entryId/reorder',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.reorderEntry);
 router.post('/:entryId/prioritize',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.prioritizeEntry);
 router.post('/seat',                 requireAuth, requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.seatGuest);

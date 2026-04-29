@@ -14,6 +14,7 @@ const {
     leaveQueueEntry: vi.fn(),
     notifyQueueEntry: vi.fn(),
     nudgeQueueEntry: vi.fn(),
+    markQueueEntryNoShow: vi.fn(),
     reorderQueueEntry: vi.fn(),
     prioritizeQueueEntry: vi.fn(),
     seatGuest: vi.fn(),
@@ -140,6 +141,11 @@ describe('queue and party-session routes', () => {
       status: 'NOTIFIED',
       nudgedAt: new Date('2026-03-31T10:05:00.000Z'),
     });
+    queueServiceMock.markQueueEntryNoShow.mockResolvedValue({
+      entryId: 'entry_1',
+      status: 'NO_SHOW',
+      noShowAt: new Date('2026-03-31T10:08:00.000Z'),
+    });
     queueServiceMock.reorderQueueEntry.mockResolvedValue({
       entryId: 'entry_1',
       status: 'WAITING',
@@ -215,6 +221,13 @@ describe('queue and party-session routes', () => {
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
     expect(queueServiceMock.nudgeQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1');
+
+    expect((await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/entry_1/no-show',
+      headers: { authorization: 'Bearer staff-token-priority' },
+    })).status).toBe(200);
+    expect(queueServiceMock.markQueueEntryNoShow).toHaveBeenCalledWith('entry_1', 'venue_1');
 
     expect((await invokeApp(app, {
       method: 'POST',

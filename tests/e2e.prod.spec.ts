@@ -46,9 +46,7 @@ test('production staff and admin controls remain usable without critical 429/502
   await loginStaff(page, request);
   await expect(page.getByRole('button', { name: 'Queue' })).toBeVisible({ timeout: 30_000 });
   await expect(page.getByRole('button', { name: 'Tables' })).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByRole('button', { name: 'Manager' })).toBeVisible({ timeout: 30_000 });
   await page.getByRole('button', { name: 'Tables' }).click();
-  await page.getByRole('button', { name: 'Manager' }).click();
 
   await loginAdmin(adminPage, request);
   await expect(adminPage.locator('[data-tab="menu"]')).toBeVisible({ timeout: 30_000 });

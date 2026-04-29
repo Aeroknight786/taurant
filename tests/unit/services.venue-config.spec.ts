@@ -53,6 +53,8 @@ describe('venue config service', () => {
         expiryNotificationEnabled: false,
         guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
         contentMode: 'DEFAULT',
+        arrivalCompletionMode: 'TABLE_ASSIGN',
+        postWindowHandlingMode: 'AUTO_NO_SHOW',
       },
     });
   });
@@ -129,6 +131,7 @@ describe('venue config service', () => {
         guestWaitFormula: 'SUBKO_FIXED_V1',
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
+        postWindowHandlingMode: 'MANUAL_REMOVE',
       },
     });
 
@@ -168,6 +171,7 @@ describe('venue config service', () => {
         guestWaitFormula: 'SUBKO_FIXED_V1',
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
+        postWindowHandlingMode: 'MANUAL_REMOVE',
       },
     });
   });
@@ -200,6 +204,7 @@ describe('venue config service', () => {
     const {
       isManualQueueDispatchConfig,
       shouldSendJoinQueueNotification,
+      shouldHandlePostWindowManually,
       resolveVenueConfig,
     } = await import('../../src/services/venueConfig.service');
 
@@ -214,10 +219,12 @@ describe('venue config service', () => {
         queueDispatchMode: 'MANUAL_NOTIFY',
         joinConfirmationMode: 'WEB_ONLY',
         readyNotificationChannels: ['WHATSAPP', 'IVR'],
+        postWindowHandlingMode: 'MANUAL_REMOVE',
       },
     });
 
     expect(isManualQueueDispatchConfig(resolved)).toBe(true);
     expect(shouldSendJoinQueueNotification(resolved)).toBe(false);
+    expect(shouldHandlePostWindowManually(resolved)).toBe(true);
   });
 });

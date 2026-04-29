@@ -1517,6 +1517,12 @@ textarea.form-input {
   background: rgba(74, 130, 192, 0.05);
 }
 
+.q-row.q-row-late {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  opacity: 0.78;
+}
+
 .q-row-num {
   font-family: "Instrument Serif", serif;
   font-size: 40px;
@@ -1618,6 +1624,12 @@ textarea.form-input {
   color: #e38b7b;
 }
 
+.q-row-countdown.q-row-countdown-late {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.05);
+  color: var(--cream-dim);
+}
+
 .queue-countdown {
   display: inline-flex;
   align-items: center;
@@ -1668,6 +1680,30 @@ textarea.form-input {
   background: var(--green-dim);
   color: var(--green);
   border: 1px solid var(--green-border);
+}
+
+.late-queue-group {
+  margin-top: 18px;
+}
+
+.late-queue-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.late-queue-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cream);
+}
+
+.late-queue-sub {
+  font-size: 12px;
+  color: var(--cream-dim);
+  margin-top: 3px;
 }
 
 .badge-seated {

@@ -6,7 +6,12 @@ import { NotificationStatus, NotificationType, QueueEntryStatus, TableStatus } f
 import { env } from '../config/env';
 import { logger } from '../config/logger';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
-import { isManualQueueDispatchConfig, resolveVenueConfig, shouldUseVenueTables } from './venueConfig.service';
+import {
+  isManualQueueDispatchConfig,
+  resolveVenueConfig,
+  shouldHandlePostWindowManually,
+  shouldUseVenueTables,
+} from './venueConfig.service';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -220,9 +225,6 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
   });
 
   for (const entry of expiredEntries) {
-    logger.warn(`Guest ${entry.id} did not arrive within window — marking as NO_SHOW`);
-
-    const releasedTableId = entry.table && entry.table.status === TableStatus.RESERVED ? entry.table.id : null;
     const venue = await prisma.venue.findUnique({
       where: { id: entry.venueId },
       select: {
@@ -235,12 +237,18 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
         opsConfig: true,
       },
     });
+    const venueConfig = venue ? resolveVenueConfig(venue) : null;
+    const manualPostWindowHandling = venueConfig ? shouldHandlePostWindowManually(venueConfig) : false;
+
+    logger.warn(`Guest ${entry.id} did not arrive within window — ${manualPostWindowHandling ? 'keeping entry under manual host control' : 'marking as NO_SHOW'}`);
+
+    const releasedTableId = entry.table && entry.table.status === TableStatus.RESERVED ? entry.table.id : null;
 
     await prisma.$transaction(async (tx) => {
       await tx.queueEntry.update({
         where: { id: entry.id },
         data: {
-          status: QueueEntryStatus.NO_SHOW,
+          ...(manualPostWindowHandling ? {} : { status: QueueEntryStatus.NO_SHOW }),
           tableId: null,
           tableReadyExpiredAt: new Date(),
           tableReadyDeadlineAt: null,
@@ -263,13 +271,20 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
       }
     });
 
-    if (venue && resolveVenueConfig(venue).opsConfig.expiryNotificationEnabled) {
+    if (!manualPostWindowHandling && venue && venueConfig?.opsConfig.expiryNotificationEnabled) {
       await Notify.queueNoShow(entry.venueId, entry.id, entry.guestPhone, entry.guestName, venue.name, {
         enableWhatsApp: venue.slug !== 'the-craftery-koramangala',
       });
     }
 
-    await recompactQueuePositions(entry.venueId);
+    if (!manualPostWindowHandling) {
+      await recompactQueuePositions(entry.venueId);
+    } else {
+      await redis.publish(PubSubChannels.queueUpdate(entry.venueId), JSON.stringify({
+        type: 'ENTRY_RESPONSE_WINDOW_LAPSED',
+        entryId: entry.id,
+      }));
+    }
 
     if (releasedTableId) {
       await tryAdvanceQueue(entry.venueId, releasedTableId);

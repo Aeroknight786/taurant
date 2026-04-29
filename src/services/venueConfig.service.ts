@@ -35,6 +35,7 @@ export const VenueReadyNotificationChannelSchema = z.enum(['WHATSAPP', 'SMS', 'I
 export const VenueGuestWaitFormulaSchema = z.enum(['LEGACY_TURN_HEURISTIC', 'SUBKO_FIXED_V1']);
 export const VenueContentModeSchema = z.enum(['DEFAULT', 'SUBKO_WAIT_CONTENT', 'DISABLED']);
 export const VenueArrivalCompletionModeSchema = z.enum(['TABLE_ASSIGN', 'QUEUE_COMPLETE']);
+export const VenuePostWindowHandlingModeSchema = z.enum(['AUTO_NO_SHOW', 'MANUAL_REMOVE']);
 
 export const VenueBrandConfigSchema = z.object({
   displayName: optionalTrimmedString(120),
@@ -79,6 +80,7 @@ export const VenueOpsConfigSchema = z.object({
   guestWaitFormula: VenueGuestWaitFormulaSchema.optional(),
   contentMode: VenueContentModeSchema.optional(),
   arrivalCompletionMode: VenueArrivalCompletionModeSchema.optional(),
+  postWindowHandlingMode: VenuePostWindowHandlingModeSchema.optional(),
 }).strict();
 
 export type VenueBrandConfig = z.infer<typeof VenueBrandConfigSchema>;
@@ -115,6 +117,7 @@ export type ResolvedVenueOpsConfig = {
   guestWaitFormula: z.infer<typeof VenueGuestWaitFormulaSchema>;
   contentMode: z.infer<typeof VenueContentModeSchema>;
   arrivalCompletionMode: z.infer<typeof VenueArrivalCompletionModeSchema>;
+  postWindowHandlingMode: z.infer<typeof VenuePostWindowHandlingModeSchema>;
 };
 
 export type ResolvedVenueConfig = {
@@ -181,6 +184,7 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
+  postWindowHandlingMode: 'AUTO_NO_SHOW',
 };
 
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
@@ -194,6 +198,7 @@ const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   joinConfirmationMode: 'WHATSAPP',
   arrivalCompletionMode: 'QUEUE_COMPLETE',
   contentMode: 'DISABLED',
+  postWindowHandlingMode: 'MANUAL_REMOVE',
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -355,6 +360,7 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       guestWaitFormula: config.opsConfig.guestWaitFormula,
       contentMode: config.opsConfig.contentMode,
       arrivalCompletionMode: config.opsConfig.arrivalCompletionMode,
+      postWindowHandlingMode: config.opsConfig.postWindowHandlingMode,
     },
   };
 }
@@ -384,4 +390,9 @@ export function isQueueCompleteVenue(config: Pick<ResolvedVenueConfig, 'opsConfi
 export function shouldUseVenueContent(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
   const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
   return opsConfig.contentMode !== 'DISABLED';
+}
+
+export function shouldHandlePostWindowManually(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.postWindowHandlingMode === 'MANUAL_REMOVE';
 }

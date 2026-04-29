@@ -12,11 +12,13 @@ import { initiateRefund } from '../integrations/razorpay';
 import { ensurePartySessionForQueueEntry } from './partySession.service';
 import { logFlowEvent, OrderFlowEventType } from './orderFlowEvent.service';
 import { generateDisplayRef } from '../utils/txnRef';
+import { tryAdvanceQueue } from './table.service';
 import {
   ResolvedVenueConfig,
   isManualQueueDispatchConfig,
   isQueueCompleteVenue,
   resolveVenueConfig,
+  shouldHandlePostWindowManually,
   shouldSendJoinQueueNotification,
   shouldUseVenueTables,
 } from './venueConfig.service';
@@ -33,6 +35,25 @@ const DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION = 'craftery_waitlist_whatsapp_v1';
 
 function requiresCrafteryWhatsAppConsent(venueSlug?: string | null): boolean {
   return venueSlug === CRAFTERY_VENUE_SLUG;
+}
+
+type QueueLateStateShape = {
+  status: QueueEntryStatus;
+  tableReadyDeadlineAt?: Date | null;
+  tableReadyExpiredAt?: Date | null;
+};
+
+function isLateNoResponseEntry(entry: QueueLateStateShape): boolean {
+  return entry.status === QueueEntryStatus.NOTIFIED
+    && Boolean(entry.tableReadyExpiredAt)
+    && !entry.tableReadyDeadlineAt;
+}
+
+function serialiseQueueEntry<T extends QueueLateStateShape>(entry: T): T & { isLateNoResponse: boolean } {
+  return {
+    ...entry,
+    isLateNoResponse: isLateNoResponseEntry(entry),
+  };
 }
 
 // ── Join queue ────────────────────────────────────────────────────
@@ -233,7 +254,7 @@ export async function getVenueQueue(venueId: string) {
       },
     },
   });
-  return entries;
+  return entries.map((entry) => serialiseQueueEntry(entry));
 }
 
 // ── Get recent completed / cancelled entries (history) ────────────
@@ -284,7 +305,7 @@ export async function getQueueEntry(entryId: string) {
   if (!entry) throw new AppError('Queue entry not found', 404);
 
   const { otp: _otp, ...safeEntry } = entry;
-  return safeEntry;
+  return serialiseQueueEntry(safeEntry);
 }
 
 export async function reissueGuestSession(entryId: string, otp: string) {
@@ -492,6 +513,7 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
         estimatedWaitMin: true,
         notifiedAt: true,
         tableReadyDeadlineAt: true,
+        tableReadyExpiredAt: true,
         whatsappConsentGiven: true,
       },
     }),
@@ -528,19 +550,32 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
   }
 
   const nudgedAt = new Date();
-  await Notify.queueReadyReminder(
-    venueId,
-    entry.id,
-    entry.guestPhone,
-    entry.guestName,
-    entry.position,
-    entry.estimatedWaitMin ?? 0,
-    venue.name,
-    {
-      venueSlug: venue.slug,
-      enableWhatsApp: !requiresCrafteryWhatsAppConsent(venue.slug),
-    },
-  );
+  const activeWindowMin = entry.notifiedAt && entry.tableReadyDeadlineAt
+    ? Math.max(1, Math.round((entry.tableReadyDeadlineAt.getTime() - entry.notifiedAt.getTime()) / 60000))
+    : (entry.notifiedAt && entry.tableReadyExpiredAt
+      ? Math.max(1, Math.round((entry.tableReadyExpiredAt.getTime() - entry.notifiedAt.getTime()) / 60000))
+      : venue.tableReadyWindowMin);
+  const shouldSendReadyWhatsApp = !requiresCrafteryWhatsAppConsent(venue.slug) || entry.whatsappConsentGiven;
+
+  if (shouldSendReadyWhatsApp) {
+    await Notify.tableReady(
+      venueId,
+      entry.id,
+      entry.guestPhone,
+      entry.guestName,
+      'Host desk',
+      venue.name,
+      activeWindowMin,
+      {
+        venueSlug: venue.slug,
+      },
+    );
+  } else {
+    logger.info('Craftery re-nudge WhatsApp skipped because consent was not granted', {
+      venueId,
+      queueEntryId: entry.id,
+    });
+  }
 
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NUDGED', entryId: entry.id }))
@@ -565,6 +600,108 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
     entryId: entry.id,
     status: QueueEntryStatus.NOTIFIED,
     nudgedAt,
+  };
+}
+
+export async function markQueueEntryNoShow(entryId: string, venueId: string): Promise<{
+  entryId: string;
+  status: QueueEntryStatus;
+  noShowAt: Date;
+}> {
+  const [entry, venue] = await Promise.all([
+    prisma.queueEntry.findFirst({
+      where: { id: entryId, venueId },
+      include: {
+        table: true,
+      },
+    }),
+    prisma.venue.findUnique({
+      where: { id: venueId },
+      select: {
+        id: true,
+        name: true,
+        slug: true,
+        brandConfig: true,
+        featureConfig: true,
+        uiConfig: true,
+        opsConfig: true,
+      },
+    }),
+  ]);
+
+  if (!entry) {
+    throw new AppError('Queue entry not found', 404);
+  }
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  const venueConfig = resolveVenueConfig(venue);
+  if (!shouldHandlePostWindowManually(venueConfig)) {
+    throw new AppError('Manual no-show removal is not enabled for this venue', 400, 'MANUAL_NO_SHOW_DISABLED');
+  }
+
+  if (entry.status !== QueueEntryStatus.NOTIFIED) {
+    throw new AppError('Only called guests can be removed as no-show', 400, 'ENTRY_NOT_NOTIFIED');
+  }
+
+  const deadlinePassed = entry.tableReadyDeadlineAt
+    ? entry.tableReadyDeadlineAt.getTime() <= Date.now()
+    : false;
+
+  if (!entry.tableReadyExpiredAt && !deadlinePassed) {
+    throw new AppError('This guest is still within the response window', 400, 'ENTRY_NOT_LATE');
+  }
+
+  const releasedTableId = entry.table && entry.table.status === TableStatus.RESERVED ? entry.table.id : null;
+  const noShowAt = new Date();
+
+  await prisma.$transaction(async (tx) => {
+    await tx.queueEntry.update({
+      where: { id: entry.id },
+      data: {
+        status: QueueEntryStatus.NO_SHOW,
+        tableId: null,
+        tableReadyExpiredAt: entry.tableReadyExpiredAt ?? noShowAt,
+        tableReadyDeadlineAt: null,
+      },
+    });
+
+    if (releasedTableId && entry.table) {
+      await tx.table.update({
+        where: { id: releasedTableId },
+        data: { status: TableStatus.FREE },
+      });
+      await tx.tableEvent.create({
+        data: {
+          tableId: releasedTableId,
+          fromStatus: TableStatus.RESERVED,
+          toStatus: TableStatus.FREE,
+          triggeredBy: 'STAFF_NO_SHOW',
+        },
+      });
+    }
+  });
+
+  await recompactPositions(venueId);
+
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
+      type: 'ENTRY_NO_SHOW',
+      entryId: entry.id,
+      noShowAt: noShowAt.toISOString(),
+    }))
+  );
+
+  if (releasedTableId) {
+    await tryAdvanceQueue(venueId, releasedTableId);
+  }
+
+  return {
+    entryId: entry.id,
+    status: QueueEntryStatus.NO_SHOW,
+    noShowAt,
   };
 }
 

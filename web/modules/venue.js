@@ -44,6 +44,7 @@ const DEFAULT_VENUE_OPS_CONFIG = {
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
+  postWindowHandlingMode: 'AUTO_NO_SHOW',
 };
 
 export function resolveVenueOpsConfig(venue) {

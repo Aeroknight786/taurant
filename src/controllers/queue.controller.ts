@@ -91,6 +91,13 @@ export async function nudgeEntry(req: AuthenticatedRequest, res: Response, next:
   } catch (e) { next(e); }
 }
 
+export async function markNoShowEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.markQueueEntryNoShow(req.params.entryId, req.venue!.id);
+    ok(res, result);
+  } catch (e) { next(e); }
+}
+
 export async function reorderEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { direction } = ReorderSchema.parse(req.body);
