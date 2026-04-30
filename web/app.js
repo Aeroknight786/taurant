@@ -3224,6 +3224,7 @@ function renderQueueTab(waiting, tables, venue) {
   const renderWaitlistRowActions = (entry) => {
     if (entry.status === 'WAITING') {
       return `
+        ${renderCallGuestButton(entry)}
         ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
@@ -3234,6 +3235,7 @@ function renderQueueTab(waiting, tables, venue) {
     if (entry.status === 'NOTIFIED') {
       if (isLateNoResponseEntry(entry)) {
         return `
+          ${renderCallGuestButton(entry)}
           ${waitlistOnlyVenue ? `
             <button
               class="btn btn-primary btn-sm"
@@ -3251,6 +3253,7 @@ function renderQueueTab(waiting, tables, venue) {
       }
 
       return `
+        ${renderCallGuestButton(entry)}
         ${showNotifyAction ? `<button class="btn btn-secondary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
         ${waitlistOnlyVenue ? `
           <button
@@ -3389,6 +3392,44 @@ function renderHistoryTab(venue) {
       : entry.status === 'CANCELLED'
         ? '<span class="badge badge-danger">Cancelled</span>'
         : `<span class="badge badge-neutral">${escapeHtml(statusLabel[entry.status] || entry.status)}</span>`;
+
+    if (waitlistOnlyVenue) {
+      return `
+        <div class="q-row q-row-history-minimal" data-staff-live-anchor="${entry.id}">
+          <div class="q-row-info">
+            <div class="q-row-history-top">
+              <div class="q-row-name">
+                ${escapeHtml(entry.guestName)}
+                ${statusBadge}
+              </div>
+              <div class="muted">${formatRelativeStamp(new Date(entry.completedAt || entry.updatedAt).getTime())}</div>
+            </div>
+            <div class="q-row-history-grid">
+              <div class="q-row-history-item">
+                <span class="q-row-history-key">Phone</span>
+                <span class="q-row-history-value">${escapeHtml(entry.guestPhone)}</span>
+              </div>
+              <div class="q-row-history-item">
+                <span class="q-row-history-key">Pax</span>
+                <span class="q-row-history-value">${entry.partySize}</span>
+              </div>
+              ${entry.displayRef ? `
+                <div class="q-row-history-item">
+                  <span class="q-row-history-key">Session</span>
+                  <span class="q-row-history-value mono">${escapeHtml(entry.displayRef)}</span>
+                </div>
+              ` : ''}
+            </div>
+            ${flowLogEnabled ? `
+              <div class="q-row-history-actions">
+                <button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+
     return `
       <div class="q-row" data-staff-live-anchor="${entry.id}">
         <div class="q-row-num">${entry.table?.label ? escapeHtml(entry.table.label) : (waitlistOnlyVenue ? (entry.status === 'NO_SHOW' ? '!' : 'Done') : '-')}</div>
@@ -4656,6 +4697,25 @@ function getQueueEntryPreferenceLabel(entry) {
   return formatQueueSeatingPreference(entry?.seatingPreference || 'FIRST_AVAILABLE');
 }
 
+function getGuestDialHref(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (/^[6-9]\d{9}$/.test(digits)) {
+    return `tel:+91${digits}`;
+  }
+  if (/^91[6-9]\d{9}$/.test(digits)) {
+    return `tel:+${digits}`;
+  }
+  return phone ? `tel:${String(phone).trim()}` : '';
+}
+
+function renderCallGuestButton(entry) {
+  const href = getGuestDialHref(entry?.guestPhone);
+  if (!href) {
+    return '';
+  }
+  return `<a class="btn btn-secondary btn-sm" href="${escapeHtml(href)}">Call</a>`;
+}
+
 function getQueueEntryEtaMin(entry, venue) {
   const storedEta = Math.max(0, Number(entry?.estimatedWaitMin || 0));
   const opsConfig = resolveVenueOpsConfig(venue);
@@ -4937,7 +4997,7 @@ function renderCrafteryGuestResources(venue, entry) {
 function renderGuestVisitMeta(entry, venue) {
   const details = [
     { label: 'Venue', value: resolveVenueDisplayName(venue) },
-    { label: 'Party size', value: `${entry.partySize} pax` },
+    { label: 'Party size', value: `${entry.partySize}` },
     { label: 'Seating', value: getQueueEntryPreferenceLabel(entry) },
   ];
   const notes = getQueueEntryGuestNotes(entry);
@@ -4993,13 +5053,11 @@ function renderGuestStateHero(entry, guestSession, venue) {
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
   const manualDispatchEnabled = isManualDispatchVenue(venue);
   const showQueuePosition = shouldShowGuestQueuePosition(venue);
-  const guestOtpLabel = guestOtp
-    ? `<div class="otp-label">${queueOnlyGuestExperience
-      ? (entry.status === 'NOTIFIED' ? 'Show this OTP to the host desk.' : 'Show this OTP when called.')
-      : (entry.status === 'NOTIFIED' ? 'Your reserved table is waiting' : 'Show this OTP when called')}</div>`
-    : `<div class="otp-label">${queueOnlyGuestExperience
-      ? (entry.status === 'NOTIFIED' ? 'Use the OTP from your WhatsApp message at the host desk.' : 'Use the OTP from your WhatsApp message when the host desk calls you.')
-      : 'Restore this device with the seating OTP if you need the live code here.'}</div>`;
+  const guestOtpLabel = queueOnlyGuestExperience
+    ? (!guestOtp ? `<div class="otp-label">${entry.status === 'NOTIFIED' ? 'Use the OTP from your WhatsApp message at the host desk.' : 'Use the OTP from your WhatsApp message when the host desk calls you.'}</div>` : '')
+    : (guestOtp
+      ? `<div class="otp-label">${entry.status === 'NOTIFIED' ? 'Your reserved table is waiting' : 'Show this OTP when called'}</div>`
+      : '<div class="otp-label">Restore this device with the seating OTP if you need the live code here.</div>');
 
   if (entry.status === 'WAITING') {
     const etaMin = getQueueEntryEtaMin(entry, venue);
@@ -5013,7 +5071,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
           <div class="queue-pos-label">${heroShowsEta ? 'Estimated wait' : (queueOnlyGuestExperience ? 'Waitlist position' : 'Queue position')}</div>
         </div>
         <div class="queue-pos-sub">${queueOnlyGuestExperience
-          ? (manualDispatchEnabled ? `The host desk will call your party when it is your turn. Once called, please return within ${readyWindowMin} minutes.` : 'We will message you once it is your turn.')
+          ? (manualDispatchEnabled ? `We'll let you know when your turn comes. Please report to the host desk within ${readyWindowMin} minutes once called.` : 'We will message you once it is your turn.')
           : 'We will notify you when a matching table clears.'}</div>
         ${renderSessionRef(entry)}
         ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}

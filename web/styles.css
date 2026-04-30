@@ -710,7 +710,7 @@ textarea.form-input {
 }
 
 .queue-hero-waiting .queue-pos-num {
-  font-size: clamp(38px, 8vw, 56px);
+  font-size: clamp(30px, 6.5vw, 46px);
   letter-spacing: -0.03em;
 }
 
@@ -1603,6 +1603,49 @@ textarea.form-input {
   line-height: 1.45;
 }
 
+.q-row-history-minimal {
+  align-items: stretch;
+}
+
+.q-row-history-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.q-row-history-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.q-row-history-item {
+  display: grid;
+  gap: 3px;
+}
+
+.q-row-history-key {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+}
+
+.q-row-history-value {
+  font-size: 13px;
+  color: var(--cream);
+  word-break: break-word;
+}
+
+.q-row-history-actions {
+  display: flex;
+  justify-content: flex-start;
+  margin-top: 12px;
+}
+
 .seat-context-card {
   margin: 14px 0 18px;
   padding: 14px;
@@ -1888,19 +1931,27 @@ textarea.form-input {
 }
 
 .staff-stats-card {
-  width: min(100%, 560px);
+  width: min(100%, 520px);
   margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
+  gap: 0;
+  padding: 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r);
 }
 
 .staff-stat-cell {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r-sm);
-  padding: 14px;
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--border);
+  padding: 14px 12px;
   text-align: center;
+}
+
+.staff-stat-cell:last-child {
+  border-right: none;
 }
 
 .stat-label {
@@ -1938,6 +1989,19 @@ textarea.form-input {
   }
 
   .staff-stats-card {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: min(100%, 440px);
+  }
+
+  .staff-stat-cell {
+    padding: 12px 8px;
+  }
+
+  .stat-value {
+    font-size: 24px;
+  }
+
+  .q-row-history-grid {
     grid-template-columns: 1fr;
   }
 
