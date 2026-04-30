@@ -694,19 +694,19 @@ textarea.form-input {
 
 .queue-hero-waiting {
   padding: 22px 22px 20px;
-  text-align: left;
+  text-align: center;
 }
 
 .queue-hero-waiting::before {
-  left: 24px;
-  transform: none;
+  left: 50%;
+  transform: translateX(-50%);
   width: 180px;
 }
 
 .queue-hero-primary {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: center;
 }
 
 .queue-hero-waiting .queue-pos-num {
@@ -721,6 +721,8 @@ textarea.form-input {
 .queue-hero-waiting .queue-pos-sub {
   max-width: 28rem;
   margin-top: 12px;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .queue-pos-num {
@@ -1459,16 +1461,20 @@ textarea.form-input {
 .guest-resource-section {
   display: grid;
   gap: 14px;
+  justify-items: center;
+  text-align: center;
 }
 
 .guest-resource-head {
   margin-bottom: 0;
+  text-align: center;
 }
 
 .guest-resource-actions {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
+  justify-content: center;
 }
 
 .order-total-label {
@@ -1702,6 +1708,7 @@ textarea.form-input {
   display: grid;
   gap: 8px;
   margin-top: 14px;
+  justify-items: center;
 }
 
 .guest-state-meta-item {
@@ -1709,6 +1716,7 @@ textarea.form-input {
   gap: 8px;
   flex-wrap: wrap;
   align-items: baseline;
+  justify-content: center;
 }
 
 .guest-state-meta-label {
@@ -2103,4 +2111,5 @@ textarea.form-input {
   color: var(--text-muted, #888);
   margin-top: 10px;
   letter-spacing: 0.02em;
+  text-align: center;
 }

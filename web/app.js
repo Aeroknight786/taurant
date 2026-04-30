@@ -4982,6 +4982,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
     const etaMin = getQueueEntryEtaMin(entry, venue);
     const heroShowsEta = queueOnlyGuestExperience || !showQueuePosition;
     const waitValue = heroShowsEta ? `${etaMin || 0} minutes` : `${entry.position}`;
+    const readyWindowMin = getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin);
     return `
       <div class="queue-hero queue-hero-waiting">
         <div class="queue-hero-primary">
@@ -4989,7 +4990,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
           <div class="queue-pos-label">${heroShowsEta ? 'Estimated wait' : (queueOnlyGuestExperience ? 'Waitlist position' : 'Queue position')}</div>
         </div>
         <div class="queue-pos-sub">${queueOnlyGuestExperience
-          ? (manualDispatchEnabled ? 'The host desk will call your party when it is your turn.' : 'We will message you once it is your turn.')
+          ? (manualDispatchEnabled ? `The host desk will call your party when it is your turn. Once called, please return within ${readyWindowMin} minutes.` : 'We will message you once it is your turn.')
           : 'We will notify you when a matching table clears.'}</div>
         ${renderSessionRef(entry)}
         ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}
@@ -5006,6 +5007,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
 
   if (entry.status === 'NOTIFIED') {
     const lateNoResponse = isLateNoResponseEntry(entry);
+    const readyWindowMin = getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin);
     return `
       <div class="queue-hero queue-hero-waiting">
         <div class="queue-hero-primary">
@@ -5014,7 +5016,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
         </div>
         <div class="queue-pos-sub">${lateNoResponse
           ? 'If you are still at the venue, please check with the host desk.'
-          : 'Please head to the host desk and show your OTP.'}</div>
+          : `Please head to the host desk within ${readyWindowMin} minutes and show your OTP.`}</div>
         ${renderSessionRef(entry)}
         ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}
         <div class="row guest-hero-actions">
