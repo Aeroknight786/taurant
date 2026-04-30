@@ -3185,7 +3185,6 @@ function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistR
   `;
 
   const rows = lateEntries.map((entry) => {
-    const readyWindowState = getQueueEntryReadyWindowState(entry);
     return `
       <div class="q-row q-row-late" data-staff-live-anchor="${entry.id}">
         <div class="q-row-num">${entry.position || '-'}</div>
@@ -3198,7 +3197,7 @@ function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistR
           <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
           <div class="q-row-meta">Preference: ${escapeHtml(formatQueueSeatingPreference(entry.seatingPreference))}</div>
           ${getQueueEntryGuestNotes(entry) ? `<div class="q-row-note">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-          <div class="q-row-countdown q-row-countdown-late">${escapeHtml(readyWindowState.label)}</div>
+          <div class="q-row-countdown q-row-countdown-late">Awaiting staff action</div>
         </div>
         <div class="q-row-actions">
           ${renderWaitlistRowActions(entry)}
@@ -3235,7 +3234,18 @@ function renderQueueTab(waiting, tables, venue) {
     if (entry.status === 'NOTIFIED') {
       if (isLateNoResponseEntry(entry)) {
         return `
-          ${showNotifyAction ? `<button class="btn btn-secondary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
+          ${waitlistOnlyVenue ? `
+            <button
+              class="btn btn-primary btn-sm"
+              data-mark-arrived="${entry.id}"
+              data-entry-otp="${escapeHtml(entry.otp)}"
+              data-guest-name="${escapeHtml(entry.guestName)}"
+              data-party-size="${entry.partySize}"
+              data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
+              data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
+              data-entry-state-label="Called, no response"
+            >Mark arrived</button>
+          ` : ''}
           <button class="btn btn-danger btn-sm" data-no-show-entry="${entry.id}">Remove</button>
         `;
       }
