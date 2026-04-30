@@ -32,7 +32,7 @@ export const CreateVenueSchema = z.object({
 export const UpdateVenueConfigSchema = z.object({
   depositPercent: z.number().int().min(50).max(100).optional(),
   isQueueOpen: z.boolean().optional(),
-  tableReadyWindowMin: z.number().int().min(5).max(60).optional(),
+  tableReadyWindowMin: z.number().int().min(3).max(60).optional(),
   maxQueueSize: z.number().int().min(10).max(500).optional(),
   tmsProvider: z.enum(['POSIST', 'PETPOOJA', 'URBANPIPER', 'MANUAL']).optional(),
   tmsApiKey: z.string().optional(),

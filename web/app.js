@@ -3639,7 +3639,7 @@ function renderManagerTab({ auth, venue, queue }) {
             ` : ''}
             <div class="form-group">
               <label class="form-label" for="manager-window">Table ready window (min)</label>
-              <input class="form-input" id="manager-window" type="number" min="5" max="60" value="${venue.tableReadyWindowMin}">
+              <input class="form-input" id="manager-window" type="number" min="3" max="60" value="${venue.tableReadyWindowMin}">
             </div>
             <button class="btn btn-primary btn-full" type="submit">Save settings</button>
           </form>

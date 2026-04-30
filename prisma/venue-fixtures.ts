@@ -163,7 +163,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
       licenceType: GstLicenceType.RESTAURANT_ONLY,
       depositPercent: 30,
       isQueueOpen: true,
-      tableReadyWindowMin: 15,
+      tableReadyWindowMin: 3,
       maxQueueSize: 200,
       brandConfig: {
         displayName: 'The Craftery by Subko',
