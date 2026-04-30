@@ -3400,25 +3400,14 @@ function renderHistoryTab(venue) {
             <div class="q-row-history-top">
               <div class="q-row-name">
                 ${escapeHtml(entry.guestName)}
-                ${statusBadge}
               </div>
+              ${statusBadge}
               <div class="muted">${formatRelativeStamp(new Date(entry.completedAt || entry.updatedAt).getTime())}</div>
             </div>
-            <div class="q-row-history-grid">
-              <div class="q-row-history-item">
-                <span class="q-row-history-key">Phone</span>
-                <span class="q-row-history-value">${escapeHtml(entry.guestPhone)}</span>
-              </div>
-              <div class="q-row-history-item">
-                <span class="q-row-history-key">Pax</span>
-                <span class="q-row-history-value">${entry.partySize}</span>
-              </div>
-              ${entry.displayRef ? `
-                <div class="q-row-history-item">
-                  <span class="q-row-history-key">Session</span>
-                  <span class="q-row-history-value mono">${escapeHtml(entry.displayRef)}</span>
-                </div>
-              ` : ''}
+            <div class="q-row-history-meta">
+              <span>Phone: ${escapeHtml(entry.guestPhone)}</span>
+              <span>Pax - ${entry.partySize}</span>
+              ${entry.displayRef ? `<span>Session - <span class="mono">${escapeHtml(entry.displayRef)}</span></span>` : ''}
             </div>
             ${flowLogEnabled ? `
               <div class="q-row-history-actions">

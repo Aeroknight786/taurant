@@ -1605,45 +1605,30 @@ textarea.form-input {
 
 .q-row-history-minimal {
   align-items: stretch;
+  padding: 12px 18px;
 }
 
 .q-row-history-top {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
+  align-items: center;
+  justify-content: flex-start;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.q-row-history-grid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+.q-row-history-meta {
+  display: flex;
+  flex-wrap: wrap;
   gap: 10px;
-  margin-top: 10px;
-}
-
-.q-row-history-item {
-  display: grid;
-  gap: 3px;
-}
-
-.q-row-history-key {
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: var(--cream-dimmer);
-}
-
-.q-row-history-value {
-  font-size: 13px;
-  color: var(--cream);
-  word-break: break-word;
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--cream-dim);
 }
 
 .q-row-history-actions {
   display: flex;
   justify-content: flex-start;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 
 .seat-context-card {
