@@ -263,7 +263,7 @@ document.addEventListener('click', (event) => {
     openNotifyWindowSheet({
       entryId: notifyButton.getAttribute('data-open-notify-sheet'),
       guestName: notifyButton.closest('.q-row')?.querySelector('.q-row-name')?.childNodes?.[0]?.textContent?.trim() || 'Guest',
-      defaultWindowMin: Number(notifyButton.getAttribute('data-notify-default-window') || 0) || 5,
+      defaultWindowMin: Number(notifyButton.getAttribute('data-notify-default-window') || 0) || 3,
     });
     return;
   }
@@ -3216,7 +3216,7 @@ function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistR
 
 function renderQueueTab(waiting, tables, venue) {
   const { showFlowLog: flowLogEnabled, showBillingSignals, showNotifyAction, manualDispatchMode, waitlistOnlyVenue } = getVenueStaffSurfaceFlags(venue);
-  const defaultNotifyWindowMin = Math.max(1, Number(venue?.tableReadyWindowMin) || 5);
+  const defaultNotifyWindowMin = 3;
   const waitingOnly = waiting.filter((entry) => entry.status === 'WAITING');
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
   const lateNoResponseEntries = waiting.filter((entry) => isLateNoResponseEntry(entry));
