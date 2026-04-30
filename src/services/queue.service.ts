@@ -72,6 +72,9 @@ export async function joinQueue(params: {
   if (!venue) throw new AppError('Venue not found', 404);
   const venueConfig = resolveVenueConfig(venue);
   if (!venue.isQueueOpen) throw new AppError('Queue is currently closed', 400, 'QUEUE_CLOSED');
+  if (requiresCrafteryWhatsAppConsent(venue.slug) && !params.whatsappConsentGiven) {
+    throw new AppError('WhatsApp updates are required to join this waitlist', 400, 'WHATSAPP_CONSENT_REQUIRED');
+  }
 
   // Count active entries
   const activeCount = await prisma.queueEntry.count({

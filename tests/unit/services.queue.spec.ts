@@ -246,7 +246,7 @@ describe('queue service', () => {
     })).rejects.toMatchObject<AppError>({ code: 'ALREADY_IN_QUEUE' });
   });
 
-  it('sends Craftery join WhatsApp only when consent is granted', async () => {
+  it('requires WhatsApp consent to join the Craftery waitlist', async () => {
     const { joinQueue } = await import('../../src/services/queue.service');
 
     prismaMock.venue.findUnique.mockResolvedValue({
@@ -266,21 +266,13 @@ describe('queue service', () => {
     });
     prismaMock.queueEntry.count.mockResolvedValue(0);
     prismaMock.queueEntry.findFirst.mockResolvedValue(null);
-    prismaMock.queueEntry.create
-      .mockResolvedValueOnce({
-        id: 'entry_subko_with_consent',
-        venueId: 'venue_subko',
-        guestName: 'Aarav',
-        guestPhone: '9876543210',
-        whatsappConsentGiven: true,
-      })
-      .mockResolvedValueOnce({
-        id: 'entry_subko_without_consent',
-        venueId: 'venue_subko',
-        guestName: 'Aarav',
-        guestPhone: '9876543210',
-        whatsappConsentGiven: false,
-      });
+    prismaMock.queueEntry.create.mockResolvedValueOnce({
+      id: 'entry_subko_with_consent',
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      whatsappConsentGiven: true,
+    });
 
     await joinQueue({
       venueId: 'venue_subko',
@@ -291,14 +283,15 @@ describe('queue service', () => {
       whatsappConsentGiven: true,
       whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
     });
-    await joinQueue({
+
+    await expect(joinQueue({
       venueId: 'venue_subko',
       guestName: 'Aarav',
       guestPhone: '9876543211',
       partySize: 2,
       seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
       whatsappConsentGiven: false,
-    });
+    })).rejects.toMatchObject<AppError>({ code: 'WHATSAPP_CONSENT_REQUIRED' });
 
     expect(notifyMock.queueJoined).toHaveBeenCalledTimes(1);
     expect(notifyMock.queueJoined).toHaveBeenCalledWith(
@@ -314,6 +307,7 @@ describe('queue service', () => {
         guestOtp: expect.any(String),
       }),
     );
+    expect(prismaMock.queueEntry.create).toHaveBeenCalledTimes(1);
   });
 
   it('seats a guest, re-compacts the queue, and syncs preorder state', async () => {

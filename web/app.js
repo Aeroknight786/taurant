@@ -1052,7 +1052,6 @@ async function renderVenueLanding(slug) {
           <span class="role-card-icon">Venue</span>
           <div class="role-card-title">${escapeHtml(venueName)}</div>
           <div class="role-card-desc">${escapeHtml(venueSummary)}</div>
-          <div class="role-card-cta">${venue.isQueueOpen ? 'Open' : 'Closed'}</div>
         </div>
         <div class="role-card" style="cursor:default; max-width:360px; min-width:300px;">
           <div class="role-card-title">${guestQueueEnabled ? guestJoinTitle : 'Guest queue unavailable'}</div>
@@ -1096,7 +1095,7 @@ async function renderVenueLanding(slug) {
               </div>
               ${showWhatsAppConsent ? `
                 <label class="checkbox-row" style="margin: 0 0 14px;">
-                  <input type="checkbox" id="guest-whatsapp-consent">
+                  <input type="checkbox" id="guest-whatsapp-consent" required>
                   <span>I agree to receive WhatsApp updates about my waitlist status from ${escapeHtml(venueName)} on this number.</span>
                 </label>
               ` : ''}
@@ -4902,23 +4901,36 @@ function renderCrafteryGuestResources(venue, entry) {
     <section class="guest-resource-section" data-craftery-resources>
       <div class="section-head guest-resource-head">
         <div class="section-title">Explore Craftery</div>
-        <div class="section-sub">Open the latest coffee leaflet or venue listing while you wait.</div>
+        <div class="section-sub">Open the menu or leave a review while you wait.</div>
       </div>
-      <div class="guest-resource-grid">
-        <article class="guest-resource-card">
-          <div class="guest-resource-label">Coffee</div>
-          <div class="guest-resource-title">Coffee leaflet</div>
-          <div class="guest-resource-copy">Browse the current Craftery coffee leaflet in a new tab.</div>
-          <a class="btn btn-secondary btn-full" href="${CRAFTERY_GUEST_LEAFLET_URL}" target="_blank" rel="noopener noreferrer">Coffee leaflet</a>
-        </article>
-        <article class="guest-resource-card">
-          <div class="guest-resource-label">Venue</div>
-          <div class="guest-resource-title">Find Craftery</div>
-          <div class="guest-resource-copy">Open the Google listing for directions and venue details.</div>
-          <a class="btn btn-secondary btn-full" href="${CRAFTERY_GOOGLE_MAPS_URL}" target="_blank" rel="noopener noreferrer">Find Craftery</a>
-        </article>
+      <div class="guest-resource-actions">
+        <a class="btn btn-secondary" href="${CRAFTERY_GUEST_LEAFLET_URL}" target="_blank" rel="noopener noreferrer">Browse our Menu</a>
+        <a class="btn btn-secondary" href="${CRAFTERY_GOOGLE_MAPS_URL}" target="_blank" rel="noopener noreferrer">Review Us</a>
       </div>
     </section>
+  `;
+}
+
+function renderGuestVisitMeta(entry, venue) {
+  const details = [
+    { label: 'Venue', value: resolveVenueDisplayName(venue) },
+    { label: 'Party size', value: `${entry.partySize} pax` },
+    { label: 'Seating', value: getQueueEntryPreferenceLabel(entry) },
+  ];
+  const notes = getQueueEntryGuestNotes(entry);
+  if (notes) {
+    details.push({ label: 'Notes', value: notes });
+  }
+
+  return `
+    <div class="guest-state-meta">
+      ${details.map((detail) => `
+        <div class="guest-state-meta-item">
+          <span class="guest-state-meta-label">${escapeHtml(detail.label)}</span>
+          <span class="guest-state-meta-value">${escapeHtml(detail.value)}</span>
+        </div>
+      `).join('')}
+    </div>
   `;
 }
 
@@ -4959,8 +4971,12 @@ function renderGuestStateHero(entry, guestSession, venue) {
   const manualDispatchEnabled = isManualDispatchVenue(venue);
   const showQueuePosition = shouldShowGuestQueuePosition(venue);
   const guestOtpLabel = guestOtp
-    ? `<div class="otp-label">${entry.status === 'NOTIFIED' ? 'Your reserved table is waiting' : 'Show this OTP when called'}</div>`
-    : `<div class="otp-label">${queueOnlyGuestExperience ? 'Use the OTP from your WhatsApp message when the host desk calls you.' : 'Restore this device with the seating OTP if you need the live code here.'}</div>`;
+    ? `<div class="otp-label">${queueOnlyGuestExperience
+      ? (entry.status === 'NOTIFIED' ? 'Show this OTP to the host desk.' : 'Show this OTP when called.')
+      : (entry.status === 'NOTIFIED' ? 'Your reserved table is waiting' : 'Show this OTP when called')}</div>`
+    : `<div class="otp-label">${queueOnlyGuestExperience
+      ? (entry.status === 'NOTIFIED' ? 'Use the OTP from your WhatsApp message at the host desk.' : 'Use the OTP from your WhatsApp message when the host desk calls you.')
+      : 'Restore this device with the seating OTP if you need the live code here.'}</div>`;
 
   if (entry.status === 'WAITING') {
     const etaMin = getQueueEntryEtaMin(entry, venue);
@@ -4976,19 +4992,40 @@ function renderGuestStateHero(entry, guestSession, venue) {
           ? (manualDispatchEnabled ? 'The host desk will call your party when it is your turn.' : 'We will message you once it is your turn.')
           : 'We will notify you when a matching table clears.'}</div>
         ${renderSessionRef(entry)}
+        ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}
+        <div class="row guest-hero-actions">
+          <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
+        </div>
       </div>
       <div class="otp-block">
         <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'WhatsApp'}</div>
         ${guestOtpLabel}
       </div>
-      <div class="row" style="margin-top:12px;">
-        <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
-      </div>
     `;
   }
 
   if (entry.status === 'NOTIFIED') {
-    return '';
+    const lateNoResponse = isLateNoResponseEntry(entry);
+    return `
+      <div class="queue-hero queue-hero-waiting">
+        <div class="queue-hero-primary">
+          <div class="queue-pos-num">Called</div>
+          <div class="queue-pos-label">${lateNoResponse ? 'Check with host desk' : 'Called to host desk'}</div>
+        </div>
+        <div class="queue-pos-sub">${lateNoResponse
+          ? 'If you are still at the venue, please check with the host desk.'
+          : 'Please head to the host desk and show your OTP.'}</div>
+        ${renderSessionRef(entry)}
+        ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}
+        <div class="row guest-hero-actions">
+          <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
+        </div>
+      </div>
+      <div class="otp-block">
+        <div class="otp-num">${guestOtp ? escapeHtml(guestOtp) : 'WhatsApp'}</div>
+        ${guestOtpLabel}
+      </div>
+    `;
   }
 
   if (entry.status === 'SEATED') {
@@ -5027,33 +5064,11 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
   const seatedOrderingEnabled = isVenueFeatureEnabled(venue, 'seatedOrdering');
   const finalPaymentEnabled = isVenueFeatureEnabled(venue, 'finalPayment');
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
-  const guestOtp = guestSession?.otp || '';
-  const guestOtpLabel = guestOtp
-    ? 'Show this OTP to the host desk.'
-    : 'Use the OTP from your WhatsApp message if the host desk asks for it.';
-  const manualDispatchEnabled = isManualDispatchVenue(venue);
 
   if (entry.status === 'WAITING') {
     if (queueOnlyGuestExperience) {
       return `
-        <div class="grid">
-          <div class="grid grid-2">
-            <div class="card">
-              <div class="card-title">Waiting list status</div>
-              <div class="card-sub">Your phone number is your queue identity. The host desk will call you once it is your turn.</div>
-              <div class="alert alert-blue"><div>Once notified, please return to the host desk within ${venue.tableReadyWindowMin} minutes or your turn may move on to the next party.</div></div>
-            </div>
-            <div class="card">
-              <div class="card-title">Venue</div>
-              <div class="card-sub">${escapeHtml(venue.name)} · ${escapeHtml(venue.city)}</div>
-              <div class="muted">Party size: ${entry.partySize} pax</div>
-              <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
-              ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-              <div class="muted">Response window: ${venue.tableReadyWindowMin} minutes</div>
-            </div>
-          </div>
-          ${renderCrafteryGuestResources(venue, entry)}
-        </div>
+        ${renderCrafteryGuestResources(venue, entry)}
       `;
     }
 
@@ -5084,36 +5099,8 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
 
   if (entry.status === 'NOTIFIED') {
     if (queueOnlyGuestExperience) {
-      const readyWindowLabel = getQueueEntryReadyWindowLabel(entry);
-      const readyWindowState = getQueueEntryReadyWindowState(entry);
-      const lateNoResponse = isLateNoResponseEntry(entry);
       return `
-        <div class="grid">
-          <div class="grid grid-2">
-            <div class="card">
-              <div class="card-title">${lateNoResponse ? 'Check with host desk' : 'Called to host desk'}</div>
-              <div class="card-sub">${lateNoResponse ? 'The return window has passed, but the host desk can still confirm whether your turn can be accommodated.' : 'A host is ready to verify the OTP and complete your visit.'}</div>
-              <div class="alert ${lateNoResponse ? 'alert-blue' : 'alert-green'}"><div>${lateNoResponse ? 'If you are still at the venue, please check with the host desk and show your OTP.' : `Return to the host desk within ${getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin)} minutes and show the OTP to staff.`}</div></div>
-              ${readyWindowLabel && !lateNoResponse ? `<div class="queue-countdown ${readyWindowState.urgent ? 'urgent' : ''}">${escapeHtml(readyWindowLabel)}</div>` : ''}
-              <div class="otp-inline-shell">
-                <div class="otp-inline-value">${guestOtp ? escapeHtml(guestOtp) : 'WhatsApp'}</div>
-                <div class="otp-inline-label">${escapeHtml(guestOtpLabel)}</div>
-              </div>
-            </div>
-            <div class="card">
-              <div class="card-title">Guest snapshot</div>
-              <div class="muted">${entry.partySize} pax</div>
-              <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
-              <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
-              ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-              <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
-            </div>
-          </div>
-          <div class="row guest-live-actions">
-            <button class="btn btn-secondary btn-full" id="leave-waitlist-cta" type="button">Leave waitlist</button>
-          </div>
-          ${renderCrafteryGuestResources(venue, entry)}
-        </div>
+        ${renderCrafteryGuestResources(venue, entry)}
       `;
     }
 

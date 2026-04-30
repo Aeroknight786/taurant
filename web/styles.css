@@ -693,7 +693,7 @@ textarea.form-input {
 }
 
 .queue-hero-waiting {
-  padding: 28px 24px;
+  padding: 22px 22px 20px;
   text-align: left;
 }
 
@@ -710,7 +710,7 @@ textarea.form-input {
 }
 
 .queue-hero-waiting .queue-pos-num {
-  font-size: clamp(42px, 9vw, 64px);
+  font-size: clamp(38px, 8vw, 56px);
   letter-spacing: -0.03em;
 }
 
@@ -719,8 +719,8 @@ textarea.form-input {
 }
 
 .queue-hero-waiting .queue-pos-sub {
-  max-width: 30rem;
-  margin-top: 14px;
+  max-width: 28rem;
+  margin-top: 12px;
 }
 
 .queue-pos-num {
@@ -1465,41 +1465,10 @@ textarea.form-input {
   margin-bottom: 0;
 }
 
-.guest-resource-grid {
-  display: grid;
-  gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.guest-resource-card {
-  background: var(--surface2);
-  border: 1px solid var(--border);
-  border-radius: var(--r);
-  padding: 16px;
-  box-shadow: var(--shadow);
-  min-width: 0;
-}
-
-.guest-resource-label {
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  color: var(--cream-dimmer);
-  margin-bottom: 8px;
-}
-
-.guest-resource-title {
-  font-family: "Instrument Serif", serif;
-  font-size: 22px;
-  margin-bottom: 6px;
-}
-
-.guest-resource-copy {
-  font-size: 13px;
-  color: var(--cream-dim);
-  line-height: 1.55;
-  margin-bottom: 14px;
+.guest-resource-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 .order-total-label {
@@ -1725,8 +1694,33 @@ textarea.form-input {
   align-items: center;
 }
 
-.guest-live-actions {
-  margin-top: 10px;
+.guest-hero-actions {
+  margin-top: 16px;
+}
+
+.guest-state-meta {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.guest-state-meta-item {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.guest-state-meta-label {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+}
+
+.guest-state-meta-value {
+  font-size: 13px;
+  color: var(--cream-dim);
 }
 
 .badge {
@@ -1926,7 +1920,6 @@ textarea.form-input {
     grid-template-columns: 1fr;
   }
 
-  .guest-resource-grid,
   .wait-content-grid {
     grid-template-columns: 1fr;
   }
@@ -2108,6 +2101,6 @@ textarea.form-input {
 .session-ref {
   font-size: 12px;
   color: var(--text-muted, #888);
-  margin-top: 8px;
+  margin-top: 10px;
   letter-spacing: 0.02em;
 }
