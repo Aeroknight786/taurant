@@ -692,6 +692,37 @@ textarea.form-input {
   background: linear-gradient(90deg, transparent, var(--amber-border), transparent);
 }
 
+.queue-hero-waiting {
+  padding: 28px 24px;
+  text-align: left;
+}
+
+.queue-hero-waiting::before {
+  left: 24px;
+  transform: none;
+  width: 180px;
+}
+
+.queue-hero-primary {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.queue-hero-waiting .queue-pos-num {
+  font-size: clamp(42px, 9vw, 64px);
+  letter-spacing: -0.03em;
+}
+
+.queue-hero-waiting .queue-pos-label {
+  margin-top: 6px;
+}
+
+.queue-hero-waiting .queue-pos-sub {
+  max-width: 30rem;
+  margin-top: 14px;
+}
+
 .queue-pos-num {
   font-family: "Fraunces", serif;
   font-size: clamp(72px, 13vw, 100px);
@@ -782,6 +813,31 @@ textarea.form-input {
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--cream-dimmer);
+}
+
+.otp-inline-shell {
+  margin-top: 16px;
+  padding: 14px 16px;
+  border-radius: var(--r-sm);
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.03);
+}
+
+.otp-inline-value {
+  font-family: "Fraunces", serif;
+  font-size: clamp(30px, 6vw, 40px);
+  font-weight: 300;
+  font-style: italic;
+  letter-spacing: 0.12em;
+  color: var(--amber);
+}
+
+.otp-inline-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--cream-dimmer);
+  margin-top: 6px;
 }
 
 .alert {
@@ -1472,6 +1528,16 @@ textarea.form-input {
   flex-wrap: wrap;
 }
 
+.tabs.tabs-compact {
+  width: fit-content;
+  min-width: 0;
+}
+
+.tabs.tabs-compact .tab {
+  flex: 0 0 auto;
+  min-width: 140px;
+}
+
 .tabs::-webkit-scrollbar {
   display: none;
 }
@@ -1657,6 +1723,10 @@ textarea.form-input {
   gap: 8px;
   flex-wrap: wrap;
   align-items: center;
+}
+
+.guest-live-actions {
+  margin-top: 10px;
 }
 
 .badge {

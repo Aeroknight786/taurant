@@ -75,7 +75,7 @@ describe('guest access link service', () => {
     });
   });
 
-  it('redeems closed links into read-only sessions for the 24h window', async () => {
+  it('redeems closed links into read-only sessions for the 2h window', async () => {
     const { issueQueueAccessLink, redeemQueueAccessLink, resolveGuestAccessModeFromQueueEntry } = await import('../../src/services/guestAccessLink.service');
 
     prismaMock.queueEntry.findFirst.mockResolvedValueOnce({
@@ -130,8 +130,8 @@ describe('guest access link service', () => {
 
     expect(resolveGuestAccessModeFromQueueEntry({
       status: 'COMPLETED',
-      completedAt: new Date(Date.now() - (25 * 60 * 60 * 1000)),
-      updatedAt: new Date(Date.now() - (25 * 60 * 60 * 1000)),
+      completedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),
+      updatedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),
     })).toBeNull();
 
     prismaMock.guestAccessLink.findUnique.mockResolvedValueOnce({
@@ -144,8 +144,8 @@ describe('guest access link service', () => {
         venueId: 'venue_1',
         guestPhone: '9876543210',
         status: 'COMPLETED',
-        completedAt: new Date(Date.now() - (25 * 60 * 60 * 1000)),
-        updatedAt: new Date(Date.now() - (25 * 60 * 60 * 1000)),
+        completedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),
+        updatedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),
       },
     });
 

@@ -12,7 +12,7 @@ type QueueEntryAccessShape = {
   updatedAt: Date;
 };
 
-const READ_ONLY_SESSION_SECONDS = 60 * 60 * 24;
+const READ_ONLY_SESSION_SECONDS = 60 * 60 * 2;
 const READ_ONLY_SESSION_WINDOW_MS = READ_ONLY_SESSION_SECONDS * 1000;
 
 function hashOpaqueToken(token: string): string {
