@@ -130,6 +130,7 @@ export async function redeemQueueAccessLink(params: {
   venueId: string;
   accessMode: GuestAccessMode;
   guestToken: string;
+  otp: string;
   queueEntryStatus: QueueEntryStatus;
 }> {
   const tokenHash = hashOpaqueToken(params.token);
@@ -145,6 +146,7 @@ export async function redeemQueueAccessLink(params: {
           id: true,
           venueId: true,
           guestPhone: true,
+          otp: true,
           status: true,
           completedAt: true,
           updatedAt: true,
@@ -185,6 +187,7 @@ export async function redeemQueueAccessLink(params: {
       venueId: entry.venueId,
       guestPhone: entry.guestPhone,
     }, expiresIn ? { expiresIn } : {}),
+    otp: entry.otp,
     queueEntryStatus: entry.status,
   };
 }

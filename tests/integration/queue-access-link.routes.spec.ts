@@ -44,6 +44,7 @@ describe('queue access-link routes', () => {
       venueId: 'venue_1',
       accessMode: 'ACTIVE',
       guestToken: 'guest-token',
+      otp: '486833',
       queueEntryStatus: 'WAITING',
     });
 
@@ -60,6 +61,7 @@ describe('queue access-link routes', () => {
       queueEntryId: 'entry_1',
       accessMode: 'ACTIVE',
       guestToken: 'guest-token',
+      otp: '486833',
     });
     expect(guestAccessMock.redeemQueueAccessLink).toHaveBeenCalledWith({
       queueEntryId: 'entry_1',

@@ -44,6 +44,7 @@ describe('guest access link service', () => {
         id: 'entry_1',
         venueId: 'venue_1',
         guestPhone: '9876543210',
+        otp: '486833',
         status: 'WAITING',
         completedAt: null,
         updatedAt: new Date(),
@@ -67,6 +68,7 @@ describe('guest access link service', () => {
     });
 
     expect(redeemed.accessMode).toBe('ACTIVE');
+    expect(redeemed.otp).toBe('486833');
     expect(verifyToken(redeemed.guestToken)).toMatchObject({
       kind: 'guest',
       queueEntryId: 'entry_1',
@@ -93,6 +95,7 @@ describe('guest access link service', () => {
         id: 'entry_2',
         venueId: 'venue_1',
         guestPhone: '9876543210',
+        otp: '486833',
         status: 'COMPLETED',
         completedAt: new Date(Date.now() - 60 * 60 * 1000),
         updatedAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -112,6 +115,7 @@ describe('guest access link service', () => {
     });
 
     expect(redeemed.accessMode).toBe('READ_ONLY');
+    expect(redeemed.otp).toBe('486833');
     expect(resolveGuestAccessModeFromQueueEntry({
       status: 'COMPLETED',
       completedAt: new Date(Date.now() - 60 * 60 * 1000),
@@ -143,6 +147,7 @@ describe('guest access link service', () => {
         id: 'entry_3',
         venueId: 'venue_1',
         guestPhone: '9876543210',
+        otp: '486833',
         status: 'COMPLETED',
         completedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),
         updatedAt: new Date(Date.now() - (3 * 60 * 60 * 1000)),

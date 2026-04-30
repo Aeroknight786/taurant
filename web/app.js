@@ -263,6 +263,7 @@ document.addEventListener('click', (event) => {
     openNotifyWindowSheet({
       entryId: notifyButton.getAttribute('data-open-notify-sheet'),
       guestName: notifyButton.closest('.q-row')?.querySelector('.q-row-name')?.childNodes?.[0]?.textContent?.trim() || 'Guest',
+      defaultWindowMin: Number(notifyButton.getAttribute('data-notify-default-window') || 0) || 5,
     });
     return;
   }
@@ -515,6 +516,7 @@ async function redeemGuestAccessToken({ slug, entryId, venue, accessToken }) {
       venueSlug: slug,
       venueId: redemption.venueId || venue.id,
       guestToken: redemption.guestToken,
+      otp: redemption.otp || '',
     };
 
     setGuestSession(guestSession);
@@ -663,7 +665,7 @@ function closeNotifyWindowSheet() {
   document.getElementById('notify-sheet-backdrop')?.remove();
 }
 
-function openNotifyWindowSheet({ entryId, guestName }) {
+function openNotifyWindowSheet({ entryId, guestName, defaultWindowMin = 5 }) {
   closeNotifyWindowSheet();
   const backdrop = document.createElement('div');
   backdrop.id = 'notify-sheet-backdrop';
@@ -677,7 +679,7 @@ function openNotifyWindowSheet({ entryId, guestName }) {
       </div>
       <form id="notify-sheet-form">
         <div class="notify-sheet-grid">
-          <button class="btn btn-secondary notify-window-btn active" type="button" data-notify-window-option="3">3 min</button>
+          <button class="btn btn-secondary notify-window-btn" type="button" data-notify-window-option="3">3 min</button>
           <button class="btn btn-secondary notify-window-btn" type="button" data-notify-window-option="5">5 min</button>
           <button class="btn btn-secondary notify-window-btn" type="button" data-notify-window-option="10">10 min</button>
         </div>
@@ -694,19 +696,28 @@ function openNotifyWindowSheet({ entryId, guestName }) {
   `;
   document.body.appendChild(backdrop);
 
-  let selectedWindowMin = 3;
+  const presetWindowValues = new Set([3, 5, 10]);
+  let selectedWindowMin = Math.max(1, Number(defaultWindowMin) || 5);
+  const customInput = backdrop.querySelector('#notify-window-custom');
   backdrop.querySelectorAll('[data-notify-window-option]').forEach((button) => {
+    const optionValue = Number(button.getAttribute('data-notify-window-option') || 0);
+    button.classList.toggle('active', optionValue === selectedWindowMin);
     button.addEventListener('click', () => {
-      selectedWindowMin = Number(button.getAttribute('data-notify-window-option') || 3);
+      selectedWindowMin = optionValue || 5;
       backdrop.querySelectorAll('[data-notify-window-option]').forEach((candidate) => {
         candidate.classList.toggle('active', candidate === button);
       });
-      const customInput = backdrop.querySelector('#notify-window-custom');
       if (customInput) {
         customInput.value = '';
       }
     });
   });
+  if (customInput && !presetWindowValues.has(selectedWindowMin)) {
+    customInput.value = String(selectedWindowMin);
+    backdrop.querySelectorAll('[data-notify-window-option]').forEach((candidate) => {
+      candidate.classList.remove('active');
+    });
+  }
 
   backdrop.querySelector('#notify-sheet-close')?.addEventListener('click', () => closeNotifyWindowSheet());
   backdrop.addEventListener('click', (event) => {
@@ -2561,7 +2572,6 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
       })}</div>
     `,
     right: `
-      <div class="tms-indicator"><span class="tms-dot"></span>${manualDispatchEnabled ? 'Manual dispatch active' : 'Manual floor active'}</div>
       <button class="btn btn-secondary btn-sm" id="staff-logout">Logout</button>
     `,
   }), 'Flock | Staff dashboard');
@@ -3207,6 +3217,7 @@ function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistR
 
 function renderQueueTab(waiting, tables, venue) {
   const { showFlowLog: flowLogEnabled, showBillingSignals, showNotifyAction, manualDispatchMode, waitlistOnlyVenue } = getVenueStaffSurfaceFlags(venue);
+  const defaultNotifyWindowMin = Math.max(1, Number(venue?.tableReadyWindowMin) || 5);
   const waitingOnly = waiting.filter((entry) => entry.status === 'WAITING');
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
   const lateNoResponseEntries = waiting.filter((entry) => isLateNoResponseEntry(entry));
@@ -3214,7 +3225,7 @@ function renderQueueTab(waiting, tables, venue) {
   const renderWaitlistRowActions = (entry) => {
     if (entry.status === 'WAITING') {
       return `
-        ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}">Notify</button>` : ''}
+        ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
         <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
@@ -3304,7 +3315,7 @@ function renderQueueTab(waiting, tables, venue) {
             data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
             data-entry-state-label="${escapeHtml(formatQueueEntryStateForStaff(entry))}"
           >Seat</button>
-          ${showNotifyAction && entry.status === 'WAITING' ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}">Notify</button>` : ''}
+          ${showNotifyAction && entry.status === 'WAITING' ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
           ${showNotifyAction && entry.status === 'NOTIFIED' ? `<button class="btn btn-primary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
           ${flowLogEnabled ? `<button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>` : ''}
           <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
@@ -3640,17 +3651,19 @@ function renderManagerTab({ auth, venue, queue }) {
 function renderStaffStatsTiles(stats, venue) {
   const shouldShowBillingSummary = shouldLoadVenueBills(venue);
   return `
-    <div class="stat-tile">
-      <div class="stat-label">Queue joins</div>
-      <div class="stat-value">${stats.today.totalQueueJoins}</div>
-    </div>
-    <div class="stat-tile">
-      <div class="stat-label">Avg wait</div>
-      <div class="stat-value">${stats.today.avgWaitMin}m</div>
-    </div>
-    <div class="stat-tile">
-      <div class="stat-label">${shouldShowBillingSummary ? 'Captured revenue' : 'Ready window'}</div>
-      <div class="stat-value">${shouldShowBillingSummary ? formatMoney(stats.today.totalRevenuePaise) : `${venue.tableReadyWindowMin}m`}</div>
+    <div class="staff-stats-card">
+      <div class="staff-stat-cell">
+        <div class="stat-label">Guests today</div>
+        <div class="stat-value">${stats.today.totalQueueJoins}</div>
+      </div>
+      <div class="staff-stat-cell">
+        <div class="stat-label">Avg wait</div>
+        <div class="stat-value">${stats.today.avgWaitMin}m</div>
+      </div>
+      <div class="staff-stat-cell">
+        <div class="stat-label">${shouldShowBillingSummary ? 'Revenue today' : 'Ready window'}</div>
+        <div class="stat-value">${shouldShowBillingSummary ? formatMoney(stats.today.totalRevenuePaise) : `${venue.tableReadyWindowMin}m`}</div>
+      </div>
     </div>
   `;
 }
@@ -5008,6 +5021,10 @@ function renderGuestStateHero(entry, guestSession, venue) {
   if (entry.status === 'NOTIFIED') {
     const lateNoResponse = isLateNoResponseEntry(entry);
     const readyWindowMin = getQueueEntryReadyWindowMinutes(entry, venue.tableReadyWindowMin);
+    const deadlineValue = entry?.tableReadyDeadlineAt ? new Date(entry.tableReadyDeadlineAt).getTime() : null;
+    const remainingReadyWindowMin = deadlineValue
+      ? Math.max(1, Math.ceil((deadlineValue - Date.now()) / 60000))
+      : readyWindowMin;
     return `
       <div class="queue-hero queue-hero-waiting">
         <div class="queue-hero-primary">
@@ -5016,7 +5033,7 @@ function renderGuestStateHero(entry, guestSession, venue) {
         </div>
         <div class="queue-pos-sub">${lateNoResponse
           ? 'If you are still at the venue, please check with the host desk.'
-          : `Please head to the host desk within ${readyWindowMin} minutes and show your OTP.`}</div>
+          : `Please head to the host desk within ${remainingReadyWindowMin} minute${remainingReadyWindowMin === 1 ? '' : 's'} and show your OTP.`}</div>
         ${renderSessionRef(entry)}
         ${queueOnlyGuestExperience ? renderGuestVisitMeta(entry, venue) : ''}
         <div class="row guest-hero-actions">
@@ -5033,9 +5050,9 @@ function renderGuestStateHero(entry, guestSession, venue) {
   if (entry.status === 'SEATED') {
     return `
       <div class="queue-hero">
-        <div class="queue-pos-num">${queueOnlyGuestExperience ? 'Done' : escapeHtml(entry.table?.label || 'Seated')}</div>
-        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Visit complete' : 'Now seated'}</div>
-        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'This visit has been marked complete. Thanks for waiting with us.' : 'Your table is live. Add more items from your phone and clear the balance when ready.'}</div>
+        <div class="queue-pos-num">${queueOnlyGuestExperience ? 'Seated' : escapeHtml(entry.table?.label || 'Seated')}</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'You have been seated' : 'Now seated'}</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'Please reach out to staff for ordering.' : 'Your table is live. Add more items from your phone and clear the balance when ready.'}</div>
       </div>
     `;
   }
@@ -5043,9 +5060,9 @@ function renderGuestStateHero(entry, guestSession, venue) {
   if (entry.status === 'COMPLETED') {
     return `
       <div class="queue-hero">
-        <div class="queue-pos-num">Done</div>
-        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'Visit complete' : 'Service complete'}</div>
-        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'This visit has been marked complete. Thanks for waiting with us.' : 'Payment is captured and the table can move into the next turn.'}</div>
+        <div class="queue-pos-num">${queueOnlyGuestExperience ? 'Seated' : 'Done'}</div>
+        <div class="queue-pos-label">${queueOnlyGuestExperience ? 'You have been seated' : 'Service complete'}</div>
+        <div class="queue-pos-sub">${queueOnlyGuestExperience ? 'Please reach out to staff for ordering.' : 'Payment is captured and the table can move into the next turn.'}</div>
         ${renderSessionRef(entry)}
       </div>
     `;
@@ -5133,26 +5150,7 @@ function renderGuestStateCards({ slug, entry, venue, bill, guestSession, tableCa
 
   if (entry.status === 'SEATED' || entry.status === 'COMPLETED') {
     if (queueOnlyGuestExperience) {
-      return `
-        <div class="grid grid-2">
-          <div class="card">
-            <div class="card-title">${entry.status === 'COMPLETED' ? 'Visit complete' : 'Called in'}</div>
-            <div class="card-sub">${entry.status === 'COMPLETED'
-              ? 'This waitlist visit has been closed. Thanks for waiting with us.'
-              : 'You have been called to the host desk. Show the OTP to complete verification.'}</div>
-            <div class="alert alert-blue"><div>${entry.status === 'COMPLETED' ? 'No more actions are needed on this device.' : 'Keep this page handy in case the host desk needs to verify your session reference.'}</div></div>
-          </div>
-          <div class="card">
-            <div class="card-title">Visit summary</div>
-            <div class="muted">${entry.partySize} pax</div>
-            <div class="muted">Phone: ${escapeHtml(entry.guestPhone)}</div>
-            <div class="muted">Seating preference: ${escapeHtml(getQueueEntryPreferenceLabel(entry))}</div>
-            ${getQueueEntryGuestNotes(entry) ? `<div class="muted">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-            <div class="muted">Venue: ${escapeHtml(venue.name)}</div>
-            ${entry.displayRef ? `<div class="muted">Reference: <span class="mono">${escapeHtml(entry.displayRef)}</span></div>` : ''}
-          </div>
-        </div>
-      `;
+      return '';
     }
 
     const preOrders = entry.orders.filter((order) => order.type === 'PRE_ORDER');

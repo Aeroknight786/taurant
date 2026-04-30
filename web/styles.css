@@ -1506,6 +1506,8 @@ textarea.form-input {
 .tabs.tabs-compact {
   width: fit-content;
   min-width: 0;
+  margin-left: auto;
+  margin-right: auto;
 }
 
 .tabs.tabs-compact .tab {
@@ -1883,14 +1885,22 @@ textarea.form-input {
 .stats-grid {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
-.stat-tile {
+.staff-stats-card {
+  width: min(100%, 560px);
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.staff-stat-cell {
   background: var(--surface2);
   border: 1px solid var(--border);
   border-radius: var(--r-sm);
   padding: 14px;
+  text-align: center;
 }
 
 .stat-label {
@@ -1923,8 +1933,11 @@ textarea.form-input {
 @media (max-width: 900px) {
   .grid-2,
   .grid-3,
-  .form-row,
-  .stats-grid {
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-stats-card {
     grid-template-columns: 1fr;
   }
 
