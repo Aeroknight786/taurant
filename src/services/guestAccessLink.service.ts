@@ -20,7 +20,7 @@ function hashOpaqueToken(token: string): string {
 }
 
 function createOpaqueToken(): string {
-  return crypto.randomBytes(32).toString('base64url');
+  return crypto.randomBytes(16).toString('base64url');
 }
 
 function getClosedAt(entry: QueueEntryAccessShape): Date {
@@ -68,6 +68,11 @@ export function getGuestReadOnlySessionExpiresInSeconds(entry: QueueEntryAccessS
 function buildGuestStatusLink(venueSlug: string, queueEntryId: string, token: string): string {
   const baseUrl = env.APP_PUBLIC_URL.replace(/\/+$/, '');
   return `${baseUrl}/v/${encodeURIComponent(venueSlug)}/e/${encodeURIComponent(queueEntryId)}?access=${encodeURIComponent(token)}`;
+}
+
+function buildGuestShortLink(token: string): string {
+  const baseUrl = env.APP_PUBLIC_URL.replace(/\/+$/, '');
+  return `${baseUrl}/g/${encodeURIComponent(token)}`;
 }
 
 export async function issueQueueAccessLink(params: {
@@ -118,8 +123,34 @@ export async function issueQueueAccessLink(params: {
     token,
     tokenHash,
     issuedAt,
-    statusLink: buildGuestStatusLink(venueSlug, params.queueEntryId, token),
+    statusLink: buildGuestShortLink(token),
   };
+}
+
+export async function resolveQueueAccessLinkRedirectTarget(token: string): Promise<string> {
+  const tokenHash = hashOpaqueToken(token);
+  const link = await prisma.guestAccessLink.findUnique({
+    where: { tokenHash },
+    select: {
+      invalidatedAt: true,
+      queueEntry: {
+        select: {
+          id: true,
+          venue: {
+            select: {
+              slug: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!link || link.invalidatedAt || !link.queueEntry?.venue?.slug) {
+    throw new AppError('Access link is invalid or expired', 404, 'ACCESS_LINK_INVALID');
+  }
+
+  return buildGuestStatusLink(link.queueEntry.venue.slug, link.queueEntry.id, token);
 }
 
 export async function redeemQueueAccessLink(params: {

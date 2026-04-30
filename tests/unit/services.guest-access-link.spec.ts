@@ -27,7 +27,7 @@ describe('guest access link service', () => {
   });
 
   it('issues opaque links and redeems them into active guest sessions', async () => {
-    const { issueQueueAccessLink, redeemQueueAccessLink } = await import('../../src/services/guestAccessLink.service');
+    const { issueQueueAccessLink, redeemQueueAccessLink, resolveQueueAccessLinkRedirectTarget } = await import('../../src/services/guestAccessLink.service');
 
     prismaMock.queueEntry.findFirst.mockResolvedValueOnce({
       id: 'entry_1',
@@ -35,6 +35,13 @@ describe('guest access link service', () => {
       venue: { slug: 'the-craftery-koramangala' },
     });
     prismaMock.guestAccessLink.create.mockResolvedValue({ id: 'access_1' });
+    prismaMock.guestAccessLink.findUnique.mockResolvedValueOnce({
+      invalidatedAt: null,
+      queueEntry: {
+        id: 'entry_1',
+        venue: { slug: 'the-craftery-koramangala' },
+      },
+    });
     prismaMock.guestAccessLink.findUnique.mockResolvedValueOnce({
       id: 'access_1',
       queueEntryId: 'entry_1',
@@ -58,9 +65,12 @@ describe('guest access link service', () => {
       messageKind: 'JOIN',
     });
 
-    expect(issued.token).toHaveLength(43);
+    expect(issued.token).toHaveLength(22);
     expect(issued.tokenHash).toHaveLength(43);
-    expect(issued.statusLink).toContain('/v/the-craftery-koramangala/e/entry_1?access=');
+    expect(issued.statusLink).toContain('/g/');
+
+    const redirectTarget = await resolveQueueAccessLinkRedirectTarget(issued.token);
+    expect(redirectTarget).toContain('/v/the-craftery-koramangala/e/entry_1?access=');
 
     const redeemed = await redeemQueueAccessLink({
       queueEntryId: 'entry_1',

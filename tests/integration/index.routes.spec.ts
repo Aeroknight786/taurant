@@ -5,6 +5,9 @@ import { invokeApp } from '../helpers/invoke-app';
 
 const prismaMock = createPrismaMock();
 const isRedisReadyMock = vi.fn(() => false);
+const guestAccessMock = {
+  resolveQueueAccessLinkRedirectTarget: vi.fn(),
+};
 
 vi.mock('../../src/config/database', () => ({
   prisma: prismaMock,
@@ -13,6 +16,14 @@ vi.mock('../../src/config/database', () => ({
 vi.mock('../../src/config/redis', () => ({
   isRedisReady: isRedisReadyMock,
 }));
+
+vi.mock('../../src/services/guestAccessLink.service', async () => {
+  const actual = await vi.importActual<typeof import('../../src/services/guestAccessLink.service')>('../../src/services/guestAccessLink.service');
+  return {
+    ...actual,
+    resolveQueueAccessLinkRedirectTarget: guestAccessMock.resolveQueueAccessLinkRedirectTarget,
+  };
+});
 
 describe('index routes', () => {
   beforeEach(() => {
@@ -96,6 +107,22 @@ describe('index routes', () => {
     expect(aboutHtml).toContain('The Craftery by Subko');
     expect(aboutHtml).toContain('Join confirmation');
     expect(aboutHtml).toContain('Table-ready notification');
+  });
+
+  it('redirects short guest access links to the canonical guest route', async () => {
+    guestAccessMock.resolveQueueAccessLinkRedirectTarget.mockResolvedValue(
+      'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=opaque-token',
+    );
+
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'GET',
+      url: '/g/short-token',
+    });
+
+    expect(response.status).toBe(302);
+    expect(guestAccessMock.resolveQueueAccessLinkRedirectTarget).toHaveBeenCalledWith('short-token');
   });
 
   it('serves the Craftery coffee leaflet as a public static asset', async () => {

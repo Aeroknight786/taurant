@@ -10,6 +10,7 @@ import router from './routes';
 import { errorHandler, notFoundHandler } from './middleware/errorHandler';
 import { apiSafetyLimiter, legacyApiLimiter, publicVenueReadLimiter } from './middleware/rateLimiter';
 import { incrementCounter } from './config/metrics';
+import { resolveQueueAccessLinkRedirectTarget } from './services/guestAccessLink.service';
 
 const app = express();
 
@@ -91,6 +92,15 @@ app.use(`/api/${env.API_VERSION}`, router);
 const webDir = path.join(process.cwd(), 'web');
 if (fs.existsSync(webDir)) {
   app.use(express.static(webDir));
+
+  app.get('/g/:token', async (req, res, next) => {
+    try {
+      const target = await resolveQueueAccessLinkRedirectTarget(req.params.token);
+      res.redirect(302, target);
+    } catch (error) {
+      next(error);
+    }
+  });
 
   app.get('/about', (_req, res) => {
     res.sendFile(path.join(webDir, 'about.html'));
