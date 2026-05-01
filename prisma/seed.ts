@@ -16,6 +16,7 @@ async function main(): Promise<void> {
   console.log('\n🐦 Seed complete!');
   console.log('  Barrel Room manager OTP phone: 9000000002');
   console.log('  Craftery manager OTP phone: 9900000002');
+  console.log('  Craftery staff OTP phone: 7977755670');
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect());

@@ -210,6 +210,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
       { name: 'Aditya Palkar', phone: '9900000001', role: StaffRole.OWNER },
       { name: 'Meenakshi A.', phone: '9900000002', role: StaffRole.MANAGER },
       { name: 'Ravi S.', phone: '9900000003', role: StaffRole.STAFF },
+      { name: 'The Craftery Staff', phone: '7977755670', role: StaffRole.STAFF },
     ],
     tables: [
       { label: 'C1', capacity: 2, section: 'Counter' },
