@@ -2889,7 +2889,7 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
           <div class="grid grid-2">
             <div class="card">
               <div class="card-title">Minimal settings</div>
-              <div class="card-sub">Craftery is running as waitlist-only. Menu, content, and table admin stay hidden.</div>
+              <div class="card-sub">The Craftery is running as waitlist-only. Menu, content, and table admin stay hidden.</div>
               ${renderWaitlistOnlySettingsForm(venue)}
             </div>
             <div class="card">
@@ -3588,7 +3588,7 @@ function renderWaitlistOnlySettingsForm(venue) {
         <input type="checkbox" id="waitlist-expiry-notification-enabled" ${opsConfig.expiryNotificationEnabled ? 'checked' : ''}>
         Send expiry notification on no-show
       </label>
-      <div class="card-sub" style="margin-bottom:16px;">Automatic no-show remains a supported venue mode. Craftery is currently using manual host removal after a missed return.</div>
+      <div class="card-sub" style="margin-bottom:16px;">Automatic no-show remains a supported venue mode. The Craftery is currently using manual host removal after a missed return.</div>
       <button class="btn btn-primary btn-full" type="submit">Save settings</button>
     </form>
   `;
@@ -3649,7 +3649,7 @@ function renderManagerTab({ auth, venue, queue }) {
       </div>
       <div class="card">
         <div class="card-title">${queueOnlyGuestExperience ? 'Operator note' : 'Operational fallbacks'}</div>
-        <div class="card-sub">${queueOnlyGuestExperience ? 'Craftery is running as a waitlist-first venue. Payment recovery and bulk reset tools stay hidden so the host desk only sees queue-relevant controls.' : 'These are pilot-safe escape hatches to keep service moving.'}</div>
+        <div class="card-sub">${queueOnlyGuestExperience ? 'The Craftery is running as a waitlist-first venue. Payment recovery and bulk reset tools stay hidden so the host desk only sees queue-relevant controls.' : 'These are pilot-safe escape hatches to keep service moving.'}</div>
         ${queueOnlyGuestExperience ? `
           <div class="alert alert-blue" style="margin-top:16px;">
             <div>Keep Queue, Tables, Seat OTP, Seated, and History as the operational path for this venue. Mark tables clearing when guests leave to close out visits cleanly.</div>
@@ -4043,7 +4043,7 @@ function renderAdminTablesTab(tables, venue) {
     <div class="grid grid-2">
       <div class="card">
         <div class="card-title">Current tables</div>
-        <div class="card-sub">Craftery table inventory available to staff seating and manual dispatch.</div>
+        <div class="card-sub">The Craftery table inventory available to staff seating and manual dispatch.</div>
         ${tables.length ? tables.map((table) => `
           <div class="q-row">
             <div class="q-row-num">${escapeHtml(table.label)}</div>
@@ -4972,7 +4972,7 @@ function renderCrafteryGuestResources(venue, entry) {
   return `
     <section class="guest-resource-section" data-craftery-resources>
       <div class="section-head guest-resource-head">
-        <div class="section-title">Explore Craftery</div>
+        <div class="section-title">Explore The Craftery</div>
         <div class="section-sub">Open the menu or leave a review while you wait.</div>
       </div>
       <div class="guest-resource-actions">

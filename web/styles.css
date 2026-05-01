@@ -1460,13 +1460,13 @@ textarea.form-input {
 
 .guest-resource-section {
   display: grid;
-  gap: 14px;
+  gap: 0;
   justify-items: center;
   text-align: center;
 }
 
 .guest-resource-head {
-  margin-bottom: 0;
+  margin-bottom: 12px;
   text-align: center;
 }
 
@@ -1475,6 +1475,7 @@ textarea.form-input {
   gap: 10px;
   flex-wrap: wrap;
   justify-content: center;
+  margin-top: 4px;
 }
 
 .order-total-label {
