@@ -10,6 +10,12 @@ The lab keeps the same waitlist-only operating shape, but uses:
 - lightweight guest reads: `uiConfig.guestShellMode = LIGHT_WAITLIST`
 - SSE-triggered refresh: `opsConfig.realtimeMode = SSE_V1`
 
+The live Craftery venue now uses the same lightweight/realtime path after lab validation. The rollout was done as a venue configuration patch only:
+
+- live venue: `the-craftery-koramangala`
+- changed fields only: `uiConfig.guestShellMode`, `opsConfig.realtimeMode`
+- no queue entries, history rows, notification rows, guest links, staff, tables, menu/content, or payment/order data are changed
+
 ## Lab URLs
 
 - Guest landing: `/v/the-craftery-koramangala-lab`

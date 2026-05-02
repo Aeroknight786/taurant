@@ -86,7 +86,10 @@ import {
   shouldShowVenueDepositPolicy,
 } from './modules/venue.js';
 
-const PERFORMANCE_LAB_VENUE_SLUG = 'the-craftery-koramangala-lab';
+const OPTIMIZED_WAITLIST_VENUE_SLUGS = new Set([
+  'the-craftery-koramangala',
+  'the-craftery-koramangala-lab',
+]);
 
 function applyThemePreset(themePreset) {
   const fontLinkId = 'flock-theme-fonts';
@@ -525,12 +528,12 @@ function isSseRealtimeVenue(venue) {
   return venue?.config?.opsConfig?.realtimeMode === 'SSE_V1';
 }
 
-function isPerformanceLabSlug(slug) {
-  return slug === PERFORMANCE_LAB_VENUE_SLUG;
+function isOptimizedWaitlistVenueSlug(slug) {
+  return OPTIMIZED_WAITLIST_VENUE_SLUGS.has(slug);
 }
 
 async function loadVenueForGuestEntry(slug) {
-  if (!isPerformanceLabSlug(slug)) {
+  if (!isOptimizedWaitlistVenueSlug(slug)) {
     const fullVenue = await apiRequest(`/venues/${slug}`);
     uiState.guestVenueCacheBySlug[slug] = fullVenue;
     return fullVenue;
@@ -548,7 +551,7 @@ async function loadVenueForGuestEntry(slug) {
 }
 
 async function loadVenueForStaffDashboard(slug) {
-  const venue = await apiRequest(isPerformanceLabSlug(slug) ? `/venues/${slug}/lite` : `/venues/${slug}`);
+  const venue = await apiRequest(isOptimizedWaitlistVenueSlug(slug) ? `/venues/${slug}/lite` : `/venues/${slug}`);
   uiState.staffVenueCacheBySlug[slug] = venue;
   return venue;
 }

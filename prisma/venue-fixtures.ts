@@ -190,6 +190,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery' | 'crafteryLab', Ve
         defaultGuestTray: 'ordered',
         showContinueEntry: true,
         showQueuePosition: true,
+        guestShellMode: 'LIGHT_WAITLIST',
         supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
       },
       opsConfig: {
@@ -204,6 +205,7 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery' | 'crafteryLab', Ve
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
+        realtimeMode: 'SSE_V1',
       },
     },
     staff: [
