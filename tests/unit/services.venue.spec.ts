@@ -105,6 +105,17 @@ describe('venue service', () => {
         featureConfig: { guestQueue: true, preOrder: false, partyShare: false, seatedOrdering: false, finalPayment: false, staffConsole: true, adminConsole: true, historyTab: true, flowLog: false, refunds: false, offlineSettle: false, bulkClear: false },
         uiConfig: { defaultGuestTray: 'ordered', showQueuePosition: true, supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.' },
       },
+      {
+        id: 'venue_lab',
+        slug: 'the-craftery-koramangala-lab',
+        name: 'The Craftery Lab',
+        city: 'Bengaluru',
+        isQueueOpen: true,
+        brandConfig: { themeKey: 'craftery' },
+        featureConfig: { guestQueue: true },
+        uiConfig: { hideFromPublic: true, guestShellMode: 'LIGHT_WAITLIST' },
+        opsConfig: { realtimeMode: 'SSE_V1' },
+      },
     ]);
     prismaMock.venue.findUnique.mockResolvedValue({
       id: 'venue_2',
@@ -147,6 +158,9 @@ describe('venue service', () => {
           showQueuePosition: true,
         }),
       }),
+    ]));
+    expect(publicVenues).not.toEqual(expect.arrayContaining([
+      expect.objectContaining({ slug: 'the-craftery-koramangala-lab' }),
     ]));
 
     const venue = await getVenueBySlug('the-craftery-koramangala');

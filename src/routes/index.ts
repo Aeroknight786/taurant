@@ -8,6 +8,7 @@ import contentRoutes from './content.routes';
 import orderRoutes   from './order.routes';
 import paymentRoutes from './payment.routes';
 import partySessionRoutes from './partySession.routes';
+import realtimeRoutes from './realtime.routes';
 import { prisma } from '../config/database';
 import { isRedisReady } from '../config/redis';
 import { env } from '../config/env';
@@ -170,5 +171,6 @@ router.use('/content',  contentRoutes);
 router.use('/orders',   orderRoutes);
 router.use('/payments', paymentRoutes);
 router.use('/party-sessions', partySessionRoutes);
+router.use('/realtime', realtimeRoutes);
 
 export default router;

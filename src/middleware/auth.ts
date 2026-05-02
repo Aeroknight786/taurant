@@ -15,7 +15,7 @@ function getBearerToken(req: AuthenticatedRequest): string | null {
   return authHeader.slice(7);
 }
 
-async function loadGuestAuthContext(token: string) {
+export async function loadGuestAuthContext(token: string) {
   const payload = verifyToken(token);
   if (payload.kind !== 'guest') {
     throw new AppError('Invalid token kind', 401, 'UNAUTHORIZED');
@@ -72,6 +72,27 @@ async function loadGuestAuthContext(token: string) {
   };
 }
 
+export async function loadStaffAuthContext(token: string) {
+  const payload = verifyToken(token);
+  if (payload.kind !== 'staff') {
+    throw new AppError('Invalid token kind', 401, 'UNAUTHORIZED');
+  }
+
+  const staff = await prisma.staff.findFirst({
+    where: { id: payload.staffId, venueId: payload.venueId, isActive: true },
+    include: { venue: true },
+  });
+
+  if (!staff) {
+    throw new AppError('Staff session invalid', 401, 'UNAUTHORIZED');
+  }
+
+  return {
+    staff,
+    venue: staff.venue,
+  };
+}
+
 export async function requireAuth(
   req: AuthenticatedRequest,
   res: Response,
@@ -83,18 +104,9 @@ export async function requireAuth(
     return;
   }
   try {
-    const payload = verifyToken(token);
-    if (payload.kind !== 'staff') {
-      unauthorized(res, 'Invalid token kind');
-      return;
-    }
-    const staff = await prisma.staff.findFirst({
-      where: { id: payload.staffId, venueId: payload.venueId, isActive: true },
-      include: { venue: true },
-    });
-    if (!staff) { unauthorized(res); return; }
+    const { staff, venue } = await loadStaffAuthContext(token);
     req.staff = staff;
-    req.venue = staff.venue;
+    req.venue = venue;
     next();
   } catch {
     unauthorized(res, 'Invalid or expired token');

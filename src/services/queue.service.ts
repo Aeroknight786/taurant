@@ -27,6 +27,7 @@ import {
   issueQueueAccessLink,
   resolveGuestAccessModeFromQueueEntry,
 } from './guestAccessLink.service';
+import { publishQueueRealtimeEvent } from './realtime.service';
 
 const AVG_TURN_MINUTES = 55; // used for wait time estimation
 type QueueReorderDirection = 'UP' | 'DOWN';
@@ -54,6 +55,14 @@ function serialiseQueueEntry<T extends QueueLateStateShape>(entry: T): T & { isL
     ...entry,
     isLateNoResponse: isLateNoResponseEntry(entry),
   };
+}
+
+function publishQueueChange(venueId: string, type: string, entryId?: string): void {
+  publishQueueRealtimeEvent({
+    type,
+    venueId,
+    entryId,
+  });
 }
 
 // ── Join queue ────────────────────────────────────────────────────
@@ -146,6 +155,7 @@ export async function joinQueue(params: {
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(params.venueId), JSON.stringify({ type: 'ENTRY_ADDED', position }))
   );
+  publishQueueChange(params.venueId, 'ENTRY_ADDED', entry.id);
 
   const shouldSendJoinNotification = shouldSendJoinQueueNotification(venueConfig)
     && (!requiresCrafteryWhatsAppConsent(venue.slug) || entry.whatsappConsentGiven);
@@ -260,6 +270,64 @@ export async function getVenueQueue(venueId: string) {
   return entries.map((entry) => serialiseQueueEntry(entry));
 }
 
+export async function getVenueQueueSnapshot(venueId: string) {
+  const venue = await prisma.venue.findUnique({
+    where: { id: venueId },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+  const venueConfig = venue ? resolveVenueConfig(venue) : null;
+  const entries = await prisma.queueEntry.findMany({
+    where: {
+      venueId,
+      status: venueConfig && isQueueCompleteVenue(venueConfig)
+        ? { in: ['WAITING', 'NOTIFIED'] }
+        : { in: ['WAITING', 'NOTIFIED', 'SEATED'] },
+    },
+    orderBy: { position: 'asc' },
+    select: {
+      id: true,
+      venueId: true,
+      displayRef: true,
+      guestName: true,
+      guestPhone: true,
+      partySize: true,
+      seatingPreference: true,
+      guestNotes: true,
+      position: true,
+      otp: true,
+      status: true,
+      tableId: true,
+      seatedAt: true,
+      notifiedAt: true,
+      tableReadyDeadlineAt: true,
+      tableReadyExpiredAt: true,
+      completedAt: true,
+      preOrderTotal: true,
+      depositPaid: true,
+      estimatedWaitMin: true,
+      joinedAt: true,
+      updatedAt: true,
+      table: {
+        select: {
+          id: true,
+          label: true,
+          section: true,
+        },
+      },
+    },
+  });
+
+  return entries.map((entry) => serialiseQueueEntry(entry));
+}
+
 // ── Get recent completed / cancelled entries (history) ────────────
 
 export async function getRecentCompletedEntries(venueId: string, limit = 20) {
@@ -309,6 +377,51 @@ export async function getQueueEntry(entryId: string) {
 
   const { otp: _otp, ...safeEntry } = entry;
   return serialiseQueueEntry(safeEntry);
+}
+
+export async function getQueueEntryStatus(entryId: string) {
+  const entry = await prisma.queueEntry.findUnique({
+    where: { id: entryId },
+    select: {
+      id: true,
+      venueId: true,
+      displayRef: true,
+      guestName: true,
+      guestPhone: true,
+      partySize: true,
+      seatingPreference: true,
+      guestNotes: true,
+      position: true,
+      status: true,
+      tableId: true,
+      seatedAt: true,
+      notifiedAt: true,
+      tableReadyDeadlineAt: true,
+      tableReadyExpiredAt: true,
+      completedAt: true,
+      preOrderTotal: true,
+      depositPaid: true,
+      estimatedWaitMin: true,
+      joinedAt: true,
+      updatedAt: true,
+      table: {
+        select: {
+          label: true,
+          section: true,
+        },
+      },
+      partySession: {
+        select: {
+          id: true,
+          joinToken: true,
+          status: true,
+        },
+      },
+    },
+  });
+  if (!entry) throw new AppError('Queue entry not found', 404);
+
+  return serialiseQueueEntry(entry);
 }
 
 export async function reissueGuestSession(entryId: string, otp: string) {
@@ -444,6 +557,7 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NOTIFIED', entryId: entry.id }))
   );
+  publishQueueChange(venueId, 'ENTRY_NOTIFIED', entry.id);
 
   const shouldSendReadyWhatsApp = !requiresCrafteryWhatsAppConsent(venue.slug) || entry.whatsappConsentGiven;
   let accessLink: Awaited<ReturnType<typeof issueQueueAccessLink>> | null = null;
@@ -583,6 +697,7 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NUDGED', entryId: entry.id }))
   );
+  publishQueueChange(venueId, 'ENTRY_NUDGED', entry.id);
 
   await logFlowEvent({
     queueEntryId: entry.id,
@@ -696,6 +811,7 @@ export async function markQueueEntryNoShow(entryId: string, venueId: string): Pr
       noShowAt: noShowAt.toISOString(),
     }))
   );
+  publishQueueChange(venueId, 'ENTRY_NO_SHOW', entry.id);
 
   if (releasedTableId) {
     await tryAdvanceQueue(venueId, releasedTableId);
@@ -817,6 +933,7 @@ export async function reorderQueueEntry(
       reorderedAt: reorderedAt.toISOString(),
     }))
   );
+  publishQueueChange(venueId, 'ENTRY_REORDERED', entryId);
 
   await logFlowEvent({
     queueEntryId: entry.id,
@@ -906,6 +1023,7 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
       prioritizedAt: prioritizedAt.toISOString(),
     }))
   );
+  publishQueueChange(venueId, 'ENTRY_PRIORITIZED', entryId);
 
   await logFlowEvent({
     queueEntryId: entry.id,
@@ -1018,6 +1136,7 @@ export async function seatGuest(params: {
       entryId: entry.id,
     }))
   );
+  publishQueueChange(params.venueId, queueCompleteVenue ? 'ENTRY_COMPLETED' : 'ENTRY_SEATED', entry.id);
 
   let preOrderSync: { attempted: boolean; status: string; posOrderId?: string } = {
     attempted: false,
@@ -1154,6 +1273,7 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_CANCELLED', entryId }))
   );
+  publishQueueChange(venueId, 'ENTRY_CANCELLED', entryId);
 
   await logFlowEvent({
     queueEntryId: entryId,
@@ -1246,6 +1366,7 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
       redis.publish(PubSubChannels.tableUpdate(entry.venueId), JSON.stringify({ type: 'TABLE_CLEARING', tableId: entry.tableId }))
     );
   }
+  publishQueueChange(entry.venueId, 'ENTRY_COMPLETED', entryId);
 
   await logFlowEvent({
     queueEntryId: entryId,
@@ -1300,6 +1421,8 @@ export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: 
       });
     }
   });
+
+  publishQueueChange(venueId, 'QUEUE_CLEARED');
 
   return { cleared: active.length };
 }

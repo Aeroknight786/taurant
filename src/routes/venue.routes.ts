@@ -6,6 +6,7 @@ const router = Router();
 router.post ('/',            requireOnboardingToken, Venue.createVenue);
 router.get  ('/public',      Venue.getPublicVenues);
 router.get  ('/stats/today', requireAuth, Venue.getVenueStats);
+router.get  ('/:slug/lite',  Venue.getVenueLiteBySlug);
 router.get  ('/:slug',       Venue.getVenueBySlug);
 router.patch('/config',      requireAuth, requireRole('OWNER', 'MANAGER'), Venue.updateVenueConfig);
 export default router;

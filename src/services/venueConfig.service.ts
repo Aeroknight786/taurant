@@ -36,6 +36,8 @@ export const VenueGuestWaitFormulaSchema = z.enum(['LEGACY_TURN_HEURISTIC', 'SUB
 export const VenueContentModeSchema = z.enum(['DEFAULT', 'SUBKO_WAIT_CONTENT', 'DISABLED']);
 export const VenueArrivalCompletionModeSchema = z.enum(['TABLE_ASSIGN', 'QUEUE_COMPLETE']);
 export const VenuePostWindowHandlingModeSchema = z.enum(['AUTO_NO_SHOW', 'MANUAL_REMOVE']);
+export const VenueGuestShellModeSchema = z.enum(['STANDARD', 'LIGHT_WAITLIST']);
+export const VenueRealtimeModeSchema = z.enum(['POLLING', 'SSE_V1']);
 
 export const VenueBrandConfigSchema = z.object({
   displayName: optionalTrimmedString(120),
@@ -66,6 +68,8 @@ export const VenueUiConfigSchema = z.object({
   defaultGuestTray: z.enum(['menu', 'bucket', 'ordered']).optional(),
   showContinueEntry: z.boolean().optional(),
   showQueuePosition: z.boolean().optional(),
+  hideFromPublic: z.boolean().optional(),
+  guestShellMode: VenueGuestShellModeSchema.optional(),
   supportCopy: optionalTrimmedString(240),
 }).strict();
 
@@ -81,6 +85,7 @@ export const VenueOpsConfigSchema = z.object({
   contentMode: VenueContentModeSchema.optional(),
   arrivalCompletionMode: VenueArrivalCompletionModeSchema.optional(),
   postWindowHandlingMode: VenuePostWindowHandlingModeSchema.optional(),
+  realtimeMode: VenueRealtimeModeSchema.optional(),
 }).strict();
 
 export type VenueBrandConfig = z.infer<typeof VenueBrandConfigSchema>;
@@ -103,6 +108,8 @@ export type ResolvedVenueUiConfig = {
   defaultGuestTray: 'menu' | 'bucket' | 'ordered';
   showContinueEntry: boolean;
   showQueuePosition: boolean;
+  hideFromPublic: boolean;
+  guestShellMode: z.infer<typeof VenueGuestShellModeSchema>;
   supportCopy: string;
 };
 
@@ -118,6 +125,7 @@ export type ResolvedVenueOpsConfig = {
   contentMode: z.infer<typeof VenueContentModeSchema>;
   arrivalCompletionMode: z.infer<typeof VenueArrivalCompletionModeSchema>;
   postWindowHandlingMode: z.infer<typeof VenuePostWindowHandlingModeSchema>;
+  realtimeMode: z.infer<typeof VenueRealtimeModeSchema>;
 };
 
 export type ResolvedVenueConfig = {
@@ -170,6 +178,8 @@ const DEFAULT_VENUE_UI_CONFIG: ResolvedVenueUiConfig = {
   defaultGuestTray: 'menu',
   showContinueEntry: true,
   showQueuePosition: true,
+  hideFromPublic: false,
+  guestShellMode: 'STANDARD',
   supportCopy: 'No app download. Use your phone number as your queue identity and receive a seating OTP instantly.',
 };
 
@@ -185,6 +195,7 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
   postWindowHandlingMode: 'AUTO_NO_SHOW',
+  realtimeMode: 'POLLING',
 };
 
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
@@ -347,6 +358,8 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       landingMode: config.uiConfig.landingMode,
       showContinueEntry: config.uiConfig.showContinueEntry,
       showQueuePosition: config.uiConfig.showQueuePosition,
+      hideFromPublic: config.uiConfig.hideFromPublic,
+      guestShellMode: config.uiConfig.guestShellMode,
       supportCopy: config.uiConfig.supportCopy,
     },
     opsConfig: {
@@ -361,6 +374,7 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       contentMode: config.opsConfig.contentMode,
       arrivalCompletionMode: config.opsConfig.arrivalCompletionMode,
       postWindowHandlingMode: config.opsConfig.postWindowHandlingMode,
+      realtimeMode: config.opsConfig.realtimeMode,
     },
   };
 }
@@ -395,4 +409,19 @@ export function shouldUseVenueContent(config: Pick<ResolvedVenueConfig, 'opsConf
 export function shouldHandlePostWindowManually(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
   const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
   return opsConfig.postWindowHandlingMode === 'MANUAL_REMOVE';
+}
+
+export function shouldHideVenueFromPublic(config: Pick<ResolvedVenueConfig, 'uiConfig'> | ResolvedVenueUiConfig): boolean {
+  const uiConfig = 'uiConfig' in config ? config.uiConfig : config;
+  return uiConfig.hideFromPublic;
+}
+
+export function shouldUseLightGuestShell(config: Pick<ResolvedVenueConfig, 'uiConfig'> | ResolvedVenueUiConfig): boolean {
+  const uiConfig = 'uiConfig' in config ? config.uiConfig : config;
+  return uiConfig.guestShellMode === 'LIGHT_WAITLIST';
+}
+
+export function shouldUseSseRealtime(config: Pick<ResolvedVenueConfig, 'opsConfig'> | ResolvedVenueOpsConfig): boolean {
+  const opsConfig = 'opsConfig' in config ? config.opsConfig : config;
+  return opsConfig.realtimeMode === 'SSE_V1';
 }

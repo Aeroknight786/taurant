@@ -17,6 +17,13 @@ export async function getVenueBySlug(req: Request, res: Response, next: NextFunc
   } catch (e) { next(e); }
 }
 
+export async function getVenueLiteBySlug(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const venue = await VenueService.getVenueLiteBySlug(req.params.slug);
+    ok(res, venue);
+  } catch (e) { next(e); }
+}
+
 export async function getPublicVenues(_req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const venues = await VenueService.getPublicVenues();

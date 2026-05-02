@@ -86,6 +86,8 @@ import {
   shouldShowVenueDepositPolicy,
 } from './modules/venue.js';
 
+const PERFORMANCE_LAB_VENUE_SLUG = 'the-craftery-koramangala-lab';
+
 function applyThemePreset(themePreset) {
   const fontLinkId = 'flock-theme-fonts';
   const stylesheetId = 'flock-theme-stylesheet';
@@ -158,6 +160,10 @@ const uiState = {
   guestTrayUserChosen: false,
   guestMenuActiveCategory: null,
   activeGuestView: null,
+  guestVenueCacheBySlug: {},
+  guestRealtimeSource: null,
+  guestRealtimeKey: '',
+  guestRealtimeRefreshPending: false,
   activePartySessionId: null,
   partySessionMeta: null,
   partyParticipants: [],
@@ -197,6 +203,10 @@ const uiState = {
   staffStatsFetchedAt: 0,
   staffTables: [],
   staffTablesFetchedAt: 0,
+  staffVenueCacheBySlug: {},
+  staffRealtimeSource: null,
+  staffRealtimeKey: '',
+  staffRealtimeRefreshPending: false,
   staffRecentTableEvents: [],
   staffRecentTableEventsFetchedAt: 0,
   staffHistory: [],
@@ -407,6 +417,7 @@ function resetPartyBucketState() {
 
 function resetActiveGuestShellState() {
   clearPartySessionPolling();
+  closeGuestRealtime();
   uiState.activeGuestView = null;
   uiState.activePartySessionId = null;
   uiState.partySessionMeta = null;
@@ -423,6 +434,14 @@ function scheduleRefresh(fn, delayMs) {
 
 function navigate(path, options = {}) {
   clearTimer();
+  const nextGuestContext = path.match(/^\/v\/([^/]+)\/e\/([^/?#]+)/);
+  const nextStaffContext = path.match(/^\/v\/([^/]+)\/staff\/dashboard/);
+  if (!nextGuestContext) {
+    closeGuestRealtime();
+  }
+  if (!nextStaffContext) {
+    closeStaffRealtime();
+  }
   if (window.location.pathname === path) {
     renderRoute().catch(handleFatalError);
     return;
@@ -496,6 +515,260 @@ function stripGuestAccessTokenFromUrl() {
   url.searchParams.delete('access');
   const nextUrl = `${url.pathname}${url.search}${url.hash}`;
   history.replaceState({}, '', nextUrl);
+}
+
+function isLightGuestShellVenue(venue) {
+  return venue?.config?.uiConfig?.guestShellMode === 'LIGHT_WAITLIST';
+}
+
+function isSseRealtimeVenue(venue) {
+  return venue?.config?.opsConfig?.realtimeMode === 'SSE_V1';
+}
+
+function isPerformanceLabSlug(slug) {
+  return slug === PERFORMANCE_LAB_VENUE_SLUG;
+}
+
+async function loadVenueForGuestEntry(slug) {
+  if (!isPerformanceLabSlug(slug)) {
+    const fullVenue = await apiRequest(`/venues/${slug}`);
+    uiState.guestVenueCacheBySlug[slug] = fullVenue;
+    return fullVenue;
+  }
+
+  const liteVenue = await apiRequest(`/venues/${slug}/lite`);
+  if (isLightGuestShellVenue(liteVenue)) {
+    uiState.guestVenueCacheBySlug[slug] = liteVenue;
+    return liteVenue;
+  }
+
+  const fullVenue = await apiRequest(`/venues/${slug}`);
+  uiState.guestVenueCacheBySlug[slug] = fullVenue;
+  return fullVenue;
+}
+
+async function loadVenueForStaffDashboard(slug) {
+  const venue = await apiRequest(isPerformanceLabSlug(slug) ? `/venues/${slug}/lite` : `/venues/${slug}`);
+  uiState.staffVenueCacheBySlug[slug] = venue;
+  return venue;
+}
+
+function getGuestQueueEntryPath(venue, entryId) {
+  return isLightGuestShellVenue(venue) ? `/queue/${entryId}/status` : `/queue/${entryId}`;
+}
+
+function getStaffQueuePath(venue) {
+  return isLightGuestShellVenue(venue) || isSseRealtimeVenue(venue) ? '/queue/live-snapshot' : '/queue/live';
+}
+
+function resolveGuestLiveRefreshMs(venue) {
+  return isSseRealtimeVenue(venue) ? 30_000 : 5_000;
+}
+
+function resolveStaffLiveRefreshMs({ venue, currentTab, dependencyWarnings }) {
+  if (isSseRealtimeVenue(venue) && !dependencyWarnings.length && currentTab === 'queue') {
+    return 30_000;
+  }
+
+  return resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings });
+}
+
+function handleRealtimeSseBlock(block, onQueueUpdate) {
+  if (!block) {
+    return;
+  }
+
+  let eventName = 'message';
+  const dataLines = [];
+  block.split(/\r?\n/).forEach((line) => {
+    if (!line || line.startsWith(':')) {
+      return;
+    }
+
+    const separatorIndex = line.indexOf(':');
+    const field = separatorIndex >= 0 ? line.slice(0, separatorIndex) : line;
+    const value = separatorIndex >= 0 ? line.slice(separatorIndex + 1).trimStart() : '';
+    if (field === 'event') {
+      eventName = value;
+    } else if (field === 'data') {
+      dataLines.push(value);
+    }
+  });
+
+  if (eventName !== 'queue-update') {
+    return;
+  }
+
+  if (dataLines.length) {
+    try {
+      JSON.parse(dataLines.join('\n'));
+    } catch (error) {
+      console.warn('Realtime queue update parse failed:', error);
+    }
+  }
+  onQueueUpdate();
+}
+
+function openRealtimeStream({ path, token, onQueueUpdate }) {
+  const canStream = typeof fetch === 'function'
+    && typeof AbortController !== 'undefined'
+    && typeof TextDecoder !== 'undefined';
+  if (!canStream) {
+    return null;
+  }
+
+  const controller = new AbortController();
+  let closed = false;
+  let reconnectTimer = null;
+
+  const connect = async () => {
+    try {
+      const response = await fetch(`${API_BASE}${path}`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          Accept: 'text/event-stream',
+        },
+        cache: 'no-store',
+        signal: controller.signal,
+      });
+      if (!response.ok || !response.body) {
+        throw new Error(`Realtime stream failed with ${response.status}`);
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      while (!closed) {
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        let boundaryIndex = buffer.indexOf('\n\n');
+        while (boundaryIndex >= 0) {
+          const block = buffer.slice(0, boundaryIndex).trimEnd();
+          buffer = buffer.slice(boundaryIndex + 2);
+          handleRealtimeSseBlock(block, onQueueUpdate);
+          boundaryIndex = buffer.indexOf('\n\n');
+        }
+      }
+    } catch (error) {
+      if (!closed) {
+        console.warn('Realtime stream interrupted:', error);
+      }
+    }
+
+    if (!closed) {
+      reconnectTimer = window.setTimeout(connect, 3000);
+    }
+  };
+
+  connect();
+
+  return {
+    close() {
+      closed = true;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+      }
+      controller.abort();
+    },
+  };
+}
+
+function closeGuestRealtime() {
+  if (uiState.guestRealtimeSource) {
+    uiState.guestRealtimeSource.close();
+    uiState.guestRealtimeSource = null;
+  }
+  uiState.guestRealtimeKey = '';
+  uiState.guestRealtimeRefreshPending = false;
+}
+
+function closeStaffRealtime() {
+  if (uiState.staffRealtimeSource) {
+    uiState.staffRealtimeSource.close();
+    uiState.staffRealtimeSource = null;
+  }
+  uiState.staffRealtimeKey = '';
+  uiState.staffRealtimeRefreshPending = false;
+}
+
+function ensureGuestRealtime({ slug, entryId, venue, guestToken }) {
+  if (!isSseRealtimeVenue(venue) || !guestToken) {
+    closeGuestRealtime();
+    return;
+  }
+
+  const key = `${slug}:${entryId}:${guestToken.slice(-12)}`;
+  if (uiState.guestRealtimeKey === key && uiState.guestRealtimeSource) {
+    return;
+  }
+
+  closeGuestRealtime();
+  const source = openRealtimeStream({
+    path: `/realtime/guest/${encodeURIComponent(entryId)}`,
+    token: guestToken,
+    onQueueUpdate: () => {
+      const routeContext = getCurrentGuestRouteContext();
+      if (!routeContext || routeContext.slug !== slug || routeContext.entryId !== entryId || uiState.guestRealtimeRefreshPending) {
+        return;
+      }
+
+      uiState.guestRealtimeRefreshPending = true;
+      window.setTimeout(() => {
+        uiState.guestRealtimeRefreshPending = false;
+        refreshGuestLiveView(slug, entryId).catch(handleBackgroundRefreshError);
+      }, 60);
+    },
+  });
+  if (!source) {
+    closeGuestRealtime();
+    return;
+  }
+  uiState.guestRealtimeSource = source;
+  uiState.guestRealtimeKey = key;
+}
+
+function ensureStaffRealtime({ activeSlug, venue, refreshToken }) {
+  const auth = getStaffAuth();
+  if (!isSseRealtimeVenue(venue) || !auth?.token) {
+    closeStaffRealtime();
+    return;
+  }
+
+  const key = `${activeSlug}:${auth.token.slice(-12)}`;
+  if (uiState.staffRealtimeKey === key && uiState.staffRealtimeSource) {
+    return;
+  }
+
+  closeStaffRealtime();
+  const source = openRealtimeStream({
+    path: '/realtime/staff/queue',
+    token: auth.token,
+    onQueueUpdate: () => {
+      if (!isStaffDashboardRouteForSlug(activeSlug) || uiState.staffRealtimeRefreshPending) {
+        return;
+      }
+
+      uiState.staffRealtimeRefreshPending = true;
+      window.setTimeout(() => {
+        uiState.staffRealtimeRefreshPending = false;
+        refreshStaffDashboardLivePanel({
+          activeSlug,
+          scheduledTab: uiState.staffTab,
+          refreshToken: uiState.staffDashboardRefreshToken,
+        }).catch(handleBackgroundRefreshError);
+      }, 60);
+    },
+  });
+  if (!source) {
+    closeStaffRealtime();
+    return;
+  }
+  uiState.staffRealtimeSource = source;
+  uiState.staffRealtimeKey = key;
 }
 
 async function redeemGuestAccessToken({ slug, entryId, venue, accessToken }) {
@@ -1181,7 +1454,7 @@ async function renderVenueLanding(slug) {
 
 async function renderGuestEntry(slug, entryId) {
   let guestSession = getGuestSession(entryId);
-  const venue = await apiRequest(`/venues/${slug}`);
+  const venue = await loadVenueForGuestEntry(slug);
   applyVenueThemeForVenue(venue);
   const venueName = resolveVenueDisplayName(venue);
   const accessToken = getGuestAccessTokenFromUrl();
@@ -1305,7 +1578,7 @@ async function renderGuestEntry(slug, entryId) {
 
   let entry;
   try {
-    entry = await apiRequest(`/queue/${entryId}`, {
+    entry = await apiRequest(getGuestQueueEntryPath(venue, entryId), {
       auth: 'guest',
       guestToken: guestSession.guestToken,
     });
@@ -1317,7 +1590,7 @@ async function renderGuestEntry(slug, entryId) {
         guestSession = redeemedSession;
         accessRedeemed = true;
         try {
-          entry = await apiRequest(`/queue/${entryId}`, {
+          entry = await apiRequest(getGuestQueueEntryPath(venue, entryId), {
             auth: 'guest',
             guestToken: guestSession.guestToken,
           });
@@ -1411,6 +1684,15 @@ async function renderGuestEntry(slug, entryId) {
       guestToken: guestSession.guestToken,
     }).catch(() => null)
     : null;
+  uiState.activeGuestView = {
+    slug,
+    entryId,
+    entry,
+    venue,
+    bill,
+    guestSession,
+    refreshSeatedShell: null,
+  };
 
   const hasDeposit = entry.depositPaid > 0;
   const activeStep = queueOnlyGuestExperience
@@ -1562,9 +1844,12 @@ async function renderGuestEntry(slug, entryId) {
   });
 
   if (['WAITING', 'NOTIFIED'].includes(entry.status)) {
+    ensureGuestRealtime({ slug, entryId, venue, guestToken: guestSession.guestToken });
     if (!uiState.shareSheetOpen) {
-      scheduleRefresh(() => refreshGuestLiveView(slug, entryId), 5000);
+      scheduleRefresh(() => refreshGuestLiveView(slug, entryId), resolveGuestLiveRefreshMs(venue));
     }
+  } else {
+    closeGuestRealtime();
   }
 }
 
@@ -1580,15 +1865,20 @@ async function refreshGuestLiveView(slug, entryId) {
     return;
   }
 
-  const [venue, entry] = await Promise.all([
-    apiRequest(`/venues/${slug}`),
-    apiRequest(`/queue/${entryId}`, {
-      auth: 'guest',
-      guestToken: guestSession.guestToken,
-    }),
-  ]);
+  let venue = uiState.activeGuestView?.slug === slug
+    ? uiState.activeGuestView.venue
+    : uiState.guestVenueCacheBySlug[slug];
+  if (!venue) {
+    venue = await loadVenueForGuestEntry(slug);
+  }
+
+  const entry = await apiRequest(getGuestQueueEntryPath(venue, entryId), {
+    auth: 'guest',
+    guestToken: guestSession.guestToken,
+  });
 
   if (!isQueueOnlyGuestExperience(venue) || !['WAITING', 'NOTIFIED'].includes(entry.status)) {
+    closeGuestRealtime();
     await renderGuestEntry(slug, entryId);
     return;
   }
@@ -1599,7 +1889,7 @@ async function refreshGuestLiveView(slug, entryId) {
   const stepbarHost = document.getElementById('guest-live-stepbar');
   const bannerHost = document.getElementById('guest-live-banner');
 
-  if (!heroHost || !cardsHost || !contentHost || !stepbarHost || !bannerHost) {
+  if (!heroHost || !cardsHost || !stepbarHost || !bannerHost) {
     await renderGuestEntry(slug, entryId);
     return;
   }
@@ -1624,6 +1914,16 @@ async function refreshGuestLiveView(slug, entryId) {
     const waitContentHtml = renderSubkoWaitContentBlock(venue, entry);
     contentHost.innerHTML = waitContentHtml;
   }
+  uiState.activeGuestView = {
+    ...(uiState.activeGuestView || {}),
+    slug,
+    entryId,
+    entry,
+    venue,
+    bill: null,
+    guestSession,
+  };
+  ensureGuestRealtime({ slug, entryId, venue, guestToken: guestSession.guestToken });
 
   document.getElementById('leave-waitlist-cta')?.addEventListener('click', () => {
     const currentSession = getGuestSession(entryId);
@@ -1648,7 +1948,7 @@ async function refreshGuestLiveView(slug, entryId) {
     });
   });
 
-  scheduleRefresh(() => refreshGuestLiveView(slug, entryId), 5000);
+  scheduleRefresh(() => refreshGuestLiveView(slug, entryId), resolveGuestLiveRefreshMs(venue));
 }
 
 async function renderGuestSessionJoin(slug, joinToken) {
@@ -2386,7 +2686,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   const dependencyWarnings = [];
 
   try {
-    venue = await apiRequest(`/venues/${activeSlug}`);
+    venue = await loadVenueForStaffDashboard(activeSlug);
     applyVenueThemeForVenue(venue);
   } catch (error) {
     if (isAuthErrorMessage(error.message)) {
@@ -2438,7 +2738,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   });
 
   const [queueResult, tablesResult, eventsResult] = await Promise.allSettled([
-    queueModuleEnabled ? apiRequest('/queue/live', { auth: true }) : Promise.resolve([]),
+    queueModuleEnabled ? apiRequest(getStaffQueuePath(venue), { auth: true }) : Promise.resolve([]),
     fetchPlan.shouldFetchTables
       ? apiRequest('/tables', { auth: true })
       : Promise.resolve(tables),
@@ -2584,6 +2884,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   });
 
   scrollActiveTabIntoView();
+  ensureStaffRealtime({ activeSlug, venue, refreshToken });
 
   document.getElementById('staff-logout')?.addEventListener('click', () => {
     clearStaffAuth();
@@ -2784,7 +3085,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   }));
 
   if (currentTab !== 'seat' && !uiState.staffSeat.isSubmitting) {
-    const refreshMs = resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings });
+    const refreshMs = resolveStaffLiveRefreshMs({ venue, currentTab, dependencyWarnings });
     scheduleRefresh(() => refreshStaffDashboardLivePanel({
       activeSlug,
       scheduledTab: currentTab,
@@ -3743,15 +4044,18 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
     return;
   }
 
-  const venue = await apiRequest(`/venues/${activeSlug}`).catch(async (error) => {
-    if (isAuthErrorMessage(error.message)) {
-      clearStaffAuth();
-      navigateToStaffLogin(activeSlug, { replace: true });
-      return null;
-    }
-    throw error;
-  });
-  if (!venue) {
+  let liveVenue = uiState.staffVenueCacheBySlug[activeSlug] || null;
+  if (!liveVenue || !isSseRealtimeVenue(liveVenue)) {
+    liveVenue = await loadVenueForStaffDashboard(activeSlug).catch(async (error) => {
+      if (isAuthErrorMessage(error.message)) {
+        clearStaffAuth();
+        navigateToStaffLogin(activeSlug, { replace: true });
+        return null;
+      }
+      throw error;
+    });
+  }
+  if (!liveVenue) {
     return;
   }
 
@@ -3759,8 +4063,8 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
     return;
   }
 
-  const queueModuleEnabled = Boolean(venue.config?.featureConfig?.guestQueue);
-  const historyTabEnabled = Boolean(venue.config?.featureConfig?.historyTab);
+  const queueModuleEnabled = Boolean(liveVenue.config?.featureConfig?.guestQueue);
+  const historyTabEnabled = Boolean(liveVenue.config?.featureConfig?.historyTab);
   const dependencyWarnings = [];
   const fetchPlan = buildStaffDashboardFetchPlan({
     currentTab,
@@ -3773,7 +4077,7 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
   let recentTableEvents = uiState.staffRecentTableEvents || [];
 
   const [queueResult, tablesResult, eventsResult] = await Promise.allSettled([
-    queueModuleEnabled ? apiRequest('/queue/live', { auth: true }) : Promise.resolve([]),
+    queueModuleEnabled ? apiRequest(getStaffQueuePath(liveVenue), { auth: true }) : Promise.resolve([]),
     fetchPlan.shouldFetchTables ? apiRequest('/tables', { auth: true }) : Promise.resolve(tables),
     fetchPlan.shouldFetchRecentTableEvents ? apiRequest('/tables/events/recent', { auth: true }) : Promise.resolve(recentTableEvents),
   ]);
@@ -3830,7 +4134,7 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
   const waiting = queue.filter((entry) => entry.status === 'WAITING' || entry.status === 'NOTIFIED');
   const seated = queue.filter((entry) => entry.status === 'SEATED');
   let seatedBills = uiState.staffSeatedBills;
-  const shouldRefreshSeatedBills = shouldLoadVenueBills(venue)
+  const shouldRefreshSeatedBills = shouldLoadVenueBills(liveVenue)
     && currentTab === 'seated'
     && (
       !uiState.staffLastUpdatedAt
@@ -3848,7 +4152,7 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
   }
 
   uiState.staffLastUpdatedAt = Date.now();
-  applyVenueThemeForVenue(venue);
+  applyVenueThemeForVenue(liveVenue);
 
   const warningHost = document.getElementById('staff-dependency-warnings');
   const bannerHost = document.getElementById('staff-live-banner');
@@ -3861,14 +4165,14 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
 
   preserveStaffLiveScroll(() => {
     warningHost.innerHTML = renderDependencyWarnings(dependencyWarnings);
-    bannerHost.innerHTML = isManualDispatchVenue(venue)
+    bannerHost.innerHTML = isManualDispatchVenue(liveVenue)
       ? `
         <div class="alert alert-blue" style="margin-bottom:18px;">
-          <div>${isWaitlistOnlyVenue(venue) ? 'Waitlist-only mode is active. Notify the next party, then verify their OTP to complete the visit.' : 'Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.'}</div>
+          <div>${isWaitlistOnlyVenue(liveVenue) ? 'Waitlist-only mode is active. Notify the next party, then verify their OTP to complete the visit.' : 'Manual dispatch mode is active. Use the queue row to notify the next party, then seat by OTP when they arrive.'}</div>
         </div>
       `
       : '';
-    statsHost.innerHTML = renderStaffStatsTiles(stats, venue);
+    statsHost.innerHTML = renderStaffStatsTiles(stats, liveVenue);
     panelHost.innerHTML = renderStaffActiveTabPanel({
       currentTab,
       queueModuleEnabled,
@@ -3878,15 +4182,16 @@ async function refreshStaffDashboardLivePanel({ activeSlug, scheduledTab, refres
       seatedBills,
       tables,
       recentTableEvents,
-      venue,
+      venue: liveVenue,
     });
   });
+  ensureStaffRealtime({ activeSlug, venue: liveVenue, refreshToken });
 
   scheduleRefresh(() => refreshStaffDashboardLivePanel({
     activeSlug,
     scheduledTab: currentTab,
     refreshToken,
-  }), resolveStaffDashboardRefreshMs({ currentTab, dependencyWarnings }));
+  }), resolveStaffLiveRefreshMs({ venue: liveVenue, currentTab, dependencyWarnings }));
 }
 
 function renderAdminMenuTab(categories, venue) {

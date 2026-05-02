@@ -9,7 +9,9 @@ const {
   queueServiceMock: {
     joinQueue: vi.fn(),
     getVenueQueue: vi.fn(),
+    getVenueQueueSnapshot: vi.fn(),
     getQueueEntry: vi.fn(),
+    getQueueEntryStatus: vi.fn(),
     reissueGuestSession: vi.fn(),
     leaveQueueEntry: vi.fn(),
     notifyQueueEntry: vi.fn(),
@@ -124,6 +126,7 @@ describe('queue and party-session routes', () => {
       guestToken: 'guest-token',
     });
     queueServiceMock.getVenueQueue.mockResolvedValue([{ id: 'entry_1' }]);
+    queueServiceMock.getVenueQueueSnapshot.mockResolvedValue([{ id: 'entry_1', guestName: 'Neha' }]);
     queueServiceMock.reissueGuestSession.mockResolvedValue({ guestToken: 'guest-token-2' });
     queueServiceMock.leaveQueueEntry.mockResolvedValue({
       queueCancelled: true,
@@ -195,6 +198,14 @@ describe('queue and party-session routes', () => {
     expect(live.status).toBe(200);
     expect(live.body.meta.count).toBe(1);
 
+    const liveSnapshot = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/queue/live-snapshot',
+      headers: { authorization: 'Bearer staff-token' },
+    });
+    expect(liveSnapshot.status).toBe(200);
+    expect(liveSnapshot.body.data).toEqual([{ id: 'entry_1', guestName: 'Neha' }]);
+
     expect((await invokeApp(app, {
       method: 'POST',
       url: '/api/v1/queue/entry_1/session',
@@ -258,6 +269,7 @@ describe('queue and party-session routes', () => {
 
   it('guards guest-only queue entry access and covers seating/cancellation', async () => {
     queueServiceMock.getQueueEntry.mockResolvedValue({ id: 'entry_1', status: 'WAITING' });
+    queueServiceMock.getQueueEntryStatus.mockResolvedValue({ id: 'entry_1', status: 'WAITING', estimatedWaitMin: 8 });
     queueServiceMock.seatGuest.mockResolvedValue({ entryId: 'entry_1', guestName: 'Neha', preOrderSync: { attempted: false, status: 'no_preorder' } });
     queueServiceMock.cancelQueueEntry.mockResolvedValue({ queueCancelled: true, refundStatus: 'not_needed' });
     queueServiceMock.completeQueueEntry.mockResolvedValue(undefined);
@@ -269,6 +281,14 @@ describe('queue and party-session routes', () => {
       url: '/api/v1/queue/entry_1',
       headers: { authorization: 'Bearer guest-token' },
     })).status).toBe(200);
+
+    const status = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/queue/entry_1/status',
+      headers: { authorization: 'Bearer guest-token' },
+    });
+    expect(status.status).toBe(200);
+    expect(status.body.data).toEqual({ id: 'entry_1', status: 'WAITING', estimatedWaitMin: 8 });
 
     const forbidden = await invokeApp(app, {
       method: 'GET',

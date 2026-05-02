@@ -6,7 +6,7 @@ const prisma = new PrismaClient();
 async function main(): Promise<void> {
   console.log('🌱 Seeding Flock database...');
 
-  const fixtureOrder = [venueFixtures.barrelRoom, venueFixtures.craftery];
+  const fixtureOrder = [venueFixtures.barrelRoom, venueFixtures.craftery, venueFixtures.crafteryLab];
   for (const fixture of fixtureOrder) {
     const result = await seedVenueFixture(prisma, fixture);
     console.log(`✓ Venue: ${result.venue.name} (${result.venue.id})`);
@@ -17,6 +17,7 @@ async function main(): Promise<void> {
   console.log('  Barrel Room manager OTP phone: 9000000002');
   console.log('  Craftery manager OTP phone: 9900000002');
   console.log('  Craftery staff OTP phone: 7977755670');
+  console.log('  Craftery lab slug: the-craftery-koramangala-lab');
 }
 
 main().catch(console.error).finally(() => prisma.$disconnect());

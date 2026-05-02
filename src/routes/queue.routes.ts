@@ -7,7 +7,9 @@ import { requireVenueFeature, resolveVenueIdFromQueueEntryParam } from '../middl
 const router = Router();
 router.post('/',                     guestMutationLimiter, requireVenueFeature('guestQueue'), Queue.joinQueue); // guest — rate limited, no auth
 router.get ('/live',                 requireAuth, requireVenueFeature('guestQueue'), operatorReadLimiter, Queue.getVenueQueue);
+router.get ('/live-snapshot',        requireAuth, requireVenueFeature('guestQueue'), operatorReadLimiter, Queue.getVenueQueueSnapshot);
 router.post('/:entryId/session',     otpVerifyLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), Queue.reissueGuestSession);
+router.get ('/:entryId/status',      requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntryStatus);
 router.get ('/:entryId',             requireGuestAuth, requireVenueFeature('guestQueue'), guestPollReadLimiter, Queue.getQueueEntry);
 router.post('/:entryId/access-link/redeem', guestMutationLimiter, requireVenueFeature('guestQueue', resolveVenueIdFromQueueEntryParam()), GuestAccess.redeemAccessLink);
 router.delete('/:entryId/leave',     guestMutationLimiter, requireGuestAuth, requireGuestMutationAccess, requireVenueFeature('guestQueue'), Queue.leaveEntry);

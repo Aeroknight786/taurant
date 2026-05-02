@@ -227,4 +227,33 @@ describe('venue config service', () => {
     expect(shouldSendJoinQueueNotification(resolved)).toBe(false);
     expect(shouldHandlePostWindowManually(resolved)).toBe(true);
   });
+
+  it('supports hidden lightweight realtime lab venues without changing defaults', async () => {
+    const {
+      resolveVenueConfig,
+      shouldHideVenueFromPublic,
+      shouldUseLightGuestShell,
+      shouldUseSseRealtime,
+    } = await import('../../src/services/venueConfig.service');
+
+    const resolved = resolveVenueConfig({
+      id: 'venue_lab',
+      name: 'The Craftery Lab',
+      slug: 'the-craftery-koramangala-lab',
+      brandConfig: { themeKey: 'craftery' },
+      featureConfig: { guestQueue: true },
+      uiConfig: {
+        hideFromPublic: true,
+        guestShellMode: 'LIGHT_WAITLIST',
+      },
+      opsConfig: {
+        realtimeMode: 'SSE_V1',
+      },
+    });
+
+    expect(shouldHideVenueFromPublic(resolved)).toBe(true);
+    expect(shouldUseLightGuestShell(resolved)).toBe(true);
+    expect(shouldUseSseRealtime(resolved)).toBe(true);
+    expect(resolved.opsConfig.queueDispatchMode).toBe('AUTO_TABLE');
+  });
 });

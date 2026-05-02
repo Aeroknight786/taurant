@@ -49,6 +49,13 @@ export async function getVenueQueue(req: AuthenticatedRequest, res: Response, ne
   } catch (e) { next(e); }
 }
 
+export async function getVenueQueueSnapshot(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const entries = await QueueService.getVenueQueueSnapshot(req.venue!.id);
+    ok(res, entries, { count: entries.length });
+  } catch (e) { next(e); }
+}
+
 export async function getQueueEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     if (!req.guest || req.guest.queueEntryId !== req.params.entryId) {
@@ -56,6 +63,17 @@ export async function getQueueEntry(req: AuthenticatedRequest, res: Response, ne
       return;
     }
     const entry = await QueueService.getQueueEntry(req.params.entryId);
+    ok(res, entry);
+  } catch (e) { next(e); }
+}
+
+export async function getQueueEntryStatus(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    if (!req.guest || req.guest.queueEntryId !== req.params.entryId) {
+      res.status(403).json({ success: false, error: 'Guest session does not match this queue entry' });
+      return;
+    }
+    const entry = await QueueService.getQueueEntryStatus(req.params.entryId);
     ok(res, entry);
   } catch (e) { next(e); }
 }

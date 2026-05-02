@@ -33,6 +33,7 @@ const {
     createVenue: vi.fn(),
     getPublicVenues: vi.fn(),
     getVenueBySlug: vi.fn(),
+    getVenueLiteBySlug: vi.fn(),
     updateVenueConfig: vi.fn(),
     getVenueStats: vi.fn(),
   },
@@ -57,6 +58,7 @@ vi.mock('../../src/services/venue.service', async () => {
     createVenue: venueServiceMock.createVenue,
     getPublicVenues: venueServiceMock.getPublicVenues,
     getVenueBySlug: venueServiceMock.getVenueBySlug,
+    getVenueLiteBySlug: venueServiceMock.getVenueLiteBySlug,
     updateVenueConfig: venueServiceMock.updateVenueConfig,
     getVenueStats: venueServiceMock.getVenueStats,
   };
@@ -137,6 +139,16 @@ describe('venue, menu, and table routes', () => {
         uiConfig: { landingMode: 'venue', showQueuePosition: false },
       },
     });
+    venueServiceMock.getVenueLiteBySlug.mockResolvedValue({
+      id: 'venue_1',
+      slug: 'the-barrel-room-koramangala',
+      menuCategories: [],
+      contentBlocks: [],
+      config: {
+        featureConfig: { guestQueue: true },
+        uiConfig: { guestShellMode: 'LIGHT_WAITLIST' },
+      },
+    });
     venueServiceMock.getVenueStats.mockResolvedValue({ today: { totalQueueJoins: 3 } });
     venueServiceMock.updateVenueConfig.mockResolvedValue({ id: 'venue_1', isQueueOpen: true });
 
@@ -172,6 +184,13 @@ describe('venue, menu, and table routes', () => {
       expect.objectContaining({ slot: 'MENU', isEnabled: true }),
       expect.objectContaining({ slot: 'MERCH', isEnabled: true }),
     ]);
+
+    const venueLiteRead = await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/venues/the-barrel-room-koramangala/lite',
+    });
+    expect(venueLiteRead.status).toBe(200);
+    expect(venueLiteRead.body.data.contentBlocks).toEqual([]);
 
     expect((await invokeApp(app, {
       method: 'GET',

@@ -10,6 +10,7 @@ import {
   buildVenueConfigPatch,
   mapVenueToPublicSummary,
   resolveVenueConfig,
+  shouldHideVenueFromPublic,
 } from './venueConfig.service';
 
 export const CreateVenueSchema = z.object({
@@ -109,7 +110,9 @@ export async function getPublicVenues() {
     },
   });
 
-  return venues.map((venue) => mapVenueToPublicSummary(venue));
+  return venues
+    .filter((venue) => !shouldHideVenueFromPublic(resolveVenueConfig(venue)))
+    .map((venue) => mapVenueToPublicSummary(venue));
 }
 
 export async function getVenueBySlug(slug: string) {
@@ -155,6 +158,39 @@ export async function getVenueBySlug(slug: string) {
 
   return {
     ...venue,
+    config: resolveVenueConfig(venue),
+  };
+}
+
+export async function getVenueLiteBySlug(slug: string) {
+  const venue = await prisma.venue.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      address: true,
+      city: true,
+      isQueueOpen: true,
+      depositPercent: true,
+      licenceType: true,
+      maxQueueSize: true,
+      tableReadyWindowMin: true,
+      brandConfig: true,
+      featureConfig: true,
+      uiConfig: true,
+      opsConfig: true,
+    },
+  });
+
+  if (!venue) {
+    throw new AppError('Venue not found', 404);
+  }
+
+  return {
+    ...venue,
+    menuCategories: [],
+    contentBlocks: [],
     config: resolveVenueConfig(venue),
   };
 }

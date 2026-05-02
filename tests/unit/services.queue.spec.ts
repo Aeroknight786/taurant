@@ -25,6 +25,7 @@ const guestAccessLinkMock = {
   resolveGuestAccessModeFromQueueEntry: vi.fn(),
   getGuestReadOnlySessionExpiresInSeconds: vi.fn(),
 };
+const publishQueueRealtimeEventMock = vi.fn();
 
 vi.mock('../../src/config/database', () => ({
   prisma: prismaMock,
@@ -62,6 +63,10 @@ vi.mock('../../src/services/guestAccessLink.service', () => ({
   issueQueueAccessLink: guestAccessLinkMock.issueQueueAccessLink,
   resolveGuestAccessModeFromQueueEntry: guestAccessLinkMock.resolveGuestAccessModeFromQueueEntry,
   getGuestReadOnlySessionExpiresInSeconds: guestAccessLinkMock.getGuestReadOnlySessionExpiresInSeconds,
+}));
+
+vi.mock('../../src/services/realtime.service', () => ({
+  publishQueueRealtimeEvent: publishQueueRealtimeEventMock,
 }));
 
 vi.mock('../../src/integrations/razorpay', async () => {
@@ -217,6 +222,79 @@ describe('queue service', () => {
     }));
     expect(notifyMock.queueJoined).not.toHaveBeenCalled();
     expect(guestAccessLinkMock.issueQueueAccessLink).not.toHaveBeenCalled();
+  });
+
+  it('returns a compact guest status payload without heavy queue relations', async () => {
+    const { getQueueEntryStatus } = await import('../../src/services/queue.service');
+    const expiredAt = new Date('2026-03-31T10:04:00.000Z');
+
+    prismaMock.queueEntry.findUnique.mockResolvedValue({
+      id: 'entry_late',
+      venueId: 'venue_lab',
+      displayRef: 'FLK-LATE01',
+      guestName: 'Aditya',
+      guestPhone: '9163570629',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      guestNotes: null,
+      position: 1,
+      status: QueueEntryStatus.NOTIFIED,
+      tableReadyDeadlineAt: null,
+      tableReadyExpiredAt: expiredAt,
+    });
+
+    const status = await getQueueEntryStatus('entry_late');
+    const select = prismaMock.queueEntry.findUnique.mock.calls.at(-1)?.[0]?.select;
+
+    expect(select.otp).toBeUndefined();
+    expect(select.orders).toBeUndefined();
+    expect(status).toEqual(expect.objectContaining({
+      id: 'entry_late',
+      isLateNoResponse: true,
+    }));
+  });
+
+  it('returns a compact staff queue snapshot for waitlist-only venues', async () => {
+    const { getVenueQueueSnapshot } = await import('../../src/services/queue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_lab',
+      name: 'The Craftery Lab',
+      slug: 'the-craftery-koramangala-lab',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+      },
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      {
+        id: 'entry_1',
+        venueId: 'venue_lab',
+        guestName: 'Aditya',
+        guestPhone: '9163570629',
+        partySize: 2,
+        position: 1,
+        otp: '123456',
+        status: QueueEntryStatus.WAITING,
+        tableReadyDeadlineAt: null,
+        tableReadyExpiredAt: null,
+      },
+    ]);
+
+    const snapshot = await getVenueQueueSnapshot('venue_lab');
+    const findManyArg = prismaMock.queueEntry.findMany.mock.calls.at(-1)?.[0];
+
+    expect(findManyArg.where.status).toEqual({ in: ['WAITING', 'NOTIFIED'] });
+    expect(findManyArg.select.otp).toBe(true);
+    expect(findManyArg.select.orders).toBeUndefined();
+    expect(snapshot).toEqual([
+      expect.objectContaining({
+        id: 'entry_1',
+        isLateNoResponse: false,
+      }),
+    ]);
   });
 
   it('rejects duplicate active phones in the queue', async () => {

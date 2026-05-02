@@ -12,6 +12,7 @@ import {
   shouldHandlePostWindowManually,
   shouldUseVenueTables,
 } from './venueConfig.service';
+import { publishQueueRealtimeEvent } from './realtime.service';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -201,6 +202,7 @@ export async function tryAdvanceQueue(venueId: string, tableId: string): Promise
   await redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
     type: 'TABLE_ASSIGNED', entryId: nextEntry.id, tableId, tableLabel: table.label,
   }));
+  publishQueueRealtimeEvent({ type: 'TABLE_ASSIGNED', venueId, entryId: nextEntry.id });
 
   await logFlowEvent({
     queueEntryId: nextEntry.id,
@@ -279,11 +281,13 @@ export async function sweepExpiredTableReadyEntries(): Promise<void> {
 
     if (!manualPostWindowHandling) {
       await recompactQueuePositions(entry.venueId);
+      publishQueueRealtimeEvent({ type: 'ENTRY_NO_SHOW', venueId: entry.venueId, entryId: entry.id });
     } else {
       await redis.publish(PubSubChannels.queueUpdate(entry.venueId), JSON.stringify({
         type: 'ENTRY_RESPONSE_WINDOW_LAPSED',
         entryId: entry.id,
       }));
+      publishQueueRealtimeEvent({ type: 'ENTRY_RESPONSE_WINDOW_LAPSED', venueId: entry.venueId, entryId: entry.id });
     }
 
     if (releasedTableId) {

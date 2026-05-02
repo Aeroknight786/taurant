@@ -54,7 +54,7 @@ type VenueFixture = {
   }>;
 };
 
-export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
+export const venueFixtures: Record<'barrelRoom' | 'craftery' | 'crafteryLab', VenueFixture> = {
   barrelRoom: {
     venue: {
       name: 'The Barrel Room',
@@ -326,6 +326,75 @@ export const venueFixtures: Record<'barrelRoom' | 'craftery', VenueFixture> = {
         sortOrder: 4,
       },
     ],
+  },
+  crafteryLab: {
+    venue: {
+      name: 'The Craftery Lab',
+      slug: 'the-craftery-koramangala-lab',
+      address: 'No. 68, 2-374 BBMP PID, 3rd Block, Koramangala',
+      city: 'Bengaluru',
+      state: 'Karnataka',
+      pincode: '560034',
+      phone: '9900000004',
+      email: 'hello+lab@subko.coffee',
+      gstin: '29AABCS1234R1ZX',
+      licenceType: GstLicenceType.RESTAURANT_ONLY,
+      depositPercent: 30,
+      isQueueOpen: true,
+      tableReadyWindowMin: 3,
+      maxQueueSize: 200,
+      brandConfig: {
+        displayName: 'The Craftery Lab',
+        shortName: 'The Craftery Lab',
+        tagline: 'Waitlist lab - live updates - host desk',
+        themeKey: 'craftery',
+      },
+      featureConfig: {
+        guestQueue: true,
+        preOrder: false,
+        partyShare: false,
+        seatedOrdering: false,
+        finalPayment: false,
+        staffConsole: true,
+        adminConsole: true,
+        flowLog: false,
+        historyTab: true,
+        refunds: false,
+        offlineSettle: false,
+        bulkClear: false,
+      },
+      uiConfig: {
+        landingMode: 'venue',
+        defaultGuestTray: 'ordered',
+        showContinueEntry: true,
+        showQueuePosition: true,
+        hideFromPublic: true,
+        guestShellMode: 'LIGHT_WAITLIST',
+        supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
+      },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        joinConfirmationMode: 'WHATSAPP',
+        readyNotificationChannels: ['WHATSAPP', 'IVR'],
+        readyReminderEnabled: true,
+        readyReminderOffsetMin: 1,
+        expiryNotificationEnabled: false,
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        contentMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+        postWindowHandlingMode: 'MANUAL_REMOVE',
+        realtimeMode: 'SSE_V1',
+      },
+    },
+    staff: [
+      { name: 'Aditya Palkar', phone: '9900000001', role: StaffRole.OWNER },
+      { name: 'Meenakshi A.', phone: '9900000002', role: StaffRole.MANAGER },
+      { name: 'The Craftery Staff', phone: '7977755670', role: StaffRole.STAFF },
+    ],
+    tables: [],
+    categories: [],
+    contentBlocks: [],
   },
 };
 
