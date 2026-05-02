@@ -2433,10 +2433,14 @@ async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
   const venueName = resolveVenueDisplayName(venue);
   const pendingPhone = sessionStorage.getItem(STAFF_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
+  const existingAuth = getStaffAuth();
 
-  if (getStaffAuth()) {
-    navigate(buildStaffDashboardPath(getStaffAuth().venueSlug || slug), { replace: true });
+  if (existingAuth?.venueSlug === slug) {
+    navigate(buildStaffDashboardPath(slug), { replace: true });
     return;
+  }
+  if (existingAuth?.venueSlug && existingAuth.venueSlug !== slug) {
+    clearStaffAuth();
   }
 
   if (!isVenueFeatureEnabled(venue, 'staffConsole')) {
@@ -2546,10 +2550,14 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
   const venueName = resolveVenueDisplayName(venue);
   const pendingPhone = sessionStorage.getItem(ADMIN_PENDING_PHONE_KEY) || '';
   const flash = consumeFlash();
+  const existingAuth = getStaffAuth();
 
-  if (getStaffAuth() && isManagerRole(getStaffAuth().staff?.role)) {
-    navigate(buildAdminDashboardPath(getStaffAuth().venueSlug || slug), { replace: true });
+  if (existingAuth?.venueSlug === slug && isManagerRole(existingAuth.staff?.role)) {
+    navigate(buildAdminDashboardPath(slug), { replace: true });
     return;
+  }
+  if (existingAuth?.venueSlug && existingAuth.venueSlug !== slug) {
+    clearStaffAuth();
   }
 
   if (!isVenueFeatureEnabled(venue, 'adminConsole')) {
@@ -2658,14 +2666,15 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
 
 async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   const auth = getStaffAuth();
-  const activeSlug = auth?.venueSlug || routeSlug || resolveActiveVenueSlug();
+  const activeSlug = routeSlug || auth?.venueSlug || resolveActiveVenueSlug();
   if (!auth) {
     navigateToStaffLogin(activeSlug, { replace: true });
     return;
   }
 
   if (routeSlug && auth.venueSlug && routeSlug !== auth.venueSlug) {
-    navigateToStaffDashboard(auth.venueSlug, { replace: true });
+    clearStaffAuth();
+    navigateToStaffLogin(routeSlug, { replace: true });
     return;
   }
   const refreshToken = ++uiState.staffDashboardRefreshToken;
@@ -3096,14 +3105,15 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
 
 async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
   const auth = getStaffAuth();
-  const activeSlug = auth?.venueSlug || routeSlug || resolveActiveVenueSlug();
+  const activeSlug = routeSlug || auth?.venueSlug || resolveActiveVenueSlug();
   if (!auth) {
     navigateToAdminLogin(activeSlug, { replace: true });
     return;
   }
 
   if (routeSlug && auth.venueSlug && routeSlug !== auth.venueSlug) {
-    navigateToAdminDashboard(auth.venueSlug, { replace: true });
+    clearStaffAuth();
+    navigateToAdminLogin(routeSlug, { replace: true });
     return;
   }
 
