@@ -133,6 +133,7 @@ enum OrderFlowEventType {
   OFFLINE_SETTLED
   ENTRY_COMPLETED
   ENTRY_CANCELLED
+  ENTRY_NO_SHOW
   DEPOSIT_REFUNDED
 }
 
@@ -350,6 +351,11 @@ model QueueEntry {
   tableReadyDeadlineAt DateTime?
   tableReadyExpiredAt  DateTime?
   completedAt      DateTime?
+  cancelledAt      DateTime?
+  cancelledByType  String?
+  cancelledByStaffId String?
+  cancelledByStaffName String?
+  cancelReason     String?
   preOrderTotal    Int              @default(0)
   depositPaid      Int              @default(0)
   depositTxnRef    String?

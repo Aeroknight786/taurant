@@ -34,6 +34,23 @@ type QueueReorderDirection = 'UP' | 'DOWN';
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
 const DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION = 'craftery_waitlist_whatsapp_v1';
 
+type StaffAuditActor = {
+  staffId?: string | null;
+  staffName?: string | null;
+};
+
+type QueueCancellationAudit = StaffAuditActor & {
+  actorType: 'STAFF' | 'GUEST' | 'SYSTEM';
+  reason: 'STAFF_CANCELLED' | 'GUEST_LEFT' | 'SYSTEM_CANCELLED' | 'QUEUE_CANCELLED';
+};
+
+function staffAuditSnapshot(actor?: StaffAuditActor) {
+  return {
+    staffId: actor?.staffId ?? null,
+    staffName: actor?.staffName ?? null,
+  };
+}
+
 function requiresCrafteryWhatsAppConsent(venueSlug?: string | null): boolean {
   return venueSlug === CRAFTERY_VENUE_SLUG;
 }
@@ -485,7 +502,7 @@ export async function reissueGuestSession(entryId: string, otp: string) {
   };
 }
 
-export async function notifyQueueEntry(entryId: string, venueId: string, windowMin?: number): Promise<{
+export async function notifyQueueEntry(entryId: string, venueId: string, windowMin?: number, actor?: StaffAuditActor): Promise<{
   entryId: string;
   status: QueueEntryStatus;
   notifiedAt: Date;
@@ -595,10 +612,13 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
     venueId,
     type: OrderFlowEventType.TABLE_NOTIFIED,
     snapshot: {
+      action: 'NOTIFY',
       dispatchMode: venueConfig.opsConfig.queueDispatchMode,
       tableLabel: 'Host desk',
       tableId: entry.tableId,
       windowMin: effectiveWindowMin,
+      notificationSent: shouldSendReadyWhatsApp,
+      ...staffAuditSnapshot(actor),
     },
   });
 
@@ -611,7 +631,7 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
   };
 }
 
-export async function nudgeQueueEntry(entryId: string, venueId: string): Promise<{
+export async function nudgeQueueEntry(entryId: string, venueId: string, actor?: StaffAuditActor): Promise<{
   entryId: string;
   status: QueueEntryStatus;
   nudgedAt: Date;
@@ -704,13 +724,16 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
     venueId,
     type: OrderFlowEventType.TABLE_NOTIFIED,
     snapshot: {
+      action: 'RE_NUDGE',
       dispatchMode: venueConfig.opsConfig.queueDispatchMode,
       tableLabel: 'Host desk',
       tableId: entry.tableId,
       reminder: true,
+      notificationSent: shouldSendReadyWhatsApp,
       nudgedAt: nudgedAt.toISOString(),
       notifiedAt: entry.notifiedAt?.toISOString() ?? null,
       tableReadyDeadlineAt: entry.tableReadyDeadlineAt?.toISOString() ?? null,
+      ...staffAuditSnapshot(actor),
     },
   });
 
@@ -721,7 +744,7 @@ export async function nudgeQueueEntry(entryId: string, venueId: string): Promise
   };
 }
 
-export async function markQueueEntryNoShow(entryId: string, venueId: string): Promise<{
+export async function markQueueEntryNoShow(entryId: string, venueId: string, actor?: StaffAuditActor): Promise<{
   entryId: string;
   status: QueueEntryStatus;
   noShowAt: Date;
@@ -781,6 +804,11 @@ export async function markQueueEntryNoShow(entryId: string, venueId: string): Pr
       data: {
         status: QueueEntryStatus.NO_SHOW,
         tableId: null,
+        cancelledAt: noShowAt,
+        cancelledByType: 'STAFF',
+        cancelledByStaffId: actor?.staffId ?? null,
+        cancelledByStaffName: actor?.staffName ?? null,
+        cancelReason: 'STAFF_NO_SHOW',
         tableReadyExpiredAt: entry.tableReadyExpiredAt ?? noShowAt,
         tableReadyDeadlineAt: null,
       },
@@ -816,6 +844,20 @@ export async function markQueueEntryNoShow(entryId: string, venueId: string): Pr
   if (releasedTableId) {
     await tryAdvanceQueue(venueId, releasedTableId);
   }
+
+  await logFlowEvent({
+    queueEntryId: entry.id,
+    venueId,
+    type: OrderFlowEventType.ENTRY_NO_SHOW,
+    snapshot: {
+      cancelReason: 'STAFF_NO_SHOW',
+      cancelledByType: 'STAFF',
+      notifiedAt: entry.notifiedAt?.toISOString() ?? null,
+      tableReadyExpiredAt: (entry.tableReadyExpiredAt ?? noShowAt).toISOString(),
+      tableReadyDeadlineAt: entry.tableReadyDeadlineAt?.toISOString() ?? null,
+      ...staffAuditSnapshot(actor),
+    },
+  });
 
   return {
     entryId: entry.id,
@@ -1055,6 +1097,8 @@ export async function seatGuest(params: {
   otp:     string;
   entryId?: string;
   tableId?: string;
+  staffId?: string | null;
+  staffName?: string | null;
 }): Promise<{ entryId: string; guestName: string; preOrderSync: { attempted: boolean; status: string; posOrderId?: string } }> {
   const venue = await prisma.venue.findUnique({
     where: { id: params.venueId },
@@ -1161,8 +1205,22 @@ export async function seatGuest(params: {
     venueId: params.venueId,
     type: queueCompleteVenue ? OrderFlowEventType.ENTRY_COMPLETED : OrderFlowEventType.GUEST_SEATED,
     snapshot: queueCompleteVenue
-      ? { tableId: null, tableLabel: 'Host desk', preOrderSync }
-      : { tableId: params.tableId, tableLabel: table?.label, preOrderSync },
+      ? {
+          tableId: null,
+          tableLabel: 'Host desk',
+          preOrderSync,
+          completedByType: 'STAFF',
+          staffId: params.staffId ?? null,
+          staffName: params.staffName ?? null,
+        }
+      : {
+          tableId: params.tableId,
+          tableLabel: table?.label,
+          preOrderSync,
+          seatedByType: 'STAFF',
+          staffId: params.staffId ?? null,
+          staffName: params.staffName ?? null,
+        },
   });
 
   return { entryId: entry.id, guestName: entry.guestName, preOrderSync };
@@ -1170,13 +1228,17 @@ export async function seatGuest(params: {
 
 // ── Cancel entry ──────────────────────────────────────────────────
 
-export async function cancelQueueEntry(entryId: string, venueId: string): Promise<{
+export async function cancelQueueEntry(entryId: string, venueId: string, audit?: QueueCancellationAudit): Promise<{
   queueCancelled: true;
   refundStatus: 'refunded' | 'failed' | 'not_needed';
   refundedPaymentId?: string;
   refundId?: string;
   refundFailureReason?: string;
 }> {
+  const resolvedAudit: QueueCancellationAudit = audit ?? {
+    actorType: 'SYSTEM',
+    reason: 'QUEUE_CANCELLED',
+  };
   const entry = await prisma.queueEntry.findFirst({
     where: { id: entryId, venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
   });
@@ -1211,6 +1273,7 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
   let refundedPaymentId: string | undefined;
   let refundId: string | undefined;
   let refundFailureReason: string | undefined;
+  const cancelledAt = new Date();
 
   if (capturedDeposit && !capturedFinal) {
     try {
@@ -1253,6 +1316,11 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
       data:  {
         status: QueueEntryStatus.CANCELLED,
         tableId: null,
+        cancelledAt,
+        cancelledByType: resolvedAudit.actorType,
+        cancelledByStaffId: resolvedAudit.staffId ?? null,
+        cancelledByStaffName: resolvedAudit.staffName ?? null,
+        cancelReason: resolvedAudit.reason,
         tableReadyDeadlineAt: null,
       },
     });
@@ -1279,7 +1347,17 @@ export async function cancelQueueEntry(entryId: string, venueId: string): Promis
     queueEntryId: entryId,
     venueId,
     type: OrderFlowEventType.ENTRY_CANCELLED,
-    snapshot: { refundStatus, refundedPaymentId, refundId },
+    snapshot: {
+      refundStatus,
+      refundedPaymentId,
+      refundId,
+      refundFailureReason,
+      cancelReason: resolvedAudit.reason,
+      cancelledByType: resolvedAudit.actorType,
+      cancelledAt: cancelledAt.toISOString(),
+      staffId: resolvedAudit.staffId ?? null,
+      staffName: resolvedAudit.staffName ?? null,
+    },
   });
 
   return {
@@ -1314,12 +1392,15 @@ export async function leaveQueueEntry(entryId: string, venueId: string, guestPho
     throw new AppError('Queue entry is not eligible to leave', 400, 'ENTRY_NOT_LEAVABLE');
   }
 
-  return cancelQueueEntry(entryId, venueId);
+  return cancelQueueEntry(entryId, venueId, {
+    actorType: 'GUEST',
+    reason: 'GUEST_LEFT',
+  });
 }
 
 // ── Complete (checkout) ───────────────────────────────────────────
 
-export async function completeQueueEntry(entryId: string): Promise<void> {
+export async function completeQueueEntry(entryId: string, actor?: StaffAuditActor): Promise<void> {
   const entry = await prisma.queueEntry.findUnique({ where: { id: entryId } });
   if (!entry) throw new AppError('Queue entry not found', 404);
   // Idempotency guard — if already completed, skip silently
@@ -1372,7 +1453,11 @@ export async function completeQueueEntry(entryId: string): Promise<void> {
     queueEntryId: entryId,
     venueId: entry.venueId,
     type: OrderFlowEventType.ENTRY_COMPLETED,
-    snapshot: { tableId: entry.tableId },
+    snapshot: {
+      tableId: entry.tableId,
+      completedByType: actor?.staffId ? 'STAFF' : 'SYSTEM',
+      ...staffAuditSnapshot(actor),
+    },
   });
 }
 

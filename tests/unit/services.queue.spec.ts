@@ -84,6 +84,7 @@ vi.mock('../../src/services/orderFlowEvent.service', () => ({
     TABLE_NOTIFIED: 'TABLE_NOTIFIED',
     GUEST_SEATED: 'GUEST_SEATED',
     ENTRY_CANCELLED: 'ENTRY_CANCELLED',
+    ENTRY_NO_SHOW: 'ENTRY_NO_SHOW',
     ENTRY_COMPLETED: 'ENTRY_COMPLETED',
   },
   logFlowEvent: logFlowEventMock,

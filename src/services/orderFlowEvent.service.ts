@@ -35,10 +35,10 @@ export async function logFlowEvent(input: FlowEventInput): Promise<void> {
   }
 }
 
-export async function getFlowEvents(queueEntryId: string) {
+export async function getFlowEvents(queueEntryId: string, venueId?: string) {
   try {
     const events = await prisma.orderFlowEvent.findMany({
-      where: { queueEntryId },
+      where: { queueEntryId, ...(venueId ? { venueId } : {}) },
       orderBy: { createdAt: 'asc' },
     });
 
@@ -50,10 +50,10 @@ export async function getFlowEvents(queueEntryId: string) {
     });
   }
 
-  return reconstructTimeline(queueEntryId);
+  return reconstructTimeline(queueEntryId, venueId);
 }
 
-async function reconstructTimeline(queueEntryId: string) {
+async function reconstructTimeline(queueEntryId: string, venueId?: string) {
   const entry = await prisma.queueEntry.findUnique({
     where: { id: queueEntryId },
     include: {
@@ -61,6 +61,7 @@ async function reconstructTimeline(queueEntryId: string) {
     },
   });
   if (!entry) return [];
+  if (venueId && entry.venueId !== venueId) return [];
 
   type ReconstructedEvent = {
     id: string;
@@ -158,8 +159,34 @@ async function reconstructTimeline(queueEntryId: string) {
       type: 'ENTRY_CANCELLED',
       orderId: null,
       paymentId: null,
-      snapshot: { note: 'Reconstructed from existing data' },
-      createdAt: entry.updatedAt,
+      snapshot: {
+        cancelReason: entry.cancelReason,
+        cancelledByType: entry.cancelledByType,
+        staffId: entry.cancelledByStaffId,
+        staffName: entry.cancelledByStaffName,
+        cancelledAt: entry.cancelledAt?.toISOString() ?? null,
+        note: 'Reconstructed from existing data',
+      },
+      createdAt: entry.cancelledAt ?? entry.updatedAt,
+    });
+  }
+
+  if (entry.status === 'NO_SHOW') {
+    timeline.push({
+      ...base,
+      id: `recon-no-show-${queueEntryId}`,
+      type: 'ENTRY_NO_SHOW',
+      orderId: null,
+      paymentId: null,
+      snapshot: {
+        cancelReason: entry.cancelReason,
+        cancelledByType: entry.cancelledByType,
+        staffId: entry.cancelledByStaffId,
+        staffName: entry.cancelledByStaffName,
+        cancelledAt: entry.cancelledAt?.toISOString() ?? null,
+        note: 'Reconstructed from existing data',
+      },
+      createdAt: entry.cancelledAt ?? entry.updatedAt,
     });
   }
 

@@ -64,6 +64,7 @@ vi.mock('../../src/middleware/auth', () => ({
     }
     req.staff = {
       id: auth === 'Bearer staff-token-priority' ? 'staff_priority' : 'staff_1',
+      name: auth === 'Bearer staff-token-priority' ? 'Priority Staff' : 'Desk Staff',
       role: 'MANAGER',
       venueId: 'venue_1',
     };
@@ -90,6 +91,7 @@ vi.mock('../../src/middleware/auth', () => ({
     if (auth === 'Bearer staff-token' || auth === 'Bearer staff-token-priority') {
       req.staff = {
         id: auth === 'Bearer staff-token-priority' ? 'staff_priority' : 'staff_1',
+        name: auth === 'Bearer staff-token-priority' ? 'Priority Staff' : 'Desk Staff',
         role: 'MANAGER',
         venueId: 'venue_1',
       };
@@ -224,21 +226,30 @@ describe('queue and party-session routes', () => {
       headers: { authorization: 'Bearer staff-token' },
       body: { windowMin: 10 },
     })).status).toBe(200);
-    expect(queueServiceMock.notifyQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', 10);
+    expect(queueServiceMock.notifyQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', 10, expect.objectContaining({
+      staffId: 'staff_1',
+      staffName: 'Desk Staff',
+    }));
 
     expect((await invokeApp(app, {
       method: 'POST',
       url: '/api/v1/queue/entry_1/nudge',
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
-    expect(queueServiceMock.nudgeQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1');
+    expect(queueServiceMock.nudgeQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', expect.objectContaining({
+      staffId: 'staff_1',
+      staffName: 'Desk Staff',
+    }));
 
     expect((await invokeApp(app, {
       method: 'POST',
       url: '/api/v1/queue/entry_1/no-show',
       headers: { authorization: 'Bearer staff-token-priority' },
     })).status).toBe(200);
-    expect(queueServiceMock.markQueueEntryNoShow).toHaveBeenCalledWith('entry_1', 'venue_1');
+    expect(queueServiceMock.markQueueEntryNoShow).toHaveBeenCalledWith('entry_1', 'venue_1', expect.objectContaining({
+      staffId: 'staff_priority',
+      staffName: 'Priority Staff',
+    }));
 
     expect((await invokeApp(app, {
       method: 'POST',
@@ -265,6 +276,13 @@ describe('queue and party-session routes', () => {
       url: '/api/v1/queue/entry_1/flow',
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
+
+    expect((await invokeApp(app, {
+      method: 'GET',
+      url: '/api/v1/queue/entry_1/activity',
+      headers: { authorization: 'Bearer staff-token' },
+    })).status).toBe(200);
+    expect(orderFlowEventServiceMock.getFlowEvents).toHaveBeenCalledWith('entry_1', 'venue_1');
   });
 
   it('guards guest-only queue entry access and covers seating/cancellation', async () => {
@@ -304,13 +322,26 @@ describe('queue and party-session routes', () => {
       headers: { authorization: 'Bearer staff-token' },
       body: { entryId: 'entry_1', otp: '123456' },
     })).status).toBe(200);
-    expect(queueServiceMock.seatGuest).toHaveBeenCalledWith({ venueId: 'venue_1', otp: '123456', entryId: 'entry_1', tableId: undefined });
+    expect(queueServiceMock.seatGuest).toHaveBeenCalledWith(expect.objectContaining({
+      venueId: 'venue_1',
+      otp: '123456',
+      entryId: 'entry_1',
+      tableId: undefined,
+      staffId: 'staff_1',
+      staffName: 'Desk Staff',
+    }));
 
     expect((await invokeApp(app, {
       method: 'DELETE',
       url: '/api/v1/queue/entry_1',
       headers: { authorization: 'Bearer staff-token' },
     })).status).toBe(200);
+    expect(queueServiceMock.cancelQueueEntry).toHaveBeenCalledWith('entry_1', 'venue_1', expect.objectContaining({
+      actorType: 'STAFF',
+      reason: 'STAFF_CANCELLED',
+      staffId: 'staff_1',
+      staffName: 'Desk Staff',
+    }));
 
   });
 

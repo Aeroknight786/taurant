@@ -23,5 +23,6 @@ router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER',
 router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.checkoutEntry);
 router.get   ('/history/recent',     requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('historyTab'), operatorReadLimiter, Queue.getRecentHistory);
 router.post  ('/clear-all',          requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('bulkClear'), operatorWriteLimiter, Queue.clearAllEntries);
+router.get   ('/:entryId/activity',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('staffConsole'), operatorReadLimiter, Queue.getEntryActivityEvents);
 router.get   ('/:entryId/flow',      requireAuth, requireRole('OWNER','MANAGER'), requireVenueFeature('flowLog'), operatorReadLimiter, Queue.getEntryFlowEvents);
 export default router;

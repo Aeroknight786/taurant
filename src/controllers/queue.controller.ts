@@ -89,7 +89,14 @@ export async function reissueGuestSession(req: Request, res: Response, next: Nex
 export async function seatGuest(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { otp, entryId, tableId } = SeatSchema.parse(req.body);
-    const result = await QueueService.seatGuest({ venueId: req.venue!.id, otp, entryId, tableId });
+    const result = await QueueService.seatGuest({
+      venueId: req.venue!.id,
+      otp,
+      entryId,
+      tableId,
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 }
@@ -97,21 +104,30 @@ export async function seatGuest(req: AuthenticatedRequest, res: Response, next: 
 export async function notifyEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
     const { windowMin } = NotifySchema.parse(req.body ?? {});
-    const result = await QueueService.notifyQueueEntry(req.params.entryId, req.venue!.id, windowMin);
+    const result = await QueueService.notifyQueueEntry(req.params.entryId, req.venue!.id, windowMin, {
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 }
 
 export async function nudgeEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await QueueService.nudgeQueueEntry(req.params.entryId, req.venue!.id);
+    const result = await QueueService.nudgeQueueEntry(req.params.entryId, req.venue!.id, {
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 }
 
 export async function markNoShowEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await QueueService.markQueueEntryNoShow(req.params.entryId, req.venue!.id);
+    const result = await QueueService.markQueueEntryNoShow(req.params.entryId, req.venue!.id, {
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 }
@@ -133,7 +149,12 @@ export async function prioritizeEntry(req: AuthenticatedRequest, res: Response, 
 
 export async function cancelEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const result = await QueueService.cancelQueueEntry(req.params.entryId, req.venue!.id);
+    const result = await QueueService.cancelQueueEntry(req.params.entryId, req.venue!.id, {
+      actorType: 'STAFF',
+      reason: 'STAFF_CANCELLED',
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, result);
   } catch (e) { next(e); }
 }
@@ -151,14 +172,24 @@ export async function leaveEntry(req: AuthenticatedRequest, res: Response, next:
 
 export async function checkoutEntry(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    await QueueService.completeQueueEntry(req.params.entryId);
+    await QueueService.completeQueueEntry(req.params.entryId, {
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
     ok(res, { checkedOut: true });
   } catch (e) { next(e); }
 }
 
 export async function getEntryFlowEvents(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
   try {
-    const events = await getFlowEvents(req.params.entryId);
+    const events = await getFlowEvents(req.params.entryId, req.venue!.id);
+    ok(res, events, { count: events.length });
+  } catch (e) { next(e); }
+}
+
+export async function getEntryActivityEvents(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const events = await getFlowEvents(req.params.entryId, req.venue!.id);
     ok(res, events, { count: events.length });
   } catch (e) { next(e); }
 }

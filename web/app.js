@@ -216,6 +216,10 @@ const uiState = {
   staffHistoryLoadedAt: 0,
   staffDashboardRefreshToken: 0,
   staffLateNoResponseExpanded: false,
+  staffActivityExpandedByEntry: {},
+  staffActivityEventsByEntry: {},
+  staffActivityLoadingByEntry: {},
+  staffActivityErrorByEntry: {},
   adminTab: 'menu',
   adminMenu: {
     categories: [],
@@ -353,6 +357,13 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  const activityButton = event.target.closest('[data-toggle-entry-activity]');
+  if (activityButton) {
+    event.preventDefault();
+    toggleEntryActivity(activityButton.getAttribute('data-toggle-entry-activity')).catch(handleFatalError);
+    return;
+  }
+
   const tableButton = event.target.closest('[data-table-status]');
   if (tableButton) {
     event.preventDefault();
@@ -380,6 +391,53 @@ document.addEventListener('visibilitychange', () => {
     uiState.partyPoll.nextDelayMs = savedDelay;
   }
 });
+
+async function toggleEntryActivity(entryId) {
+  if (!entryId) return;
+
+  const isExpanded = Boolean(uiState.staffActivityExpandedByEntry[entryId]);
+  uiState.staffActivityExpandedByEntry = {
+    ...uiState.staffActivityExpandedByEntry,
+    [entryId]: !isExpanded,
+  };
+
+  if (isExpanded) {
+    await renderStaffDashboard(resolveActiveVenueSlug());
+    return;
+  }
+
+  if (!uiState.staffActivityEventsByEntry[entryId] && !uiState.staffActivityLoadingByEntry[entryId]) {
+    uiState.staffActivityLoadingByEntry = {
+      ...uiState.staffActivityLoadingByEntry,
+      [entryId]: true,
+    };
+    uiState.staffActivityErrorByEntry = {
+      ...uiState.staffActivityErrorByEntry,
+      [entryId]: '',
+    };
+    await renderStaffDashboard(resolveActiveVenueSlug());
+
+    try {
+      const events = await apiRequest(`/queue/${entryId}/activity`, { auth: true });
+      uiState.staffActivityEventsByEntry = {
+        ...uiState.staffActivityEventsByEntry,
+        [entryId]: Array.isArray(events) ? events : [],
+      };
+    } catch (error) {
+      uiState.staffActivityErrorByEntry = {
+        ...uiState.staffActivityErrorByEntry,
+        [entryId]: error.message || 'Could not load activity.',
+      };
+    } finally {
+      uiState.staffActivityLoadingByEntry = {
+        ...uiState.staffActivityLoadingByEntry,
+        [entryId]: false,
+      };
+    }
+  }
+
+  await renderStaffDashboard(resolveActiveVenueSlug());
+}
 
 renderRoute().catch(handleFatalError);
 
@@ -3482,6 +3540,163 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
   }));
 }
 
+function renderEntryActivityButton(entry) {
+  const expanded = Boolean(uiState.staffActivityExpandedByEntry[entry.id]);
+  return `<button class="btn btn-secondary btn-sm" type="button" data-toggle-entry-activity="${entry.id}">${expanded ? 'Hide audit' : 'Audit'}</button>`;
+}
+
+function getActivityActor(snapshot) {
+  if (!snapshot) return '';
+  if (snapshot.staffName) return String(snapshot.staffName);
+  if (snapshot.staffId) return 'staff';
+  if (snapshot.cancelledByType === 'GUEST') return 'guest';
+  if (snapshot.cancelledByType === 'SYSTEM') return 'system';
+  return '';
+}
+
+function getActivityTitle(event) {
+  const snapshot = event.snapshot || {};
+  if (event.type === 'TABLE_NOTIFIED' && (snapshot.reminder || snapshot.action === 'RE_NUDGE')) return 'Re-nudged';
+  const labels = {
+    QUEUE_JOINED: 'Joined waitlist',
+    QUEUE_PRIORITIZED: 'Moved in queue',
+    TABLE_NOTIFIED: 'Called',
+    GUEST_SEATED: 'Seated',
+    ENTRY_COMPLETED: 'Seated',
+    ENTRY_CANCELLED: 'Cancelled',
+    ENTRY_NO_SHOW: 'No-show',
+    PREORDER_CREATED: 'Pre-order created',
+    PREORDER_REPLACED: 'Pre-order updated',
+    DEPOSIT_INITIATED: 'Deposit started',
+    DEPOSIT_CAPTURED: 'Deposit paid',
+    TABLE_ORDER_CREATED: 'Table order placed',
+    FINAL_PAYMENT_INITIATED: 'Payment started',
+    FINAL_PAYMENT_CAPTURED: 'Payment paid',
+    OFFLINE_SETTLED: 'Settled offline',
+    DEPOSIT_REFUNDED: 'Deposit refunded',
+  };
+  return labels[event.type] || String(event.type || 'Activity');
+}
+
+function formatActivityDetail(event) {
+  const snapshot = event.snapshot || {};
+  const actor = getActivityActor(snapshot);
+
+  if (event.type === 'QUEUE_JOINED') {
+    return [
+      snapshot.position ? `Position ${snapshot.position}` : '',
+      snapshot.partySize ? `${snapshot.partySize} pax` : '',
+      snapshot.seatingPreference ? formatQueueSeatingPreference(snapshot.seatingPreference) : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (event.type === 'TABLE_NOTIFIED') {
+    return [
+      snapshot.action === 'RE_NUDGE' || snapshot.reminder ? 'Reminder notification' : 'Host-desk call',
+      snapshot.windowMin ? `${snapshot.windowMin} min return window` : '',
+      actor ? `by ${actor}` : '',
+      snapshot.notificationSent === false ? 'WhatsApp skipped' : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (event.type === 'QUEUE_PRIORITIZED') {
+    return [
+      snapshot.previousPosition && snapshot.newPosition ? `Moved from #${snapshot.previousPosition} to #${snapshot.newPosition}` : '',
+      actor ? `by ${actor}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (event.type === 'ENTRY_COMPLETED' || event.type === 'GUEST_SEATED') {
+    return [
+      actor ? `Marked seated by ${actor}` : 'Marked seated',
+      snapshot.tableLabel ? `at ${snapshot.tableLabel}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (event.type === 'ENTRY_CANCELLED') {
+    const reasonLabels = {
+      STAFF_CANCELLED: actor ? `Cancelled by ${actor}` : 'Cancelled by staff',
+      GUEST_LEFT: 'Guest left waitlist',
+      SYSTEM_CANCELLED: 'Cancelled by system',
+      QUEUE_CANCELLED: 'Cancelled',
+    };
+    return [
+      reasonLabels[snapshot.cancelReason] || 'Cancelled',
+      snapshot.refundStatus ? `refund ${String(snapshot.refundStatus).replace('_', ' ')}` : '',
+    ].filter(Boolean).join(' · ');
+  }
+
+  if (event.type === 'ENTRY_NO_SHOW') {
+    return actor ? `Removed by ${actor}` : 'Removed by staff';
+  }
+
+  if (snapshot.note) return String(snapshot.note);
+
+  return Object.entries(snapshot)
+    .filter(([key, value]) => value !== null && value !== undefined && key !== 'note')
+    .slice(0, 3)
+    .map(([key, value]) => `${key}: ${typeof value === 'object' ? JSON.stringify(value) : String(value)}`)
+    .join(' · ');
+}
+
+function renderEntryActivityPanel(entry) {
+  if (!uiState.staffActivityExpandedByEntry[entry.id]) return '';
+
+  const loading = uiState.staffActivityLoadingByEntry[entry.id];
+  const error = uiState.staffActivityErrorByEntry[entry.id];
+  const events = uiState.staffActivityEventsByEntry[entry.id] || [];
+  const reconstructed = events.some((event) => event.reconstructed);
+
+  if (loading) {
+    return `
+      <div class="entry-activity-panel">
+        <div class="entry-activity-head">Loading audit...</div>
+      </div>
+    `;
+  }
+
+  if (error) {
+    return `
+      <div class="entry-activity-panel">
+        <div class="entry-activity-head">Audit unavailable</div>
+        <div class="entry-activity-detail">${escapeHtml(error)}</div>
+      </div>
+    `;
+  }
+
+  if (!events.length) {
+    return `
+      <div class="entry-activity-panel">
+        <div class="entry-activity-head">No audit events yet</div>
+      </div>
+    `;
+  }
+
+  const rows = events.map((event) => {
+    const detail = formatActivityDetail(event);
+    return `
+      <div class="entry-activity-row">
+        <span class="entry-activity-dot" aria-hidden="true"></span>
+        <div>
+          <div class="entry-activity-title">${escapeHtml(getActivityTitle(event))}</div>
+          <div class="entry-activity-time">${escapeHtml(formatRelativeStamp(new Date(event.createdAt).getTime()))}</div>
+          ${detail ? `<div class="entry-activity-detail">${escapeHtml(detail)}</div>` : ''}
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  return `
+    <div class="entry-activity-panel">
+      <div class="entry-activity-head">
+        <span>Guest audit</span>
+        ${reconstructed ? '<span class="entry-activity-note">older data reconstructed</span>' : ''}
+      </div>
+      <div class="entry-activity-list">${rows}</div>
+    </div>
+  `;
+}
+
 function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistRowActions) {
   if (!lateEntries.length) {
     return '';
@@ -3513,10 +3728,11 @@ function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistR
           ${getQueueEntryGuestNotes(entry) ? `<div class="q-row-note">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
           <div class="q-row-countdown q-row-countdown-late">Awaiting staff action</div>
         </div>
-        <div class="q-row-actions">
-          ${renderWaitlistRowActions(entry)}
-        </div>
+      <div class="q-row-actions">
+        ${renderWaitlistRowActions(entry)}
       </div>
+    </div>
+    ${renderEntryActivityPanel(entry)}
     `;
   }).join('');
 
@@ -3543,6 +3759,7 @@ function renderQueueTab(waiting, tables, venue) {
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
         <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+        ${renderEntryActivityButton(entry)}
       `;
     }
 
@@ -3563,6 +3780,7 @@ function renderQueueTab(waiting, tables, venue) {
             >Mark arrived</button>
           ` : ''}
           <button class="btn btn-danger btn-sm" data-no-show-entry="${entry.id}">Remove</button>
+          ${renderEntryActivityButton(entry)}
         `;
       }
 
@@ -3594,11 +3812,13 @@ function renderQueueTab(waiting, tables, venue) {
           >Seat</button>
         `}
         <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+        ${renderEntryActivityButton(entry)}
       `;
     }
 
     return `
       <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
+      ${renderEntryActivityButton(entry)}
     `;
   };
 
@@ -3649,6 +3869,7 @@ function renderQueueTab(waiting, tables, venue) {
         `}
       </div>
     </div>
+    ${waitlistOnlyVenue ? renderEntryActivityPanel(entry) : ''}
   `).join('');
 
   if (!lateNoResponseEntries.length) {
@@ -3723,6 +3944,9 @@ function renderHistoryTab(venue) {
               <span>Pax - ${entry.partySize}</span>
               ${entry.displayRef ? `<span>Session - <span class="mono">${escapeHtml(entry.displayRef)}</span></span>` : ''}
             </div>
+            <div class="q-row-history-actions">
+              ${renderEntryActivityButton(entry)}
+            </div>
             ${flowLogEnabled ? `
               <div class="q-row-history-actions">
                 <button class="btn btn-secondary btn-sm" data-view-flow="${entry.id}">Flow log</button>
@@ -3730,6 +3954,7 @@ function renderHistoryTab(venue) {
             ` : ''}
           </div>
         </div>
+        ${renderEntryActivityPanel(entry)}
       `;
     }
 
@@ -4419,6 +4644,7 @@ function showFlowLogModal(entryId, events) {
     OFFLINE_SETTLED: 'Settled offline',
     ENTRY_COMPLETED: 'Session completed',
     ENTRY_CANCELLED: 'Session cancelled',
+    ENTRY_NO_SHOW: 'No-show',
     DEPOSIT_REFUNDED: 'Deposit refunded',
   };
 
