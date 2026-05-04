@@ -53,6 +53,9 @@ describe('venue config service', () => {
         expiryNotificationEnabled: false,
         guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
         waitEstimateDecayEnabled: true,
+        waitEstimateBaseMin: 3,
+        waitEstimateStepMin: 5,
+        waitEstimateMaxMin: 30,
         contentMode: 'DEFAULT',
         arrivalCompletionMode: 'TABLE_ASSIGN',
         postWindowHandlingMode: 'AUTO_NO_SHOW',
@@ -70,7 +73,7 @@ describe('venue config service', () => {
       brandConfig: { shortName: 'Craftery', themeKey: 'craftery' },
       featureConfig: { guestQueue: true, preOrder: true },
       uiConfig: { showContinueEntry: false },
-      opsConfig: { queueDispatchMode: 'AUTO_TABLE' },
+      opsConfig: { queueDispatchMode: 'AUTO_TABLE', waitEstimateBaseMin: 10 },
     };
 
     expect(resolveVenueConfig(source).brandConfig.themeKey).toBe('craftery');
@@ -79,14 +82,25 @@ describe('venue config service', () => {
       brandConfig: { tagline: 'Coffee first' },
       featureConfig: { preOrder: false },
       uiConfig: { defaultGuestTray: 'ordered' },
-      opsConfig: { queueDispatchMode: 'MANUAL_NOTIFY', joinConfirmationMode: 'WEB_ONLY' },
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 60,
+      },
     });
 
     expect(patch).toEqual({
       brandConfig: expect.objectContaining({ shortName: 'Craftery', tagline: 'Coffee first' }),
       featureConfig: expect.objectContaining({ guestQueue: true, preOrder: false }),
       uiConfig: expect.objectContaining({ showContinueEntry: false, defaultGuestTray: 'ordered' }),
-      opsConfig: expect.objectContaining({ queueDispatchMode: 'MANUAL_NOTIFY', joinConfirmationMode: 'WEB_ONLY' }),
+      opsConfig: expect.objectContaining({
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 60,
+      }),
     });
   });
 
@@ -106,6 +120,9 @@ describe('venue config service', () => {
     expect(resolved.opsConfig).toMatchObject({
       guestWaitFormula: 'SUBKO_FIXED_V1',
       waitEstimateDecayEnabled: false,
+      waitEstimateBaseMin: 10,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 60,
       queueDispatchMode: 'MANUAL_NOTIFY',
     });
   });
@@ -151,6 +168,9 @@ describe('venue config service', () => {
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
         waitEstimateDecayEnabled: false,
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 60,
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
@@ -281,6 +301,9 @@ describe('venue config service', () => {
       queueDispatchMode: 'MANUAL_NOTIFY',
       guestWaitFormula: 'SUBKO_FIXED_V1',
       waitEstimateDecayEnabled: false,
+      waitEstimateBaseMin: 10,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 60,
     });
   });
 });

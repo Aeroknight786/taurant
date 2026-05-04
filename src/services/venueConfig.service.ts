@@ -83,6 +83,9 @@ export const VenueOpsConfigSchema = z.object({
   expiryNotificationEnabled: z.boolean().optional(),
   guestWaitFormula: VenueGuestWaitFormulaSchema.optional(),
   waitEstimateDecayEnabled: z.boolean().optional(),
+  waitEstimateBaseMin: z.number().int().min(0).max(240).optional(),
+  waitEstimateStepMin: z.number().int().min(0).max(240).optional(),
+  waitEstimateMaxMin: z.number().int().min(1).max(240).optional(),
   contentMode: VenueContentModeSchema.optional(),
   arrivalCompletionMode: VenueArrivalCompletionModeSchema.optional(),
   postWindowHandlingMode: VenuePostWindowHandlingModeSchema.optional(),
@@ -124,6 +127,9 @@ export type ResolvedVenueOpsConfig = {
   expiryNotificationEnabled: boolean;
   guestWaitFormula: z.infer<typeof VenueGuestWaitFormulaSchema>;
   waitEstimateDecayEnabled: boolean;
+  waitEstimateBaseMin: number;
+  waitEstimateStepMin: number;
+  waitEstimateMaxMin: number;
   contentMode: z.infer<typeof VenueContentModeSchema>;
   arrivalCompletionMode: z.infer<typeof VenueArrivalCompletionModeSchema>;
   postWindowHandlingMode: z.infer<typeof VenuePostWindowHandlingModeSchema>;
@@ -195,6 +201,9 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
   expiryNotificationEnabled: false,
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
   waitEstimateDecayEnabled: true,
+  waitEstimateBaseMin: 3,
+  waitEstimateStepMin: 5,
+  waitEstimateMaxMin: 30,
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
   postWindowHandlingMode: 'AUTO_NO_SHOW',
@@ -217,6 +226,9 @@ const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   postWindowHandlingMode: 'MANUAL_REMOVE',
   guestWaitFormula: 'SUBKO_FIXED_V1',
   waitEstimateDecayEnabled: false,
+  waitEstimateBaseMin: 10,
+  waitEstimateStepMin: 8,
+  waitEstimateMaxMin: 60,
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -379,6 +391,9 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       expiryNotificationEnabled: config.opsConfig.expiryNotificationEnabled,
       guestWaitFormula: config.opsConfig.guestWaitFormula,
       waitEstimateDecayEnabled: config.opsConfig.waitEstimateDecayEnabled,
+      waitEstimateBaseMin: config.opsConfig.waitEstimateBaseMin,
+      waitEstimateStepMin: config.opsConfig.waitEstimateStepMin,
+      waitEstimateMaxMin: config.opsConfig.waitEstimateMaxMin,
       contentMode: config.opsConfig.contentMode,
       arrivalCompletionMode: config.opsConfig.arrivalCompletionMode,
       postWindowHandlingMode: config.opsConfig.postWindowHandlingMode,

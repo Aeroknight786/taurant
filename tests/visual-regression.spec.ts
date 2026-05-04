@@ -179,7 +179,7 @@ test.describe('Guest venue landing', () => {
               otp: '654321',
               status: 'WAITING',
               seatingPreference: 'FIRST_AVAILABLE',
-              estimatedWaitMin: 8,
+              estimatedWaitMin: 10,
             },
             {
               id: 'queue_1',
@@ -291,7 +291,7 @@ test.describe('Staff dashboard', () => {
       otp: String(100000 + index),
       status: 'WAITING',
       seatingPreference: index % 2 === 0 ? 'INDOOR' : 'FIRST_AVAILABLE',
-      estimatedWaitMin: Math.min(30, 3 + (index * 5)),
+      estimatedWaitMin: Math.min(60, 10 + (index * 8)),
       displayRef: `FLK-SCROLL-${index + 1}`,
       guestNotes: index === 10 ? 'Keep this row stable during polling.' : '',
     }));

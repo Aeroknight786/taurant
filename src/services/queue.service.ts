@@ -1571,7 +1571,7 @@ async function resequenceActiveQueue(venueId: string, prioritizedEntryId?: strin
 }
 
 function estimateWait(venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null, position: number): number {
-  return calculateWaitEstimateMin(venueConfig?.opsConfig.guestWaitFormula, position);
+  return calculateWaitEstimateMin(venueConfig?.opsConfig, position);
 }
 
 async function safeRedisExec(operation: () => Promise<unknown>): Promise<void> {

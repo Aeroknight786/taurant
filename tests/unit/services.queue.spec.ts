@@ -219,7 +219,7 @@ describe('queue service', () => {
     expect(result).toEqual(expect.objectContaining({
       id: 'entry_subko_1',
       position: 3,
-      estimatedWaitMin: 13,
+      estimatedWaitMin: 26,
     }));
     expect(notifyMock.queueJoined).not.toHaveBeenCalled();
     expect(guestAccessLinkMock.issueQueueAccessLink).not.toHaveBeenCalled();
@@ -382,7 +382,7 @@ describe('queue service', () => {
       expect.objectContaining({
         venueSlug: 'the-craftery-koramangala',
         queuePosition: 1,
-        estimatedWaitMin: 3,
+        estimatedWaitMin: 10,
         guestOtp: expect.any(String),
       }),
     );
@@ -487,11 +487,11 @@ describe('queue service', () => {
 
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_2' },
-      data: expect.objectContaining({ position: 1, estimatedWaitMin: 3 }),
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 10 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_3' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 8 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
     }));
   });
 
@@ -791,23 +791,23 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 2,
-      estimatedWaitMin: 8,
+      estimatedWaitMin: 18,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_notified' },
-      data: expect.objectContaining({ position: 1, estimatedWaitMin: 3 }),
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 10 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 8 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 13 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_2' },
-      data: expect.objectContaining({ position: 4, estimatedWaitMin: 18 }),
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 34 }),
     }));
   });
 
@@ -847,15 +847,15 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 3,
-      estimatedWaitMin: 13,
+      estimatedWaitMin: 26,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 13 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 8 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
     }));
   });
 
@@ -962,23 +962,23 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 2,
-      estimatedWaitMin: 8,
+      estimatedWaitMin: 18,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_notified' },
-      data: expect.objectContaining({ position: 1, estimatedWaitMin: 3 }),
+      data: expect.objectContaining({ position: 1, estimatedWaitMin: 10 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 8 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 13 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_2' },
-      data: expect.objectContaining({ position: 4, estimatedWaitMin: 18 }),
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 34 }),
     }));
     expect(logFlowEventMock).toHaveBeenCalledWith(expect.objectContaining({
       queueEntryId: 'entry_target',
@@ -986,7 +986,7 @@ describe('queue service', () => {
       snapshot: expect.objectContaining({
         previousPosition: 3,
         newPosition: 2,
-        estimatedWaitMin: 8,
+        estimatedWaitMin: 18,
         staffId: 'staff_priority',
       }),
     }));

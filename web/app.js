@@ -3090,6 +3090,9 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
             readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
             expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
             waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
+            waitEstimateBaseMin: Number(document.getElementById('waitlist-eta-base').value),
+            waitEstimateStepMin: Number(document.getElementById('waitlist-eta-step').value),
+            waitEstimateMaxMin: Number(document.getElementById('waitlist-eta-max').value),
           },
         },
       });
@@ -3298,6 +3301,9 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
                 readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
                 expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
                 waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
+                waitEstimateBaseMin: Number(document.getElementById('waitlist-eta-base').value),
+                waitEstimateStepMin: Number(document.getElementById('waitlist-eta-step').value),
+                waitEstimateMaxMin: Number(document.getElementById('waitlist-eta-max').value),
               },
             },
           });
@@ -4113,6 +4119,21 @@ function renderWaitlistOnlySettingsForm(venue) {
           <input class="form-input" id="waitlist-response-window" type="number" min="3" max="60" value="${venue.tableReadyWindowMin}">
         </div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label" for="waitlist-eta-base">Base wait</label>
+          <input class="form-input" id="waitlist-eta-base" type="number" min="0" max="240" value="${opsConfig.waitEstimateBaseMin}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="waitlist-eta-step">Extra per party</label>
+          <input class="form-input" id="waitlist-eta-step" type="number" min="0" max="240" value="${opsConfig.waitEstimateStepMin}">
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="waitlist-eta-max">Max wait</label>
+          <input class="form-input" id="waitlist-eta-max" type="number" min="1" max="240" value="${opsConfig.waitEstimateMaxMin}">
+        </div>
+      </div>
+      <div class="card-sub" style="margin-bottom:16px;">Estimated wait = base + ((queue position - 1) × extra), capped at max.</div>
       <div class="form-row">
         <div class="form-group" style="display:flex; gap:12px; align-items:center; padding-top:24px;">
           <label class="checkbox-row">
@@ -5255,6 +5276,22 @@ function renderCallGuestButton(entry) {
   return `<a class="btn btn-secondary btn-sm" href="${escapeHtml(href)}">Call</a>`;
 }
 
+function getWaitEstimateConfigValue(value, fallback, min = 0) {
+  const numericValue = Number(value);
+  if (!Number.isFinite(numericValue)) {
+    return fallback;
+  }
+  return Math.max(min, Math.floor(numericValue));
+}
+
+function getSubkoPositionWaitMin(opsConfig, position) {
+  const safePosition = Number.isFinite(position) ? Math.max(1, Math.floor(position)) : 1;
+  const baseMin = getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3);
+  const stepMin = getWaitEstimateConfigValue(opsConfig.waitEstimateStepMin, 5);
+  const maxMin = getWaitEstimateConfigValue(opsConfig.waitEstimateMaxMin, 30, 1);
+  return Math.min(maxMin, baseMin + (stepMin * (safePosition - 1)));
+}
+
 function getQueueEntryEtaMin(entry, venue) {
   const storedEta = Math.max(0, Number(entry?.estimatedWaitMin || 0));
   const opsConfig = resolveVenueOpsConfig(venue);
@@ -5265,7 +5302,7 @@ function getQueueEntryEtaMin(entry, venue) {
 
   const rawPosition = Number(entry?.position || 1);
   const position = Number.isFinite(rawPosition) ? Math.max(1, Math.floor(rawPosition)) : 1;
-  const baseWaitMin = Math.max(3, Math.min(3 + (5 * (position - 1)), 30));
+  const baseWaitMin = getSubkoPositionWaitMin(opsConfig, position);
 
   if (opsConfig.waitEstimateDecayEnabled === false) {
     return baseWaitMin;
@@ -5278,7 +5315,8 @@ function getQueueEntryEtaMin(entry, venue) {
   }
 
   const elapsedMin = Math.floor((Date.now() - joinedAtValue) / 60000);
-  return Math.max(3, baseWaitMin - Math.max(0, elapsedMin));
+  const decayFloorMin = Math.min(baseWaitMin, getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3));
+  return Math.max(decayFloorMin, baseWaitMin - Math.max(0, elapsedMin));
 }
 
 function getQueueEntryEtaLabel(entry, venue) {

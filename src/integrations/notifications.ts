@@ -468,20 +468,33 @@ export const Notify = {
     } = {},
   ) => {
     const message = tableReadyMessage(name, venueName, windowMin, options.statusLink, options.guestOtp, tableLabel);
+    const isCrafteryTemplateSend = options.venueSlug === CRAFTERY_VENUE_SLUG;
+    const tableReadyTemplateName = env.GUPSHUP_TEMPLATE_TABLE_READY_NAME;
+    const tableReadyTemplateVariables = tableReadyTemplateName === 'table_ready_v7'
+      ? [name, String(windowMin)]
+      : [name];
+    const tableReadyTemplateVariablePayload = tableReadyTemplateName === 'table_ready_v7'
+      ? {
+          guest_name: name,
+          reporting_time: windowMin,
+        }
+      : {
+          guest_name: name,
+        };
 
     await sendQueueStatusNotification({
       venueId,
       queueEntryId: entryId,
       phone,
       message,
-      template: options.venueSlug === CRAFTERY_VENUE_SLUG
+      template: isCrafteryTemplateSend
         ? {
             id: env.GUPSHUP_TEMPLATE_TABLE_READY_ID,
-            name: env.GUPSHUP_TEMPLATE_TABLE_READY_NAME,
-            variables: [name],
+            name: tableReadyTemplateName,
+            variables: tableReadyTemplateVariables,
           }
         : undefined,
-      allowSmsFallback: options.venueSlug === CRAFTERY_VENUE_SLUG ? false : undefined,
+      allowSmsFallback: isCrafteryTemplateSend ? false : undefined,
       payload: {
         kind: 'TABLE_READY',
         name,
@@ -490,10 +503,8 @@ export const Notify = {
         windowMin,
         statusLink: options.statusLink ?? null,
         guestOtp: options.guestOtp ?? null,
-        templateName: options.venueSlug === CRAFTERY_VENUE_SLUG ? env.GUPSHUP_TEMPLATE_TABLE_READY_NAME : null,
-        templateVariables: options.venueSlug === CRAFTERY_VENUE_SLUG
-          ? { guest_name: name }
-          : null,
+        templateName: isCrafteryTemplateSend ? tableReadyTemplateName : null,
+        templateVariables: isCrafteryTemplateSend ? tableReadyTemplateVariablePayload : null,
       },
     });
 

@@ -65,6 +65,8 @@ describe('notification integrations', () => {
     vi.clearAllMocks();
     envMock.USE_MOCK_NOTIFICATIONS = true;
     envMock.USE_MOCK_AUTH_OTP_NOTIFICATIONS = true;
+    envMock.GUPSHUP_TEMPLATE_TABLE_READY_NAME = 'table_ready_v6';
+    envMock.GUPSHUP_TEMPLATE_TABLE_READY_ID = '9b5bd379-904c-4936-b7d8-1a08cfd02a74';
     prismaMock.notification.create.mockResolvedValue({ id: 'notif_1' });
     prismaMock.notification.update.mockResolvedValue({ id: 'notif_1' });
     prismaMock.venue.findUnique.mockResolvedValue({ slug: 'the-craftery-koramangala' });
@@ -154,6 +156,42 @@ describe('notification integrations', () => {
       queueEntryId: 'entry_1',
       to: '9876543210',
       message: expect.stringContaining('host desk'),
+    }));
+  });
+
+  it('maps Craftery table-ready v7 WhatsApp to guest name and reporting time', async () => {
+    envMock.GUPSHUP_TEMPLATE_TABLE_READY_NAME = 'table_ready_v7';
+    envMock.GUPSHUP_TEMPLATE_TABLE_READY_ID = 'tpl_table_ready_v7';
+    const { Notify } = await import('../../src/integrations/notifications');
+
+    await Notify.tableReady(
+      'venue_1',
+      'entry_1',
+      '9876543210',
+      'Neha',
+      '',
+      'The Craftery by Subko',
+      5,
+      {
+        venueSlug: 'the-craftery-koramangala',
+        guestOtp: '123456',
+        statusLink: 'https://taurant.onrender.com/v/the-craftery-koramangala/e/entry_1?access=token',
+      },
+    );
+
+    expect(prismaMock.notification.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        templateId: 'tpl_table_ready_v7',
+        payload: expect.objectContaining({
+          kind: 'TABLE_READY',
+          templateName: 'table_ready_v7',
+          templateVariables: {
+            guest_name: 'Neha',
+            reporting_time: 5,
+          },
+          windowMin: 5,
+        }),
+      }),
     }));
   });
 

@@ -413,7 +413,7 @@ async function recompactQueuePositions(venueId: string): Promise<void> {
       where: { id: entry.id },
       data: {
         position: index + 1,
-        estimatedWaitMin: calculateWaitEstimateMin(venueConfig?.opsConfig.guestWaitFormula, index + 1),
+        estimatedWaitMin: calculateWaitEstimateMin(venueConfig?.opsConfig, index + 1),
       },
     })
   ));
