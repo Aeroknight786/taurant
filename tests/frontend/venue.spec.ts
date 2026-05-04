@@ -66,6 +66,7 @@ describe('frontend venue helpers', () => {
       readyReminderEnabled: false,
       expiryNotificationEnabled: false,
       guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+      waitEstimateDecayEnabled: true,
       contentMode: 'DEFAULT',
     });
     expect(isManualDispatchVenue(venue)).toBe(true);

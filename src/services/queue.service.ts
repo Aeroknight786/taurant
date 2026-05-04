@@ -28,8 +28,8 @@ import {
   resolveGuestAccessModeFromQueueEntry,
 } from './guestAccessLink.service';
 import { publishQueueRealtimeEvent } from './realtime.service';
+import { calculateWaitEstimateMin } from '../utils/waitEstimate';
 
-const AVG_TURN_MINUTES = 55; // used for wait time estimation
 type QueueReorderDirection = 'UP' | 'DOWN';
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
 const DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION = 'craftery_waitlist_whatsapp_v1';
@@ -1571,12 +1571,7 @@ async function resequenceActiveQueue(venueId: string, prioritizedEntryId?: strin
 }
 
 function estimateWait(venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null, position: number): number {
-  if (venueConfig?.opsConfig.guestWaitFormula === 'SUBKO_FIXED_V1') {
-    return Math.max(3, Math.min(8 + (3 * (position - 1)), 30));
-  }
-
-  // Legacy heuristic used by existing non-Subko venues.
-  return Math.ceil(position * AVG_TURN_MINUTES * 0.7);
+  return calculateWaitEstimateMin(venueConfig?.opsConfig.guestWaitFormula, position);
 }
 
 async function safeRedisExec(operation: () => Promise<unknown>): Promise<void> {

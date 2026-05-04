@@ -3089,6 +3089,7 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
             readyReminderEnabled: document.getElementById('waitlist-ready-reminder-enabled').checked,
             readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
             expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
+            waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
           },
         },
       });
@@ -3296,6 +3297,7 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
                 readyReminderEnabled: document.getElementById('waitlist-ready-reminder-enabled').checked,
                 readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
                 expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
+                waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
               },
             },
           });
@@ -4126,6 +4128,10 @@ function renderWaitlistOnlySettingsForm(venue) {
       <label class="checkbox-row" style="margin-bottom:16px;">
         <input type="checkbox" id="waitlist-expiry-notification-enabled" ${opsConfig.expiryNotificationEnabled ? 'checked' : ''}>
         Send expiry notification on no-show
+      </label>
+      <label class="checkbox-row" style="margin-bottom:16px;">
+        <input type="checkbox" id="waitlist-eta-decay-enabled" ${opsConfig.waitEstimateDecayEnabled ? 'checked' : ''}>
+        Live wait countdown
       </label>
       <div class="card-sub" style="margin-bottom:16px;">Automatic no-show remains a supported venue mode. The Craftery is currently using manual host removal after a missed return.</div>
       <button class="btn btn-primary btn-full" type="submit">Save settings</button>
@@ -5257,12 +5263,18 @@ function getQueueEntryEtaMin(entry, venue) {
     return storedEta;
   }
 
-  const position = Math.max(1, Number(entry?.position || 1));
-  const baseWaitMin = Math.max(3, Math.min(8 + (3 * (position - 1)), 30));
+  const rawPosition = Number(entry?.position || 1);
+  const position = Number.isFinite(rawPosition) ? Math.max(1, Math.floor(rawPosition)) : 1;
+  const baseWaitMin = Math.max(3, Math.min(3 + (5 * (position - 1)), 30));
+
+  if (opsConfig.waitEstimateDecayEnabled === false) {
+    return baseWaitMin;
+  }
+
   const joinedAtValue = entry?.joinedAt ? new Date(entry.joinedAt).getTime() : Number.NaN;
 
   if (!Number.isFinite(joinedAtValue)) {
-    return storedEta || baseWaitMin;
+    return baseWaitMin;
   }
 
   const elapsedMin = Math.floor((Date.now() - joinedAtValue) / 60000);

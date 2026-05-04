@@ -52,6 +52,7 @@ describe('venue config service', () => {
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+        waitEstimateDecayEnabled: true,
         contentMode: 'DEFAULT',
         arrivalCompletionMode: 'TABLE_ASSIGN',
         postWindowHandlingMode: 'AUTO_NO_SHOW',
@@ -86,6 +87,26 @@ describe('venue config service', () => {
       featureConfig: expect.objectContaining({ guestQueue: true, preOrder: false }),
       uiConfig: expect.objectContaining({ showContinueEntry: false, defaultGuestTray: 'ordered' }),
       opsConfig: expect.objectContaining({ queueDispatchMode: 'MANUAL_NOTIFY', joinConfirmationMode: 'WEB_ONLY' }),
+    });
+  });
+
+  it('defaults Craftery lab to static Subko wait estimates', async () => {
+    const { resolveVenueConfig } = await import('../../src/services/venueConfig.service');
+
+    const resolved = resolveVenueConfig({
+      id: 'venue_lab',
+      name: 'The Craftery by Subko Lab',
+      slug: 'the-craftery-koramangala-lab',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: null,
+    });
+
+    expect(resolved.opsConfig).toMatchObject({
+      guestWaitFormula: 'SUBKO_FIXED_V1',
+      waitEstimateDecayEnabled: false,
+      queueDispatchMode: 'MANUAL_NOTIFY',
     });
   });
 
@@ -129,6 +150,7 @@ describe('venue config service', () => {
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateDecayEnabled: false,
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
@@ -169,6 +191,7 @@ describe('venue config service', () => {
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateDecayEnabled: false,
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
@@ -228,7 +251,7 @@ describe('venue config service', () => {
     expect(shouldHandlePostWindowManually(resolved)).toBe(true);
   });
 
-  it('supports hidden lightweight realtime lab venues without changing defaults', async () => {
+  it('supports hidden lightweight realtime lab venues with Craftery waitlist defaults', async () => {
     const {
       resolveVenueConfig,
       shouldHideVenueFromPublic,
@@ -254,6 +277,10 @@ describe('venue config service', () => {
     expect(shouldHideVenueFromPublic(resolved)).toBe(true);
     expect(shouldUseLightGuestShell(resolved)).toBe(true);
     expect(shouldUseSseRealtime(resolved)).toBe(true);
-    expect(resolved.opsConfig.queueDispatchMode).toBe('AUTO_TABLE');
+    expect(resolved.opsConfig).toMatchObject({
+      queueDispatchMode: 'MANUAL_NOTIFY',
+      guestWaitFormula: 'SUBKO_FIXED_V1',
+      waitEstimateDecayEnabled: false,
+    });
   });
 });

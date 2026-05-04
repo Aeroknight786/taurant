@@ -82,6 +82,7 @@ export const VenueOpsConfigSchema = z.object({
   readyReminderOffsetMin: z.number().int().min(1).max(15).optional(),
   expiryNotificationEnabled: z.boolean().optional(),
   guestWaitFormula: VenueGuestWaitFormulaSchema.optional(),
+  waitEstimateDecayEnabled: z.boolean().optional(),
   contentMode: VenueContentModeSchema.optional(),
   arrivalCompletionMode: VenueArrivalCompletionModeSchema.optional(),
   postWindowHandlingMode: VenuePostWindowHandlingModeSchema.optional(),
@@ -122,6 +123,7 @@ export type ResolvedVenueOpsConfig = {
   readyReminderOffsetMin: number;
   expiryNotificationEnabled: boolean;
   guestWaitFormula: z.infer<typeof VenueGuestWaitFormulaSchema>;
+  waitEstimateDecayEnabled: boolean;
   contentMode: z.infer<typeof VenueContentModeSchema>;
   arrivalCompletionMode: z.infer<typeof VenueArrivalCompletionModeSchema>;
   postWindowHandlingMode: z.infer<typeof VenuePostWindowHandlingModeSchema>;
@@ -192,6 +194,7 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
   readyReminderOffsetMin: 1,
   expiryNotificationEnabled: false,
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+  waitEstimateDecayEnabled: true,
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
   postWindowHandlingMode: 'AUTO_NO_SHOW',
@@ -199,6 +202,8 @@ const DEFAULT_VENUE_OPS_CONFIG: ResolvedVenueOpsConfig = {
 };
 
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
+const CRAFTERY_LAB_VENUE_SLUG = 'the-craftery-koramangala-lab';
+const CRAFTERY_WAITLIST_VENUE_SLUGS = new Set([CRAFTERY_VENUE_SLUG, CRAFTERY_LAB_VENUE_SLUG]);
 const CRAFTERY_VENUE_UI_DEFAULTS = {
   showQueuePosition: true,
   supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
@@ -210,6 +215,8 @@ const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   arrivalCompletionMode: 'QUEUE_COMPLETE',
   contentMode: 'DISABLED',
   postWindowHandlingMode: 'MANUAL_REMOVE',
+  guestWaitFormula: 'SUBKO_FIXED_V1',
+  waitEstimateDecayEnabled: false,
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -248,7 +255,7 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
 
   const themeKey = rawBrandConfig.themeKey ?? 'default';
   const themePreset = THEME_PRESET_DEFAULTS[themeKey];
-  const isCraftery = source.slug === CRAFTERY_VENUE_SLUG;
+  const isCraftery = CRAFTERY_WAITLIST_VENUE_SLUGS.has(source.slug);
 
   return {
     brandConfig: {
@@ -371,6 +378,7 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
       readyReminderOffsetMin: config.opsConfig.readyReminderOffsetMin,
       expiryNotificationEnabled: config.opsConfig.expiryNotificationEnabled,
       guestWaitFormula: config.opsConfig.guestWaitFormula,
+      waitEstimateDecayEnabled: config.opsConfig.waitEstimateDecayEnabled,
       contentMode: config.opsConfig.contentMode,
       arrivalCompletionMode: config.opsConfig.arrivalCompletionMode,
       postWindowHandlingMode: config.opsConfig.postWindowHandlingMode,

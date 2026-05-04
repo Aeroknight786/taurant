@@ -13,6 +13,7 @@ import {
   shouldUseVenueTables,
 } from './venueConfig.service';
 import { publishQueueRealtimeEvent } from './realtime.service';
+import { calculateWaitEstimateMin } from '../utils/waitEstimate';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -412,9 +413,7 @@ async function recompactQueuePositions(venueId: string): Promise<void> {
       where: { id: entry.id },
       data: {
         position: index + 1,
-        estimatedWaitMin: venueConfig?.opsConfig.guestWaitFormula === 'SUBKO_FIXED_V1'
-          ? Math.max(3, Math.min(8 + (3 * index), 30))
-          : Math.ceil((index + 1) * 55 * 0.7),
+        estimatedWaitMin: calculateWaitEstimateMin(venueConfig?.opsConfig.guestWaitFormula, index + 1),
       },
     })
   ));

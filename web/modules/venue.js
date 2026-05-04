@@ -42,6 +42,7 @@ const DEFAULT_VENUE_OPS_CONFIG = {
   readyReminderOffsetMin: 1,
   expiryNotificationEnabled: false,
   guestWaitFormula: 'LEGACY_TURN_HEURISTIC',
+  waitEstimateDecayEnabled: true,
   contentMode: 'DEFAULT',
   arrivalCompletionMode: 'TABLE_ASSIGN',
   postWindowHandlingMode: 'AUTO_NO_SHOW',
