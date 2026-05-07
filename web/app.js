@@ -1409,15 +1409,15 @@ async function renderVenueLanding(slug) {
             <a class="btn btn-secondary btn-full" data-nav href="${buildGuestEntryPath(slug, activeEntryId)}" style="margin-bottom:14px;">Continue existing entry</a>
           ` : ''}
           ${guestQueueEnabled ? `
-            <form id="join-form">
+            <form id="join-form" autocomplete="on">
               <div class="form-group">
                 <label class="form-label" for="guest-name">Guest name</label>
-                <input class="form-input" id="guest-name" required maxlength="80" placeholder="Asha">
+                <input class="form-input" id="guest-name" name="name" required maxlength="80" placeholder="Asha" autocomplete="name" autocapitalize="words">
               </div>
               <div class="form-row">
                 <div class="form-group">
                   <label class="form-label" for="guest-phone">Phone</label>
-                  <input class="form-input" id="guest-phone" required placeholder="9876543210" inputmode="numeric">
+                  <input class="form-input" id="guest-phone" name="tel" required type="tel" placeholder="9876543210" inputmode="tel" autocomplete="tel" enterkeyhint="next">
                 </div>
                 <div class="form-group">
                   <label class="form-label" for="party-size">Party size</label>
