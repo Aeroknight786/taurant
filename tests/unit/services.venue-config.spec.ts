@@ -243,6 +243,30 @@ describe('venue config service', () => {
     });
   });
 
+  it('normalizes resolved wait estimate max to be at least the base wait', async () => {
+    const { resolveVenueConfig } = await import('../../src/services/venueConfig.service');
+
+    const resolved = resolveVenueConfig({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 5,
+      },
+    });
+
+    expect(resolved.opsConfig).toMatchObject({
+      waitEstimateBaseMin: 10,
+      waitEstimateMaxMin: 10,
+    });
+  });
+
   it('exposes manual-dispatch helpers from resolved ops config', async () => {
     const {
       isManualQueueDispatchConfig,

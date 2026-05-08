@@ -53,12 +53,16 @@ const DEFAULT_VENUE_OPS_CONFIG = {
 
 export function resolveVenueOpsConfig(venue) {
   const rawOpsConfig = readVenueSection(venue, 'opsConfig') || {};
-  return {
+  const mergedOpsConfig = {
     ...DEFAULT_VENUE_OPS_CONFIG,
     ...rawOpsConfig,
     readyNotificationChannels: Array.isArray(rawOpsConfig.readyNotificationChannels) && rawOpsConfig.readyNotificationChannels.length
       ? rawOpsConfig.readyNotificationChannels
       : DEFAULT_VENUE_OPS_CONFIG.readyNotificationChannels,
+  };
+  return {
+    ...mergedOpsConfig,
+    waitEstimateMaxMin: Math.max(mergedOpsConfig.waitEstimateBaseMin, mergedOpsConfig.waitEstimateMaxMin),
   };
 }
 

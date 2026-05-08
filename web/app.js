@@ -3075,6 +3075,12 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
   document.getElementById('waitlist-settings-form')?.addEventListener('submit', guardedAction('waitlist-config-form', async (event) => {
     event.preventDefault();
     try {
+      const waitEstimateBaseMin = Number(document.getElementById('waitlist-eta-base').value);
+      const waitEstimateStepMin = Number(document.getElementById('waitlist-eta-step').value);
+      const waitEstimateMaxMin = Number(document.getElementById('waitlist-eta-max').value);
+      if (waitEstimateMaxMin < waitEstimateBaseMin) {
+        throw new Error('Max wait must be greater than or equal to base wait.');
+      }
       await apiRequest('/venues/config', {
         method: 'PATCH',
         auth: true,
@@ -3090,9 +3096,9 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
             readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
             expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
             waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
-            waitEstimateBaseMin: Number(document.getElementById('waitlist-eta-base').value),
-            waitEstimateStepMin: Number(document.getElementById('waitlist-eta-step').value),
-            waitEstimateMaxMin: Number(document.getElementById('waitlist-eta-max').value),
+            waitEstimateBaseMin,
+            waitEstimateStepMin,
+            waitEstimateMaxMin,
           },
         },
       });
@@ -3286,6 +3292,12 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
       document.getElementById('waitlist-settings-form')?.addEventListener('submit', guardedAction('waitlist-admin-config-form', async (event) => {
         event.preventDefault();
         try {
+          const waitEstimateBaseMin = Number(document.getElementById('waitlist-eta-base').value);
+          const waitEstimateStepMin = Number(document.getElementById('waitlist-eta-step').value);
+          const waitEstimateMaxMin = Number(document.getElementById('waitlist-eta-max').value);
+          if (waitEstimateMaxMin < waitEstimateBaseMin) {
+            throw new Error('Max wait must be greater than or equal to base wait.');
+          }
           await apiRequest('/venues/config', {
             method: 'PATCH',
             auth: true,
@@ -3301,9 +3313,9 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
                 readyReminderOffsetMin: Number(document.getElementById('waitlist-ready-reminder-offset').value),
                 expiryNotificationEnabled: document.getElementById('waitlist-expiry-notification-enabled').checked,
                 waitEstimateDecayEnabled: document.getElementById('waitlist-eta-decay-enabled').checked,
-                waitEstimateBaseMin: Number(document.getElementById('waitlist-eta-base').value),
-                waitEstimateStepMin: Number(document.getElementById('waitlist-eta-step').value),
-                waitEstimateMaxMin: Number(document.getElementById('waitlist-eta-max').value),
+                waitEstimateBaseMin,
+                waitEstimateStepMin,
+                waitEstimateMaxMin,
               },
             },
           });
@@ -5288,7 +5300,7 @@ function getSubkoPositionWaitMin(opsConfig, position) {
   const safePosition = Number.isFinite(position) ? Math.max(1, Math.floor(position)) : 1;
   const baseMin = getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3);
   const stepMin = getWaitEstimateConfigValue(opsConfig.waitEstimateStepMin, 5);
-  const maxMin = getWaitEstimateConfigValue(opsConfig.waitEstimateMaxMin, 30, 1);
+  const maxMin = Math.max(baseMin, getWaitEstimateConfigValue(opsConfig.waitEstimateMaxMin, 30, 1));
   return Math.min(maxMin, baseMin + (stepMin * (safePosition - 1)));
 }
 

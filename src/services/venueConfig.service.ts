@@ -231,6 +231,13 @@ const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   waitEstimateMaxMin: 58,
 };
 
+function normalizeResolvedOpsConfig(opsConfig: ResolvedVenueOpsConfig): ResolvedVenueOpsConfig {
+  return {
+    ...opsConfig,
+    waitEstimateMaxMin: Math.max(opsConfig.waitEstimateBaseMin, opsConfig.waitEstimateMaxMin),
+  };
+}
+
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
   guestQueue: 'Guest queue is disabled for this venue.',
   preOrder: 'Pre-orders are disabled for this venue.',
@@ -287,11 +294,11 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
       ...(isCraftery ? CRAFTERY_VENUE_UI_DEFAULTS : {}),
       ...rawUiConfig,
     },
-    opsConfig: {
+    opsConfig: normalizeResolvedOpsConfig({
       ...DEFAULT_VENUE_OPS_CONFIG,
       ...(isCraftery ? CRAFTERY_VENUE_OPS_DEFAULTS : {}),
       ...rawOpsConfig,
-    },
+    }),
   };
 }
 

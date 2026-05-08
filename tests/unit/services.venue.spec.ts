@@ -178,4 +178,32 @@ describe('venue service', () => {
       expect.objectContaining({ slot: 'EVENTS', isEnabled: false, sortOrder: 4 }),
     ]);
   });
+
+  it('rejects wait estimate admin updates where max wait is below base wait', async () => {
+    const { updateVenueConfig } = await import('../../src/services/venue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_2',
+      slug: 'the-craftery-koramangala',
+      name: 'The Craftery by Subko',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 58,
+      },
+    });
+
+    await expect(updateVenueConfig('venue_2', {
+      opsConfig: {
+        waitEstimateMaxMin: 5,
+      },
+    })).rejects.toMatchObject({
+      code: 'WAIT_ESTIMATE_MAX_BELOW_BASE',
+    });
+    expect(prismaMock.venue.update).not.toHaveBeenCalled();
+  });
 });

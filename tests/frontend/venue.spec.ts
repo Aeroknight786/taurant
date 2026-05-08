@@ -171,6 +171,22 @@ describe('frontend venue helpers', () => {
     expect(isManualDispatchVenue(venue)).toBe(true);
   });
 
+  it('normalizes frontend wait estimate max to avoid app/notification ETA drift', () => {
+    const venue = {
+      opsConfig: {
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 5,
+      },
+    };
+
+    expect(resolveVenueOpsConfig(venue)).toMatchObject({
+      waitEstimateBaseMin: 10,
+      waitEstimateMaxMin: 10,
+    });
+  });
+
   it('treats DISABLED table source with queue completion as a waitlist-only venue', () => {
     const venue = {
       brandConfig: { themeKey: 'craftery' },

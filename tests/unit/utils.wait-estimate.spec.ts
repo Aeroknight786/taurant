@@ -86,6 +86,25 @@ describe('wait estimate helpers', () => {
     ]).toEqual([10, 18, 26, 58]);
   });
 
+  it('normalizes max wait below base wait so app and notifications cannot diverge', () => {
+    const config = {
+      guestWaitFormula: 'SUBKO_FIXED_V1' as const,
+      waitEstimateDecayEnabled: true,
+      waitEstimateBaseMin: 10,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 5,
+    };
+
+    expect(calculateWaitEstimateMin(config, 1)).toBe(10);
+    expect(calculateCurrentWaitEstimateMin(
+      config,
+      5,
+      '2026-05-08T10:00:00.000Z',
+      new Date('2026-05-08T10:05:00.000Z'),
+    )).toBe(10);
+    expect(calculateNextWaitEstimateAllocationMin(config, 10, 2)).toBe(10);
+  });
+
   it('keeps the legacy heuristic unchanged for non-Subko venues', () => {
     expect(calculateWaitEstimateMin('LEGACY_TURN_HEURISTIC', 1)).toBe(39);
     expect(calculateWaitEstimateMin('LEGACY_TURN_HEURISTIC', 2)).toBe(77);

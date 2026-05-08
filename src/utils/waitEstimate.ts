@@ -38,12 +38,13 @@ function resolveWaitEstimateConfig(input: WaitEstimateInput): ResolvedWaitEstima
     };
   }
 
+  const waitEstimateBaseMin = getNumericConfigValue(input?.waitEstimateBaseMin, DEFAULT_SUBKO_WAIT_BASE_MIN);
   const maxMin = getNumericConfigValue(input?.waitEstimateMaxMin, DEFAULT_SUBKO_WAIT_MAX_MIN);
   return {
     guestWaitFormula: input?.guestWaitFormula ?? 'LEGACY_TURN_HEURISTIC',
-    waitEstimateBaseMin: getNumericConfigValue(input?.waitEstimateBaseMin, DEFAULT_SUBKO_WAIT_BASE_MIN),
+    waitEstimateBaseMin,
     waitEstimateStepMin: getNumericConfigValue(input?.waitEstimateStepMin, DEFAULT_SUBKO_WAIT_STEP_MIN),
-    waitEstimateMaxMin: Math.max(1, maxMin),
+    waitEstimateMaxMin: Math.max(waitEstimateBaseMin, maxMin, 1),
   };
 }
 

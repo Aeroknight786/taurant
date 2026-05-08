@@ -221,6 +221,16 @@ export async function updateVenueConfig(venueId: string, data: z.infer<typeof Up
     ...scalarConfig
   } = data;
 
+  if (opsConfig) {
+    const mergedOpsConfig = {
+      ...resolveVenueConfig(current).opsConfig,
+      ...opsConfig,
+    };
+    if (mergedOpsConfig.waitEstimateMaxMin < mergedOpsConfig.waitEstimateBaseMin) {
+      throw new AppError('Max wait must be greater than or equal to base wait', 400, 'WAIT_ESTIMATE_MAX_BELOW_BASE');
+    }
+  }
+
   return prisma.venue.update({
     where: { id: venueId },
     data: {
