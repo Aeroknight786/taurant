@@ -28,7 +28,12 @@ import {
   resolveGuestAccessModeFromQueueEntry,
 } from './guestAccessLink.service';
 import { publishQueueRealtimeEvent } from './realtime.service';
-import { calculateWaitEstimateMin } from '../utils/waitEstimate';
+import {
+  calculateCurrentWaitEstimateMin,
+  calculateNextWaitEstimateAllocationMin,
+  calculateRebasedWaitEstimateMin,
+  calculateWaitEstimateMin,
+} from '../utils/waitEstimate';
 
 type QueueReorderDirection = 'UP' | 'DOWN';
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
@@ -82,6 +87,66 @@ function publishQueueChange(venueId: string, type: string, entryId?: string): vo
   });
 }
 
+type QueueWaitEstimateShape = {
+  estimatedWaitMin?: number | null;
+  waitEstimateStartedAt?: Date | null;
+};
+
+function isDynamicWaitEstimateConfig(venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null): boolean {
+  const opsConfig = venueConfig?.opsConfig;
+  return opsConfig?.guestWaitFormula === 'SUBKO_FIXED_V1'
+    && opsConfig.waitEstimateDecayEnabled !== false;
+}
+
+function getCurrentEntryWaitEstimateMin(
+  venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null,
+  entry: QueueWaitEstimateShape,
+  now: Date,
+): number {
+  return calculateCurrentWaitEstimateMin(
+    venueConfig?.opsConfig,
+    entry.estimatedWaitMin,
+    entry.waitEstimateStartedAt,
+    now,
+  );
+}
+
+async function allocateWaitEstimateForJoin(
+  venueId: string,
+  venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null,
+  position: number,
+  allocatedAt: Date,
+): Promise<{ estimatedWaitMin: number; waitEstimateStartedAt: Date | null }> {
+  if (!isDynamicWaitEstimateConfig(venueConfig)) {
+    return {
+      estimatedWaitMin: estimateWait(venueConfig, position),
+      waitEstimateStartedAt: allocatedAt,
+    };
+  }
+
+  const lastWaitingEntry = await prisma.queueEntry.findFirst({
+    where: { venueId, status: QueueEntryStatus.WAITING },
+    orderBy: { position: 'desc' },
+    select: {
+      estimatedWaitMin: true,
+      waitEstimateStartedAt: true,
+    },
+  });
+
+  const previousCurrentWaitMin = lastWaitingEntry
+    ? getCurrentEntryWaitEstimateMin(venueConfig, lastWaitingEntry, allocatedAt)
+    : null;
+
+  return {
+    estimatedWaitMin: calculateNextWaitEstimateAllocationMin(
+      venueConfig?.opsConfig,
+      previousCurrentWaitMin,
+      position,
+    ),
+    waitEstimateStartedAt: allocatedAt,
+  };
+}
+
 // ── Join queue ────────────────────────────────────────────────────
 
 export async function joinQueue(params: {
@@ -115,7 +180,13 @@ export async function joinQueue(params: {
   if (existing) throw new AppError('This phone is already in the queue', 400, 'ALREADY_IN_QUEUE');
 
   const position = activeCount + 1;
-  const estimatedWaitMin = estimateWait(venueConfig, position);
+  const waitEstimateAllocatedAt = new Date();
+  const { estimatedWaitMin, waitEstimateStartedAt } = await allocateWaitEstimateForJoin(
+    params.venueId,
+    venueConfig,
+    position,
+    waitEstimateAllocatedAt,
+  );
 
   // Generate OTP — retry on collision (rare but possible at high volume)
   let otp = generateSeatingOtp();
@@ -147,6 +218,7 @@ export async function joinQueue(params: {
       position,
       otp,
       estimatedWaitMin,
+      waitEstimateStartedAt,
     },
   });
 
@@ -330,6 +402,7 @@ export async function getVenueQueueSnapshot(venueId: string) {
       preOrderTotal: true,
       depositPaid: true,
       estimatedWaitMin: true,
+      waitEstimateStartedAt: true,
       joinedAt: true,
       updatedAt: true,
       table: {
@@ -419,6 +492,7 @@ export async function getQueueEntryStatus(entryId: string) {
       preOrderTotal: true,
       depositPaid: true,
       estimatedWaitMin: true,
+      waitEstimateStartedAt: true,
       joinedAt: true,
       updatedAt: true,
       table: {
@@ -571,6 +645,8 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
     },
   });
 
+  await recompactPositions(venueId);
+
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({ type: 'ENTRY_NOTIFIED', entryId: entry.id }))
   );
@@ -648,6 +724,7 @@ export async function nudgeQueueEntry(entryId: string, venueId: string, actor?: 
         guestPhone: true,
         position: true,
         estimatedWaitMin: true,
+        waitEstimateStartedAt: true,
         notifiedAt: true,
         tableReadyDeadlineAt: true,
         tableReadyExpiredAt: true,
@@ -887,6 +964,7 @@ export async function reorderQueueEntry(
         status: true,
         position: true,
         estimatedWaitMin: true,
+        waitEstimateStartedAt: true,
         guestName: true,
       },
     }),
@@ -929,6 +1007,7 @@ export async function reorderQueueEntry(
       status: true,
       position: true,
       estimatedWaitMin: true,
+      waitEstimateStartedAt: true,
     },
   });
 
@@ -950,21 +1029,28 @@ export async function reorderQueueEntry(
   reorderedWaitingEntries.splice(targetIndex, 0, movingEntry);
 
   const orderedEntries = [...notifiedEntries, ...reorderedWaitingEntries];
+  const reorderedAt = new Date();
   await Promise.all(
-    orderedEntries.map((queueEntry, idx) =>
-      prisma.queueEntry.update({
+    orderedEntries.map((queueEntry, idx) => {
+      const waitingIndex = reorderedWaitingEntries.findIndex((waitingEntry) => waitingEntry.id === queueEntry.id);
+      const waitEstimateData = waitingIndex >= 0
+        ? {
+            estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig.opsConfig, waitingIndex),
+            waitEstimateStartedAt: reorderedAt,
+          }
+        : {};
+      return prisma.queueEntry.update({
         where: { id: queueEntry.id },
         data: {
           position: idx + 1,
-          estimatedWaitMin: estimateWait(venueConfig, idx + 1),
+          ...waitEstimateData,
         },
-      })
-    )
+      });
+    })
   );
 
-  const reorderedAt = new Date();
   const newPosition = notifiedEntries.length + targetIndex + 1;
-  const estimatedWaitMin = estimateWait(venueConfig, newPosition);
+  const estimatedWaitMin = calculateRebasedWaitEstimateMin(venueConfig.opsConfig, targetIndex);
 
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
@@ -1017,6 +1103,7 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
         status: true,
         position: true,
         estimatedWaitMin: true,
+        waitEstimateStartedAt: true,
         guestName: true,
       },
     }),
@@ -1055,7 +1142,9 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
 
   const prioritizedAt = new Date();
   const newPosition = prioritizedPosition ?? entry.position;
-  const estimatedWaitMin = estimateWait(venueConfig, newPosition);
+  const estimatedWaitMin = prioritizedPosition
+    ? calculateRebasedWaitEstimateMin(venueConfig.opsConfig, 0)
+    : getCurrentEntryWaitEstimateMin(venueConfig, entry, prioritizedAt);
 
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
@@ -1442,6 +1531,8 @@ export async function completeQueueEntry(entryId: string, actor?: StaffAuditActo
     }
   });
 
+  await recompactPositions(entry.venueId);
+
   if (usesVenueTables && entry.tableId) {
     await safeRedisExec(() =>
       redis.publish(PubSubChannels.tableUpdate(entry.venueId), JSON.stringify({ type: 'TABLE_CLEARING', tableId: entry.tableId }))
@@ -1533,38 +1624,45 @@ async function resequenceActiveQueue(venueId: string, prioritizedEntryId?: strin
   });
   const venueConfig = venue ? resolveVenueConfig(venue) : null;
 
-  const waiting = await prisma.queueEntry.findMany({
+  const activeEntries = await prisma.queueEntry.findMany({
     where:   { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
     orderBy: { position: 'asc' },
   });
 
-  const prioritizedEntry = prioritizedEntryId ? waiting.find((entry) => entry.id === prioritizedEntryId) : null;
+  const notifiedEntries = activeEntries.filter((entry) => entry.status === QueueEntryStatus.NOTIFIED);
+  const waitingEntries = activeEntries.filter((entry) => entry.status === QueueEntryStatus.WAITING);
+  const prioritizedEntry = prioritizedEntryId ? waitingEntries.find((entry) => entry.id === prioritizedEntryId) : null;
   let prioritizedPosition: number | null = null;
-  let ordered = waiting;
+  let orderedWaitingEntries = waitingEntries;
 
   if (prioritizedEntry) {
-    const remaining = waiting.filter((entry) => entry.id !== prioritizedEntryId);
-    const firstWaitingIndex = remaining.findIndex((entry) => entry.status === QueueEntryStatus.WAITING);
-    const insertIndex = firstWaitingIndex === -1 ? remaining.length : firstWaitingIndex;
-
-    ordered = [
-      ...remaining.slice(0, insertIndex),
+    const remaining = waitingEntries.filter((entry) => entry.id !== prioritizedEntryId);
+    orderedWaitingEntries = [
       prioritizedEntry,
-      ...remaining.slice(insertIndex),
+      ...remaining,
     ];
-    prioritizedPosition = ordered.findIndex((entry) => entry.id === prioritizedEntryId) + 1;
+    prioritizedPosition = notifiedEntries.length + 1;
   }
 
+  const ordered = [...notifiedEntries, ...orderedWaitingEntries];
+  const rebasedAt = new Date();
   await Promise.all(
-    ordered.map((entry, idx) =>
-      prisma.queueEntry.update({
+    ordered.map((entry, idx) => {
+      const waitingIndex = orderedWaitingEntries.findIndex((waitingEntry) => waitingEntry.id === entry.id);
+      const waitEstimateData = waitingIndex >= 0
+        ? {
+            estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex),
+            waitEstimateStartedAt: rebasedAt,
+          }
+        : {};
+      return prisma.queueEntry.update({
         where: { id: entry.id },
         data: {
           position: idx + 1,
-          estimatedWaitMin: estimateWait(venueConfig, idx + 1),
+          ...waitEstimateData,
         },
-      })
-    )
+      });
+    })
   );
 
   return { prioritizedPosition };

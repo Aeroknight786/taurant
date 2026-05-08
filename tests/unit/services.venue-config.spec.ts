@@ -86,7 +86,7 @@ describe('venue config service', () => {
         queueDispatchMode: 'MANUAL_NOTIFY',
         joinConfirmationMode: 'WEB_ONLY',
         waitEstimateStepMin: 8,
-        waitEstimateMaxMin: 60,
+        waitEstimateMaxMin: 58,
       },
     });
 
@@ -99,7 +99,7 @@ describe('venue config service', () => {
         joinConfirmationMode: 'WEB_ONLY',
         waitEstimateBaseMin: 10,
         waitEstimateStepMin: 8,
-        waitEstimateMaxMin: 60,
+        waitEstimateMaxMin: 58,
       }),
     });
   });
@@ -119,10 +119,10 @@ describe('venue config service', () => {
 
     expect(resolved.opsConfig).toMatchObject({
       guestWaitFormula: 'SUBKO_FIXED_V1',
-      waitEstimateDecayEnabled: false,
+      waitEstimateDecayEnabled: true,
       waitEstimateBaseMin: 10,
       waitEstimateStepMin: 8,
-      waitEstimateMaxMin: 60,
+      waitEstimateMaxMin: 58,
       queueDispatchMode: 'MANUAL_NOTIFY',
     });
   });
@@ -167,10 +167,10 @@ describe('venue config service', () => {
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
-        waitEstimateDecayEnabled: false,
+        waitEstimateDecayEnabled: true,
         waitEstimateBaseMin: 10,
         waitEstimateStepMin: 8,
-        waitEstimateMaxMin: 60,
+        waitEstimateMaxMin: 58,
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
@@ -211,7 +211,7 @@ describe('venue config service', () => {
         readyReminderOffsetMin: 1,
         expiryNotificationEnabled: false,
         guestWaitFormula: 'SUBKO_FIXED_V1',
-        waitEstimateDecayEnabled: false,
+        waitEstimateDecayEnabled: true,
         contentMode: 'DISABLED',
         arrivalCompletionMode: 'QUEUE_COMPLETE',
         postWindowHandlingMode: 'MANUAL_REMOVE',
@@ -300,10 +300,10 @@ describe('venue config service', () => {
     expect(resolved.opsConfig).toMatchObject({
       queueDispatchMode: 'MANUAL_NOTIFY',
       guestWaitFormula: 'SUBKO_FIXED_V1',
-      waitEstimateDecayEnabled: false,
+      waitEstimateDecayEnabled: true,
       waitEstimateBaseMin: 10,
       waitEstimateStepMin: 8,
-      waitEstimateMaxMin: 60,
+      waitEstimateMaxMin: 58,
     });
   });
 });

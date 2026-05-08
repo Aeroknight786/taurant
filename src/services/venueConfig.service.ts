@@ -225,10 +225,10 @@ const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   contentMode: 'DISABLED',
   postWindowHandlingMode: 'MANUAL_REMOVE',
   guestWaitFormula: 'SUBKO_FIXED_V1',
-  waitEstimateDecayEnabled: false,
+  waitEstimateDecayEnabled: true,
   waitEstimateBaseMin: 10,
   waitEstimateStepMin: 8,
-  waitEstimateMaxMin: 60,
+  waitEstimateMaxMin: 58,
 };
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {

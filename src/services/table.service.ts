@@ -13,7 +13,7 @@ import {
   shouldUseVenueTables,
 } from './venueConfig.service';
 import { publishQueueRealtimeEvent } from './realtime.service';
-import { calculateWaitEstimateMin } from '../utils/waitEstimate';
+import { calculateRebasedWaitEstimateMin } from '../utils/waitEstimate';
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -405,16 +405,28 @@ async function recompactQueuePositions(venueId: string): Promise<void> {
       venueId,
       status: { in: [QueueEntryStatus.WAITING, QueueEntryStatus.NOTIFIED] },
     },
-    orderBy: { joinedAt: 'asc' },
+    orderBy: { position: 'asc' },
   });
 
-  await Promise.all(activeEntries.map((entry, index) =>
-    prisma.queueEntry.update({
+  const notifiedEntries = activeEntries.filter((entry) => entry.status === QueueEntryStatus.NOTIFIED);
+  const waitingEntries = activeEntries.filter((entry) => entry.status === QueueEntryStatus.WAITING);
+  const orderedEntries = [...notifiedEntries, ...waitingEntries];
+  const rebasedAt = new Date();
+
+  await Promise.all(orderedEntries.map((entry, index) => {
+    const waitingIndex = waitingEntries.findIndex((waitingEntry) => waitingEntry.id === entry.id);
+    const waitEstimateData = waitingIndex >= 0
+      ? {
+          estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex),
+          waitEstimateStartedAt: rebasedAt,
+        }
+      : {};
+    return prisma.queueEntry.update({
       where: { id: entry.id },
       data: {
         position: index + 1,
-        estimatedWaitMin: calculateWaitEstimateMin(venueConfig?.opsConfig, index + 1),
+        ...waitEstimateData,
       },
-    })
-  ));
+    });
+  }));
 }

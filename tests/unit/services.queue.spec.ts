@@ -135,7 +135,12 @@ describe('queue service', () => {
       opsConfig: null,
     });
     prismaMock.queueEntry.count.mockResolvedValue(2);
-    prismaMock.queueEntry.findFirst.mockResolvedValue(null);
+    prismaMock.queueEntry.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        estimatedWaitMin: 18,
+        waitEstimateStartedAt: new Date(),
+      });
     prismaMock.queueEntry.create.mockResolvedValue({
       id: 'entry_1',
       venueId: 'venue_1',
@@ -198,7 +203,12 @@ describe('queue service', () => {
       },
     });
     prismaMock.queueEntry.count.mockResolvedValue(2);
-    prismaMock.queueEntry.findFirst.mockResolvedValue(null);
+    prismaMock.queueEntry.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        estimatedWaitMin: 18,
+        waitEstimateStartedAt: new Date(),
+      });
     prismaMock.queueEntry.create.mockResolvedValue({
       id: 'entry_subko_1',
       venueId: 'venue_subko',
@@ -223,6 +233,82 @@ describe('queue service', () => {
     }));
     expect(notifyMock.queueJoined).not.toHaveBeenCalled();
     expect(guestAccessLinkMock.issueQueueAccessLink).not.toHaveBeenCalled();
+  });
+
+  it('uses the same decayed dynamic ETA for the queue entry and join WhatsApp payload', async () => {
+    const { joinQueue } = await import('../../src/services/queue.service');
+    const now = new Date('2026-05-08T10:05:00.000Z');
+    vi.useFakeTimers();
+    vi.setSystemTime(now);
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      isQueueOpen: true,
+      maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WHATSAPP',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateDecayEnabled: true,
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 58,
+      },
+    });
+    prismaMock.queueEntry.count.mockResolvedValue(2);
+    prismaMock.queueEntry.findFirst
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        estimatedWaitMin: 18,
+        waitEstimateStartedAt: new Date('2026-05-08T10:00:00.000Z'),
+      });
+    prismaMock.queueEntry.create.mockResolvedValue({
+      id: 'entry_subko_dynamic',
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      whatsappConsentGiven: true,
+    });
+
+    const result = await joinQueue({
+      venueId: 'venue_subko',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: true,
+      whatsappConsentTextVersion: 'craftery_waitlist_whatsapp_v1',
+    });
+
+    expect(result).toEqual(expect.objectContaining({
+      id: 'entry_subko_dynamic',
+      position: 3,
+      estimatedWaitMin: 21,
+    }));
+    expect(prismaMock.queueEntry.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        estimatedWaitMin: 21,
+        waitEstimateStartedAt: now,
+      }),
+    }));
+    expect(notifyMock.queueJoined).toHaveBeenCalledWith(
+      'venue_subko',
+      'entry_subko_dynamic',
+      '9876543210',
+      'Aarav',
+      'The Craftery by Subko',
+      expect.objectContaining({
+        queuePosition: 3,
+        estimatedWaitMin: 21,
+      }),
+    );
+
+    vi.useRealTimers();
   });
 
   it('returns a compact guest status payload without heavy queue relations', async () => {
@@ -418,8 +504,8 @@ describe('queue service', () => {
       },
     });
     prismaMock.queueEntry.findMany.mockResolvedValue([
-      { id: 'entry_2', joinedAt: new Date('2026-03-09T10:00:00.000Z') },
-      { id: 'entry_3', joinedAt: new Date('2026-03-09T10:05:00.000Z') },
+      { id: 'entry_2', status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-09T10:00:00.000Z') },
+      { id: 'entry_3', status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-09T10:05:00.000Z') },
     ]);
     syncPendingPreOrderForSeatingMock.mockResolvedValue({
       attempted: true,
@@ -475,8 +561,8 @@ describe('queue service', () => {
       },
     });
     prismaMock.queueEntry.findMany.mockResolvedValue([
-      { id: 'entry_2', joinedAt: new Date('2026-03-09T10:00:00.000Z') },
-      { id: 'entry_3', joinedAt: new Date('2026-03-09T10:05:00.000Z') },
+      { id: 'entry_2', status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-09T10:00:00.000Z') },
+      { id: 'entry_3', status: QueueEntryStatus.WAITING, joinedAt: new Date('2026-03-09T10:05:00.000Z') },
     ]);
 
     await seatGuest({
@@ -791,23 +877,23 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 2,
-      estimatedWaitMin: 18,
+      estimatedWaitMin: 10,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_notified' },
-      data: expect.objectContaining({ position: 1, estimatedWaitMin: 10 }),
+      data: expect.objectContaining({ position: 1 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 10 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 18 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_2' },
-      data: expect.objectContaining({ position: 4, estimatedWaitMin: 34 }),
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 26 }),
     }));
   });
 
@@ -847,15 +933,15 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 3,
-      estimatedWaitMin: 26,
+      estimatedWaitMin: 18,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 18 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 10 }),
     }));
   });
 
@@ -962,23 +1048,23 @@ describe('queue service', () => {
       entryId: 'entry_target',
       status: QueueEntryStatus.WAITING,
       position: 2,
-      estimatedWaitMin: 18,
+      estimatedWaitMin: 10,
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_notified' },
-      data: expect.objectContaining({ position: 1, estimatedWaitMin: 10 }),
+      data: expect.objectContaining({ position: 1 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_target' },
-      data: expect.objectContaining({ position: 2, estimatedWaitMin: 18 }),
+      data: expect.objectContaining({ position: 2, estimatedWaitMin: 10 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_1' },
-      data: expect.objectContaining({ position: 3, estimatedWaitMin: 26 }),
+      data: expect.objectContaining({ position: 3, estimatedWaitMin: 18 }),
     }));
     expect(prismaMock.queueEntry.update).toHaveBeenCalledWith(expect.objectContaining({
       where: { id: 'entry_other_2' },
-      data: expect.objectContaining({ position: 4, estimatedWaitMin: 34 }),
+      data: expect.objectContaining({ position: 4, estimatedWaitMin: 26 }),
     }));
     expect(logFlowEventMock).toHaveBeenCalledWith(expect.objectContaining({
       queueEntryId: 'entry_target',
@@ -986,7 +1072,7 @@ describe('queue service', () => {
       snapshot: expect.objectContaining({
         previousPosition: 3,
         newPosition: 2,
-        estimatedWaitMin: 18,
+        estimatedWaitMin: 10,
         staffId: 'staff_priority',
       }),
     }));

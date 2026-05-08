@@ -5308,15 +5308,16 @@ function getQueueEntryEtaMin(entry, venue) {
     return baseWaitMin;
   }
 
-  const joinedAtValue = entry?.joinedAt ? new Date(entry.joinedAt).getTime() : Number.NaN;
+  const waitEstimateStartedAt = entry?.waitEstimateStartedAt || entry?.joinedAt;
+  const joinedAtValue = waitEstimateStartedAt ? new Date(waitEstimateStartedAt).getTime() : Number.NaN;
 
   if (!Number.isFinite(joinedAtValue)) {
-    return baseWaitMin;
+    return Math.max(getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3), storedEta || baseWaitMin);
   }
 
   const elapsedMin = Math.floor((Date.now() - joinedAtValue) / 60000);
-  const decayFloorMin = Math.min(baseWaitMin, getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3));
-  return Math.max(decayFloorMin, baseWaitMin - Math.max(0, elapsedMin));
+  const decayFloorMin = getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3);
+  return Math.max(decayFloorMin, (storedEta || baseWaitMin) - Math.max(0, elapsedMin));
 }
 
 function getQueueEntryEtaLabel(entry, venue) {

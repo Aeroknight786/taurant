@@ -291,7 +291,7 @@ test.describe('Staff dashboard', () => {
       otp: String(100000 + index),
       status: 'WAITING',
       seatingPreference: index % 2 === 0 ? 'INDOOR' : 'FIRST_AVAILABLE',
-      estimatedWaitMin: Math.min(60, 10 + (index * 8)),
+      estimatedWaitMin: Math.min(58, 10 + (index * 8)),
       displayRef: `FLK-SCROLL-${index + 1}`,
       guestNotes: index === 10 ? 'Keep this row stable during polling.' : '',
     }));
