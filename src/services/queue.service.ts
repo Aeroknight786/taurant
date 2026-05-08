@@ -32,7 +32,10 @@ import {
   calculateCurrentWaitEstimateMin,
   calculateNextWaitEstimateAllocationMin,
   calculateRebasedWaitEstimateMin,
+  calculateWaitEstimateSnapshot,
   calculateWaitEstimateMin,
+  ResolvedWaitEstimateSnapshot,
+  WaitEstimateSnapshot,
 } from '../utils/waitEstimate';
 
 type QueueReorderDirection = 'UP' | 'DOWN';
@@ -92,6 +95,9 @@ function publishQueueChange(venueId: string, type: string, entryId?: string): vo
 type QueueWaitEstimateShape = {
   estimatedWaitMin?: number | null;
   waitEstimateStartedAt?: Date | null;
+  waitEstimateFloorMin?: number | null;
+  waitEstimateStepMin?: number | null;
+  waitEstimateMaxMin?: number | null;
 };
 
 function isDynamicWaitEstimateConfig(venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null): boolean {
@@ -110,7 +116,44 @@ function getCurrentEntryWaitEstimateMin(
     entry.estimatedWaitMin,
     entry.waitEstimateStartedAt,
     now,
+    entry.waitEstimateFloorMin,
   );
+}
+
+function getEntryWaitEstimateSnapshot(
+  venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null,
+  entry: QueueWaitEstimateShape,
+): ResolvedWaitEstimateSnapshot {
+  const fallback = calculateWaitEstimateSnapshot(venueConfig?.opsConfig);
+  const waitEstimateFloorMin = Number.isFinite(entry.waitEstimateFloorMin)
+    ? Math.max(0, Math.floor(Number(entry.waitEstimateFloorMin)))
+    : fallback.waitEstimateFloorMin;
+  const waitEstimateStepMin = Number.isFinite(entry.waitEstimateStepMin)
+    ? Math.max(0, Math.floor(Number(entry.waitEstimateStepMin)))
+    : fallback.waitEstimateStepMin;
+  const rawMaxMin = Number.isFinite(entry.waitEstimateMaxMin)
+    ? Math.max(1, Math.floor(Number(entry.waitEstimateMaxMin)))
+    : fallback.waitEstimateMaxMin;
+
+  return {
+    waitEstimateFloorMin,
+    waitEstimateStepMin,
+    waitEstimateMaxMin: Math.max(waitEstimateFloorMin, rawMaxMin),
+  };
+}
+
+function buildRebasedWaitEstimateData(
+  venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null,
+  entry: QueueWaitEstimateShape,
+  waitingIndex: number,
+  rebasedAt: Date,
+) {
+  const snapshot = getEntryWaitEstimateSnapshot(venueConfig, entry);
+  return {
+    estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex, snapshot),
+    waitEstimateStartedAt: rebasedAt,
+    ...snapshot,
+  };
 }
 
 async function allocateWaitEstimateForJoin(
@@ -118,11 +161,14 @@ async function allocateWaitEstimateForJoin(
   venueConfig: Pick<ResolvedVenueConfig, 'opsConfig'> | null,
   position: number,
   allocatedAt: Date,
-): Promise<{ estimatedWaitMin: number; waitEstimateStartedAt: Date | null }> {
+): Promise<{ estimatedWaitMin: number; waitEstimateStartedAt: Date | null } & ResolvedWaitEstimateSnapshot> {
+  const waitEstimateSnapshot = calculateWaitEstimateSnapshot(venueConfig?.opsConfig);
+
   if (!isDynamicWaitEstimateConfig(venueConfig)) {
     return {
       estimatedWaitMin: estimateWait(venueConfig, position),
       waitEstimateStartedAt: allocatedAt,
+      ...waitEstimateSnapshot,
     };
   }
 
@@ -132,6 +178,9 @@ async function allocateWaitEstimateForJoin(
     select: {
       estimatedWaitMin: true,
       waitEstimateStartedAt: true,
+      waitEstimateFloorMin: true,
+      waitEstimateStepMin: true,
+      waitEstimateMaxMin: true,
     },
   });
 
@@ -146,6 +195,7 @@ async function allocateWaitEstimateForJoin(
       position,
     ),
     waitEstimateStartedAt: allocatedAt,
+    ...waitEstimateSnapshot,
   };
 }
 
@@ -183,7 +233,13 @@ export async function joinQueue(params: {
 
   const position = activeCount + 1;
   const waitEstimateAllocatedAt = new Date();
-  const { estimatedWaitMin, waitEstimateStartedAt } = await allocateWaitEstimateForJoin(
+  const {
+    estimatedWaitMin,
+    waitEstimateStartedAt,
+    waitEstimateFloorMin,
+    waitEstimateStepMin,
+    waitEstimateMaxMin,
+  } = await allocateWaitEstimateForJoin(
     params.venueId,
     venueConfig,
     position,
@@ -221,6 +277,9 @@ export async function joinQueue(params: {
       otp,
       estimatedWaitMin,
       waitEstimateStartedAt,
+      waitEstimateFloorMin,
+      waitEstimateStepMin,
+      waitEstimateMaxMin,
     },
   });
 
@@ -405,6 +464,9 @@ export async function getVenueQueueSnapshot(venueId: string) {
       depositPaid: true,
       estimatedWaitMin: true,
       waitEstimateStartedAt: true,
+      waitEstimateFloorMin: true,
+      waitEstimateStepMin: true,
+      waitEstimateMaxMin: true,
       joinedAt: true,
       updatedAt: true,
       table: {
@@ -495,6 +557,9 @@ export async function getQueueEntryStatus(entryId: string) {
       depositPaid: true,
       estimatedWaitMin: true,
       waitEstimateStartedAt: true,
+      waitEstimateFloorMin: true,
+      waitEstimateStepMin: true,
+      waitEstimateMaxMin: true,
       joinedAt: true,
       updatedAt: true,
       table: {
@@ -736,6 +801,9 @@ export async function nudgeQueueEntry(entryId: string, venueId: string, actor?: 
         position: true,
         estimatedWaitMin: true,
         waitEstimateStartedAt: true,
+        waitEstimateFloorMin: true,
+        waitEstimateStepMin: true,
+        waitEstimateMaxMin: true,
         notifiedAt: true,
         tableReadyDeadlineAt: true,
         tableReadyExpiredAt: true,
@@ -976,6 +1044,9 @@ export async function reorderQueueEntry(
         position: true,
         estimatedWaitMin: true,
         waitEstimateStartedAt: true,
+        waitEstimateFloorMin: true,
+        waitEstimateStepMin: true,
+        waitEstimateMaxMin: true,
         guestName: true,
       },
     }),
@@ -1019,6 +1090,9 @@ export async function reorderQueueEntry(
       position: true,
       estimatedWaitMin: true,
       waitEstimateStartedAt: true,
+      waitEstimateFloorMin: true,
+      waitEstimateStepMin: true,
+      waitEstimateMaxMin: true,
     },
   });
 
@@ -1045,10 +1119,7 @@ export async function reorderQueueEntry(
     orderedEntries.map((queueEntry, idx) => {
       const waitingIndex = reorderedWaitingEntries.findIndex((waitingEntry) => waitingEntry.id === queueEntry.id);
       const waitEstimateData = waitingIndex >= 0
-        ? {
-            estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig.opsConfig, waitingIndex),
-            waitEstimateStartedAt: reorderedAt,
-          }
+        ? buildRebasedWaitEstimateData(venueConfig, queueEntry, waitingIndex, reorderedAt)
         : {};
       return prisma.queueEntry.update({
         where: { id: queueEntry.id },
@@ -1061,7 +1132,11 @@ export async function reorderQueueEntry(
   );
 
   const newPosition = notifiedEntries.length + targetIndex + 1;
-  const estimatedWaitMin = calculateRebasedWaitEstimateMin(venueConfig.opsConfig, targetIndex);
+  const estimatedWaitMin = calculateRebasedWaitEstimateMin(
+    venueConfig.opsConfig,
+    targetIndex,
+    getEntryWaitEstimateSnapshot(venueConfig, movingEntry),
+  );
 
   await safeRedisExec(() =>
     redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
@@ -1115,6 +1190,9 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
         position: true,
         estimatedWaitMin: true,
         waitEstimateStartedAt: true,
+        waitEstimateFloorMin: true,
+        waitEstimateStepMin: true,
+        waitEstimateMaxMin: true,
         guestName: true,
       },
     }),
@@ -1154,7 +1232,11 @@ export async function prioritizeQueueEntry(entryId: string, venueId: string, sta
   const prioritizedAt = new Date();
   const newPosition = prioritizedPosition ?? entry.position;
   const estimatedWaitMin = prioritizedPosition
-    ? calculateRebasedWaitEstimateMin(venueConfig.opsConfig, 0)
+    ? calculateRebasedWaitEstimateMin(
+        venueConfig.opsConfig,
+        0,
+        getEntryWaitEstimateSnapshot(venueConfig, entry),
+      )
     : getCurrentEntryWaitEstimateMin(venueConfig, entry, prioritizedAt);
 
   await safeRedisExec(() =>
@@ -1669,10 +1751,7 @@ async function resequenceActiveQueue(venueId: string, prioritizedEntryId?: strin
     ordered.map((entry, idx) => {
       const waitingIndex = orderedWaitingEntries.findIndex((waitingEntry) => waitingEntry.id === entry.id);
       const waitEstimateData = waitingIndex >= 0
-        ? {
-            estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex),
-            waitEstimateStartedAt: rebasedAt,
-          }
+        ? buildRebasedWaitEstimateData(venueConfig, entry, waitingIndex, rebasedAt)
         : {};
       return prisma.queueEntry.update({
         where: { id: entry.id },

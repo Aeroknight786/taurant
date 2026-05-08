@@ -55,6 +55,24 @@ describe('wait estimate helpers', () => {
     )).toBe(10);
   });
 
+  it('decays live Subko wait estimates to the entry floor that was allocated before config changes', () => {
+    const currentConfig = {
+      guestWaitFormula: 'SUBKO_FIXED_V1' as const,
+      waitEstimateDecayEnabled: true,
+      waitEstimateBaseMin: 25,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 58,
+    };
+
+    expect(calculateCurrentWaitEstimateMin(
+      currentConfig,
+      20,
+      new Date('2026-05-08T10:00:00.000Z'),
+      new Date('2026-05-08T10:30:00.000Z'),
+      20,
+    )).toBe(20);
+  });
+
   it('allocates the next live Subko wait from the previous remaining wait', () => {
     const config = {
       guestWaitFormula: 'SUBKO_FIXED_V1' as const,
@@ -102,6 +120,27 @@ describe('wait estimate helpers', () => {
       calculateRebasedWaitEstimateMin(config, 2),
       calculateRebasedWaitEstimateMin(config, 20),
     ]).toEqual([10, 18, 26, 58]);
+  });
+
+  it('rebases existing entries with their stored formula snapshot', () => {
+    const currentConfig = {
+      guestWaitFormula: 'SUBKO_FIXED_V1' as const,
+      waitEstimateDecayEnabled: true,
+      waitEstimateBaseMin: 25,
+      waitEstimateStepMin: 15,
+      waitEstimateMaxMin: 60,
+    };
+
+    expect(calculateRebasedWaitEstimateMin(currentConfig, 0, {
+      waitEstimateFloorMin: 20,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 58,
+    })).toBe(20);
+    expect(calculateRebasedWaitEstimateMin(currentConfig, 1, {
+      waitEstimateFloorMin: 20,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 58,
+    })).toBe(28);
   });
 
   it('normalizes max wait below base wait so app and notifications cannot diverge', () => {

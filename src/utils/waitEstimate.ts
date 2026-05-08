@@ -13,6 +13,18 @@ export type WaitEstimateConfig = {
   waitEstimateMaxMin?: number | null;
 };
 
+export type WaitEstimateSnapshot = {
+  waitEstimateFloorMin?: number | null;
+  waitEstimateStepMin?: number | null;
+  waitEstimateMaxMin?: number | null;
+};
+
+export type ResolvedWaitEstimateSnapshot = {
+  waitEstimateFloorMin: number;
+  waitEstimateStepMin: number;
+  waitEstimateMaxMin: number;
+};
+
 type WaitEstimateInput = VenueGuestWaitFormula | WaitEstimateConfig | null | undefined;
 type ResolvedWaitEstimateConfig = {
   guestWaitFormula: VenueGuestWaitFormula;
@@ -48,6 +60,31 @@ function resolveWaitEstimateConfig(input: WaitEstimateInput): ResolvedWaitEstima
   };
 }
 
+function resolveWaitEstimateSnapshot(
+  input: WaitEstimateInput,
+  snapshot?: WaitEstimateSnapshot | null,
+): ResolvedWaitEstimateConfig {
+  const config = resolveWaitEstimateConfig(input);
+  const waitEstimateBaseMin = getNumericConfigValue(snapshot?.waitEstimateFloorMin, config.waitEstimateBaseMin);
+  const maxMin = getNumericConfigValue(snapshot?.waitEstimateMaxMin, config.waitEstimateMaxMin);
+
+  return {
+    ...config,
+    waitEstimateBaseMin,
+    waitEstimateStepMin: getNumericConfigValue(snapshot?.waitEstimateStepMin, config.waitEstimateStepMin),
+    waitEstimateMaxMin: Math.max(waitEstimateBaseMin, maxMin, 1),
+  };
+}
+
+export function calculateWaitEstimateSnapshot(configInput: WaitEstimateInput): ResolvedWaitEstimateSnapshot {
+  const config = resolveWaitEstimateConfig(configInput);
+  return {
+    waitEstimateFloorMin: config.waitEstimateBaseMin,
+    waitEstimateStepMin: config.waitEstimateStepMin,
+    waitEstimateMaxMin: config.waitEstimateMaxMin,
+  };
+}
+
 export function calculateWaitEstimateMin(configInput: WaitEstimateInput, position: number): number {
   const numericPosition = Number.isFinite(position) ? Math.floor(position) : 1;
   const safePosition = Math.max(1, numericPosition);
@@ -74,9 +111,11 @@ export function calculateCurrentWaitEstimateMin(
   allocatedWaitMin: number | null | undefined,
   startedAt: Date | string | null | undefined,
   now: Date = new Date(),
+  floorMin?: number | null,
 ): number {
   const config = resolveWaitEstimateConfig(configInput);
   const allocatedMin = getNumericConfigValue(allocatedWaitMin, config.waitEstimateBaseMin);
+  const floor = getNumericConfigValue(floorMin, config.waitEstimateBaseMin);
 
   if (config.guestWaitFormula !== 'SUBKO_FIXED_V1' || !shouldDecayWaitEstimate(configInput)) {
     return allocatedMin;
@@ -85,11 +124,11 @@ export function calculateCurrentWaitEstimateMin(
   const startedAtTime = startedAt ? new Date(startedAt).getTime() : Number.NaN;
   const nowTime = now.getTime();
   if (!Number.isFinite(startedAtTime) || !Number.isFinite(nowTime) || nowTime <= startedAtTime) {
-    return Math.max(config.waitEstimateBaseMin, allocatedMin);
+    return Math.max(floor, allocatedMin);
   }
 
   const elapsedMin = Math.floor((nowTime - startedAtTime) / 60000);
-  return Math.max(config.waitEstimateBaseMin, allocatedMin - Math.max(0, elapsedMin));
+  return Math.max(floor, allocatedMin - Math.max(0, elapsedMin));
 }
 
 export function calculateNextWaitEstimateAllocationMin(
@@ -113,11 +152,15 @@ export function calculateNextWaitEstimateAllocationMin(
   );
 }
 
-export function calculateRebasedWaitEstimateMin(configInput: WaitEstimateInput, waitingIndex: number): number {
-  const config = resolveWaitEstimateConfig(configInput);
+export function calculateRebasedWaitEstimateMin(
+  configInput: WaitEstimateInput,
+  waitingIndex: number,
+  snapshot?: WaitEstimateSnapshot | null,
+): number {
+  const config = resolveWaitEstimateSnapshot(configInput, snapshot);
   const safeIndex = Number.isFinite(waitingIndex) ? Math.max(0, Math.floor(waitingIndex)) : 0;
 
-  if (config.guestWaitFormula !== 'SUBKO_FIXED_V1' || !shouldDecayWaitEstimate(configInput)) {
+  if (config.guestWaitFormula !== 'SUBKO_FIXED_V1') {
     return calculateWaitEstimateMin(configInput, safeIndex + 1);
   }
 

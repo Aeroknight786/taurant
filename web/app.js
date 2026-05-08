@@ -5239,20 +5239,23 @@ function getQueueEntryEtaMin(entry, venue) {
   const rawPosition = Number(entry?.position || 1);
   const position = Number.isFinite(rawPosition) ? Math.max(1, Math.floor(rawPosition)) : 1;
   const baseWaitMin = getSubkoPositionWaitMin(opsConfig, position);
+  const storedFloorMin = Number(entry?.waitEstimateFloorMin);
+  const decayFloorMin = Number.isFinite(storedFloorMin)
+    ? Math.max(0, Math.floor(storedFloorMin))
+    : getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3);
 
   if (opsConfig.waitEstimateDecayEnabled === false) {
-    return baseWaitMin;
+    return storedEta || baseWaitMin;
   }
 
   const waitEstimateStartedAt = entry?.waitEstimateStartedAt || entry?.joinedAt;
   const joinedAtValue = waitEstimateStartedAt ? new Date(waitEstimateStartedAt).getTime() : Number.NaN;
 
   if (!Number.isFinite(joinedAtValue)) {
-    return Math.max(getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3), storedEta || baseWaitMin);
+    return Math.max(decayFloorMin, storedEta || baseWaitMin);
   }
 
   const elapsedMin = Math.floor((Date.now() - joinedAtValue) / 60000);
-  const decayFloorMin = getWaitEstimateConfigValue(opsConfig.waitEstimateBaseMin, 3);
   return Math.max(decayFloorMin, (storedEta || baseWaitMin) - Math.max(0, elapsedMin));
 }
 

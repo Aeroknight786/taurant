@@ -361,6 +361,9 @@ model QueueEntry {
   depositTxnRef    String?
   estimatedWaitMin Int?
   waitEstimateStartedAt DateTime?
+  waitEstimateFloorMin Int?
+  waitEstimateStepMin  Int?
+  waitEstimateMaxMin   Int?
   joinedAt         DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   venue            Venue            @relation(fields: [venueId], references: [id], onDelete: Cascade)

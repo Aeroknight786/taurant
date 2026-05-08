@@ -13,7 +13,36 @@ import {
   shouldUseVenueTables,
 } from './venueConfig.service';
 import { publishQueueRealtimeEvent } from './realtime.service';
-import { calculateRebasedWaitEstimateMin } from '../utils/waitEstimate';
+import {
+  calculateRebasedWaitEstimateMin,
+  calculateWaitEstimateSnapshot,
+  ResolvedWaitEstimateSnapshot,
+} from '../utils/waitEstimate';
+
+type QueueWaitEstimateSnapshotShape = {
+  waitEstimateFloorMin?: number | null;
+  waitEstimateStepMin?: number | null;
+  waitEstimateMaxMin?: number | null;
+};
+
+function getEntryWaitEstimateSnapshot(opsConfig: unknown, entry: QueueWaitEstimateSnapshotShape): ResolvedWaitEstimateSnapshot {
+  const fallback = calculateWaitEstimateSnapshot(opsConfig as Parameters<typeof calculateWaitEstimateSnapshot>[0]);
+  const waitEstimateFloorMin = Number.isFinite(entry.waitEstimateFloorMin)
+    ? Math.max(0, Math.floor(Number(entry.waitEstimateFloorMin)))
+    : fallback.waitEstimateFloorMin;
+  const waitEstimateStepMin = Number.isFinite(entry.waitEstimateStepMin)
+    ? Math.max(0, Math.floor(Number(entry.waitEstimateStepMin)))
+    : fallback.waitEstimateStepMin;
+  const rawMaxMin = Number.isFinite(entry.waitEstimateMaxMin)
+    ? Math.max(1, Math.floor(Number(entry.waitEstimateMaxMin)))
+    : fallback.waitEstimateMaxMin;
+
+  return {
+    waitEstimateFloorMin,
+    waitEstimateStepMin,
+    waitEstimateMaxMin: Math.max(waitEstimateFloorMin, rawMaxMin),
+  };
+}
 
 // ── Get tables for venue ──────────────────────────────────────────
 
@@ -415,12 +444,15 @@ async function recompactQueuePositions(venueId: string): Promise<void> {
 
   await Promise.all(orderedEntries.map((entry, index) => {
     const waitingIndex = waitingEntries.findIndex((waitingEntry) => waitingEntry.id === entry.id);
-    const waitEstimateData = waitingIndex >= 0
-      ? {
-          estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex),
-          waitEstimateStartedAt: rebasedAt,
-        }
-      : {};
+    const waitEstimateData = (() => {
+      if (waitingIndex < 0) return {};
+      const snapshot = getEntryWaitEstimateSnapshot(venueConfig?.opsConfig, entry);
+      return {
+        ...snapshot,
+        estimatedWaitMin: calculateRebasedWaitEstimateMin(venueConfig?.opsConfig, waitingIndex, snapshot),
+        waitEstimateStartedAt: rebasedAt,
+      };
+    })();
     return prisma.queueEntry.update({
       where: { id: entry.id },
       data: {
