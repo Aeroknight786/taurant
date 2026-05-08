@@ -1090,7 +1090,7 @@ function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = 
     <div class="share-sheet-panel notify-sheet-panel arrival-sheet-panel">
       <div class="share-sheet-handle"></div>
       <div class="section-head share-sheet-head">
-        <div class="section-title">Mark ${escapeHtml(guestName || 'guest')} arrived</div>
+        <div class="section-title">Mark ${escapeHtml(guestName || 'guest')} seated</div>
         <div class="section-sub">Enter the guest OTP to complete the queue journey. No table selection is needed for this venue.</div>
       </div>
       ${entrySummary ? `
@@ -1109,7 +1109,7 @@ function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = 
           <input class="form-input mono" id="arrival-sheet-otp" maxlength="6" inputmode="numeric" autocomplete="one-time-code" value="${escapeHtml(initialOtp)}" placeholder="123456">
         </div>
         <div class="row" style="margin-top:16px;">
-          <button class="btn btn-primary btn-full" type="submit">Mark arrived</button>
+          <button class="btn btn-primary btn-full" type="submit">Mark seated</button>
           <button class="btn btn-secondary btn-full" id="arrival-sheet-close" type="button">Cancel</button>
         </div>
       </form>
@@ -1138,7 +1138,7 @@ function openArrivalSheet({ entryId, guestName, initialOtp = '', entrySummary = 
         auth: true,
         body: { entryId, otp },
       }),
-      successMessage: 'Guest marked arrived.',
+      successMessage: 'Guest marked seated.',
       nextTab: 'history',
     });
   });
@@ -3774,7 +3774,6 @@ function renderQueueTab(waiting, tables, venue) {
   const renderWaitlistRowActions = (entry) => {
     if (entry.status === 'WAITING') {
       return `
-        ${renderCallGuestButton(entry)}
         ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
         ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
@@ -3786,7 +3785,6 @@ function renderQueueTab(waiting, tables, venue) {
     if (entry.status === 'NOTIFIED') {
       if (isLateNoResponseEntry(entry)) {
         return `
-          ${renderCallGuestButton(entry)}
           ${waitlistOnlyVenue ? `
             <button
               class="btn btn-primary btn-sm"
@@ -3797,7 +3795,7 @@ function renderQueueTab(waiting, tables, venue) {
               data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
               data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
               data-entry-state-label="Called, no response"
-            >Mark arrived</button>
+            >Mark seated</button>
           ` : ''}
           <button class="btn btn-danger btn-sm" data-no-show-entry="${entry.id}">Remove</button>
           ${renderEntryActivityButton(entry)}
@@ -3805,7 +3803,6 @@ function renderQueueTab(waiting, tables, venue) {
       }
 
       return `
-        ${renderCallGuestButton(entry)}
         ${showNotifyAction ? `<button class="btn btn-secondary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
         ${waitlistOnlyVenue ? `
           <button
@@ -3817,7 +3814,7 @@ function renderQueueTab(waiting, tables, venue) {
             data-preference-label="${escapeHtml(getQueueEntryPreferenceLabel(entry))}"
             data-guest-notes="${escapeHtml(getQueueEntryGuestNotes(entry))}"
             data-entry-state-label="Called"
-          >Mark arrived</button>
+          >Mark seated</button>
         ` : `
           <button
             class="btn btn-secondary btn-sm"
@@ -5275,25 +5272,6 @@ function getQueueEntryGuestNotes(entry) {
 
 function getQueueEntryPreferenceLabel(entry) {
   return formatQueueSeatingPreference(entry?.seatingPreference || 'FIRST_AVAILABLE');
-}
-
-function getGuestDialHref(phone) {
-  const digits = String(phone || '').replace(/\D/g, '');
-  if (/^[6-9]\d{9}$/.test(digits)) {
-    return `tel:+91${digits}`;
-  }
-  if (/^91[6-9]\d{9}$/.test(digits)) {
-    return `tel:+${digits}`;
-  }
-  return phone ? `tel:${String(phone).trim()}` : '';
-}
-
-function renderCallGuestButton(entry) {
-  const href = getGuestDialHref(entry?.guestPhone);
-  if (!href) {
-    return '';
-  }
-  return `<a class="btn btn-secondary btn-sm" href="${escapeHtml(href)}">Call</a>`;
 }
 
 function getWaitEstimateConfigValue(value, fallback, min = 0) {
