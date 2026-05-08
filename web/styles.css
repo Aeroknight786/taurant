@@ -539,6 +539,10 @@ button, input, select {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.form-row.form-row-single {
+  grid-template-columns: 1fr;
+}
+
 .form-label {
   display: block;
   margin-bottom: 7px;
@@ -585,6 +589,71 @@ textarea.form-input {
 
 .checkbox-row input {
   accent-color: var(--amber);
+}
+
+.settings-advanced {
+  margin: 6px 0 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm);
+  background: rgba(255, 255, 255, 0.015);
+  overflow: hidden;
+}
+
+.settings-advanced-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 14px;
+  cursor: pointer;
+  list-style: none;
+  color: var(--cream);
+}
+
+.settings-advanced-summary::-webkit-details-marker {
+  display: none;
+}
+
+.settings-advanced-summary::marker {
+  content: "";
+}
+
+.settings-advanced-summary span:first-child {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.settings-advanced-summary span:last-child {
+  font-size: 12px;
+  color: var(--cream-dim);
+  text-align: right;
+}
+
+.settings-advanced-summary::after {
+  content: "+";
+  flex: 0 0 auto;
+  color: var(--amber);
+  font-weight: 700;
+}
+
+.settings-advanced[open] .settings-advanced-summary::after {
+  content: "-";
+}
+
+.settings-advanced-body {
+  padding: 0 14px 14px;
+}
+
+.settings-toggle-stack {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.settings-advanced-note {
+  margin: 0;
 }
 
 .otp-grid {

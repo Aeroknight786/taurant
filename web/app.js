@@ -4121,14 +4121,10 @@ function renderWaitlistOnlySettingsForm(venue) {
       <button class="btn btn-secondary btn-sm" id="toggle-queue">${venue.isQueueOpen ? 'Close queue' : 'Open queue'}</button>
     </div>
     <form id="waitlist-settings-form">
-      <div class="form-row">
+      <div class="form-row form-row-single">
         <div class="form-group">
           <label class="form-label" for="waitlist-max-queue-size">Max queue size</label>
           <input class="form-input" id="waitlist-max-queue-size" type="number" min="10" max="500" value="${venue.maxQueueSize}">
-        </div>
-        <div class="form-group">
-          <label class="form-label" for="waitlist-response-window">Response window (min)</label>
-          <input class="form-input" id="waitlist-response-window" type="number" min="3" max="60" value="${venue.tableReadyWindowMin}">
         </div>
       </div>
       <div class="form-row">
@@ -4146,27 +4142,39 @@ function renderWaitlistOnlySettingsForm(venue) {
         </div>
       </div>
       <div class="card-sub" style="margin-bottom:16px;">Estimated wait = base + ((queue position - 1) × extra), capped at max.</div>
-      <div class="form-row">
-        <div class="form-group" style="display:flex; gap:12px; align-items:center; padding-top:24px;">
-          <label class="checkbox-row">
-            <input type="checkbox" id="waitlist-ready-reminder-enabled" ${opsConfig.readyReminderEnabled ? 'checked' : ''}>
-            Ready reminder
-          </label>
+      <details class="settings-advanced">
+        <summary class="settings-advanced-summary">
+          <span>Advanced timing</span>
+          <span>Response fallback, reminders, countdown</span>
+        </summary>
+        <div class="settings-advanced-body">
+          <div class="form-row">
+            <div class="form-group">
+              <label class="form-label" for="waitlist-response-window">Default response window (min)</label>
+              <input class="form-input" id="waitlist-response-window" type="number" min="3" max="60" value="${venue.tableReadyWindowMin}">
+            </div>
+            <div class="form-group">
+              <label class="form-label" for="waitlist-ready-reminder-offset">Reminder offset (min)</label>
+              <input class="form-input" id="waitlist-ready-reminder-offset" type="number" min="1" max="15" value="${opsConfig.readyReminderOffsetMin}">
+            </div>
+          </div>
+          <div class="settings-toggle-stack">
+            <label class="checkbox-row">
+              <input type="checkbox" id="waitlist-ready-reminder-enabled" ${opsConfig.readyReminderEnabled ? 'checked' : ''}>
+              Ready reminder
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="waitlist-expiry-notification-enabled" ${opsConfig.expiryNotificationEnabled ? 'checked' : ''}>
+              Send expiry notifications
+            </label>
+            <label class="checkbox-row">
+              <input type="checkbox" id="waitlist-eta-decay-enabled" ${opsConfig.waitEstimateDecayEnabled ? 'checked' : ''}>
+              Live wait countdown
+            </label>
+          </div>
+          <div class="card-sub settings-advanced-note">The response window is only the default fallback. Staff can still choose 3, 5, or 10 minutes when sending a table-ready notification.</div>
         </div>
-        <div class="form-group">
-          <label class="form-label" for="waitlist-ready-reminder-offset">Reminder offset (min)</label>
-          <input class="form-input" id="waitlist-ready-reminder-offset" type="number" min="1" max="15" value="${opsConfig.readyReminderOffsetMin}">
-        </div>
-      </div>
-      <label class="checkbox-row" style="margin-bottom:16px;">
-        <input type="checkbox" id="waitlist-expiry-notification-enabled" ${opsConfig.expiryNotificationEnabled ? 'checked' : ''}>
-        Send expiry notification on no-show
-      </label>
-      <label class="checkbox-row" style="margin-bottom:16px;">
-        <input type="checkbox" id="waitlist-eta-decay-enabled" ${opsConfig.waitEstimateDecayEnabled ? 'checked' : ''}>
-        Live wait countdown
-      </label>
-      <div class="card-sub" style="margin-bottom:16px;">Automatic no-show remains a supported venue mode. The Craftery is currently using manual host removal after a missed return.</div>
+      </details>
       <button class="btn btn-primary btn-full" type="submit">Save settings</button>
     </form>
   `;

@@ -69,6 +69,24 @@ describe('wait estimate helpers', () => {
     expect(calculateNextWaitEstimateAllocationMin(config, 57, 8)).toBe(58);
   });
 
+  it('uses static position estimates when live wait countdown is disabled', () => {
+    const config = {
+      guestWaitFormula: 'SUBKO_FIXED_V1' as const,
+      waitEstimateDecayEnabled: false,
+      waitEstimateBaseMin: 10,
+      waitEstimateStepMin: 8,
+      waitEstimateMaxMin: 58,
+    };
+
+    expect(calculateCurrentWaitEstimateMin(
+      config,
+      18,
+      new Date('2026-05-08T10:00:00.000Z'),
+      new Date('2026-05-08T10:05:00.000Z'),
+    )).toBe(18);
+    expect(calculateNextWaitEstimateAllocationMin(config, 13, 3)).toBe(26);
+  });
+
   it('rebases live Subko wait estimates from the queue head', () => {
     const config = {
       guestWaitFormula: 'SUBKO_FIXED_V1' as const,

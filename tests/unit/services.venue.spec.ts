@@ -206,4 +206,63 @@ describe('venue service', () => {
     });
     expect(prismaMock.venue.update).not.toHaveBeenCalled();
   });
+
+  it('persists waitlist ETA and advanced timing controls from admin settings', async () => {
+    const { updateVenueConfig } = await import('../../src/services/venue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_2',
+      slug: 'the-craftery-koramangala',
+      name: 'The Craftery by Subko',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        tableSourceMode: 'DISABLED',
+        contentMode: 'DISABLED',
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+        waitEstimateBaseMin: 10,
+        waitEstimateStepMin: 8,
+        waitEstimateMaxMin: 58,
+      },
+    });
+    prismaMock.venue.update.mockResolvedValue({ id: 'venue_2' });
+
+    await updateVenueConfig('venue_2', {
+      maxQueueSize: 140,
+      tableReadyWindowMin: 3,
+      opsConfig: {
+        readyReminderEnabled: true,
+        readyReminderOffsetMin: 2,
+        expiryNotificationEnabled: false,
+        waitEstimateDecayEnabled: true,
+        waitEstimateBaseMin: 12,
+        waitEstimateStepMin: 6,
+        waitEstimateMaxMin: 60,
+      },
+    });
+
+    expect(prismaMock.venue.update).toHaveBeenCalledWith(expect.objectContaining({
+      where: { id: 'venue_2' },
+      data: expect.objectContaining({
+        maxQueueSize: 140,
+        tableReadyWindowMin: 3,
+        opsConfig: expect.objectContaining({
+          queueDispatchMode: 'MANUAL_NOTIFY',
+          tableSourceMode: 'DISABLED',
+          contentMode: 'DISABLED',
+          arrivalCompletionMode: 'QUEUE_COMPLETE',
+          waitEstimateDecayEnabled: true,
+          waitEstimateBaseMin: 12,
+          waitEstimateStepMin: 6,
+          waitEstimateMaxMin: 60,
+          readyReminderEnabled: true,
+          readyReminderOffsetMin: 2,
+          expiryNotificationEnabled: false,
+        }),
+      }),
+    }));
+  });
 });
