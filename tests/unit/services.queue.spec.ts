@@ -535,6 +535,38 @@ describe('queue service', () => {
     expect(prismaMock.queueEntry.create).toHaveBeenCalledTimes(1);
   });
 
+  it('requires WhatsApp consent to join the Craftery lab waitlist', async () => {
+    const { joinQueue } = await import('../../src/services/queue.service');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_lab',
+      name: 'The Craftery Lab',
+      slug: 'the-craftery-koramangala-lab',
+      isQueueOpen: true,
+      maxQueueSize: 200,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WHATSAPP',
+        guestWaitFormula: 'SUBKO_FIXED_V1',
+      },
+    });
+
+    await expect(joinQueue({
+      venueId: 'venue_lab',
+      guestName: 'Aarav',
+      guestPhone: '9876543210',
+      partySize: 2,
+      seatingPreference: QueueSeatingPreference.FIRST_AVAILABLE,
+      whatsappConsentGiven: false,
+    })).rejects.toMatchObject<AppError>({ code: 'WHATSAPP_CONSENT_REQUIRED' });
+
+    expect(prismaMock.queueEntry.create).not.toHaveBeenCalled();
+    expect(notifyMock.queueJoined).not.toHaveBeenCalled();
+  });
+
   it('seats a guest, re-compacts the queue, and syncs preorder state', async () => {
     const { seatGuest } = await import('../../src/services/queue.service');
 
@@ -694,6 +726,26 @@ describe('queue service', () => {
     expect(result.preOrderSync).toEqual({ attempted: false, status: 'no_preorder' });
   });
 
+  it('does not complete entries that are already terminal', async () => {
+    const { completeQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst.mockResolvedValue({
+      id: 'entry_cancelled',
+      venueId: 'venue_subko',
+      status: QueueEntryStatus.CANCELLED,
+    });
+
+    await expect(completeQueueEntry('entry_cancelled', {
+      staffId: 'staff_1',
+      staffName: 'Host',
+    }, 'venue_subko')).rejects.toMatchObject<AppError>({
+      code: 'ENTRY_ALREADY_CLOSED',
+    });
+
+    expect(prismaMock.queueEntry.update).not.toHaveBeenCalled();
+    expect(logFlowEventMock).not.toHaveBeenCalled();
+  });
+
   it('notifies a waiting entry in manual-dispatch mode with the default 3 minute window', async () => {
     const { notifyQueueEntry } = await import('../../src/services/queue.service');
 
@@ -800,6 +852,44 @@ describe('queue service', () => {
       }),
     );
     expect(result.windowMin).toBe(10);
+  });
+
+  it('rejects notifying a later waiting guest before the first waiting guest', async () => {
+    const { notifyQueueEntry } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findFirst
+      .mockResolvedValueOnce({
+        id: 'entry_2',
+        venueId: 'venue_1',
+        status: QueueEntryStatus.WAITING,
+        tableId: null,
+        guestName: 'Neha',
+        guestPhone: '9876543210',
+        otp: '123456',
+        whatsappConsentGiven: true,
+      })
+      .mockResolvedValueOnce({ id: 'entry_1' });
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_1',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      tableReadyWindowMin: 15,
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        queueDispatchMode: 'MANUAL_NOTIFY',
+        joinConfirmationMode: 'WEB_ONLY',
+        readyNotificationChannels: ['WHATSAPP'],
+      },
+    });
+
+    await expect(notifyQueueEntry('entry_2', 'venue_1', 3)).rejects.toMatchObject<AppError>({
+      code: 'ENTRY_NOT_NEXT_IN_QUEUE',
+    });
+
+    expect(prismaMock.queueEntry.update).not.toHaveBeenCalled();
+    expect(notifyMock.tableReady).not.toHaveBeenCalled();
   });
 
   it('nudges an already-notified entry without changing the deadline', async () => {

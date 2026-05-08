@@ -175,7 +175,7 @@ export async function checkoutEntry(req: AuthenticatedRequest, res: Response, ne
     await QueueService.completeQueueEntry(req.params.entryId, {
       staffId: req.staff?.id,
       staffName: req.staff?.name,
-    });
+    }, req.venue!.id);
     ok(res, { checkedOut: true });
   } catch (e) { next(e); }
 }

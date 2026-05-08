@@ -3715,10 +3715,11 @@ function renderQueueTab(waiting, tables, venue) {
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
   const renderWaitlistRowActions = (entry) => {
     if (entry.status === 'WAITING') {
+      const waitingIndex = waitingIndexById.get(entry.id) ?? 0;
       return `
-        ${showNotifyAction ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
-        ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
-        ${manualDispatchMode && (waitingIndexById.get(entry.id) || 0) < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
+        ${showNotifyAction && waitingIndex === 0 ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
+        ${manualDispatchMode && waitingIndex > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
+        ${manualDispatchMode && waitingIndex < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
         <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
         ${renderEntryActivityButton(entry)}
       `;
@@ -5357,7 +5358,7 @@ function resolveGuestJoinCopy(venue) {
 
 function shouldPromptForWhatsAppConsent(venue) {
   const opsConfig = resolveVenueOpsConfig(venue);
-  if (!venue?.slug || venue.slug !== 'the-craftery-koramangala') {
+  if (!venue?.slug || !OPTIMIZED_WAITLIST_VENUE_SLUGS.has(venue.slug)) {
     return false;
   }
 

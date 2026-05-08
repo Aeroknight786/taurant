@@ -37,6 +37,8 @@ import {
 
 type QueueReorderDirection = 'UP' | 'DOWN';
 const CRAFTERY_VENUE_SLUG = 'the-craftery-koramangala';
+const CRAFTERY_LAB_VENUE_SLUG = 'the-craftery-koramangala-lab';
+const CRAFTERY_WAITLIST_VENUE_SLUGS = new Set([CRAFTERY_VENUE_SLUG, CRAFTERY_LAB_VENUE_SLUG]);
 const DEFAULT_WHATSAPP_CONSENT_TEXT_VERSION = 'craftery_waitlist_whatsapp_v1';
 
 type StaffAuditActor = {
@@ -57,7 +59,7 @@ function staffAuditSnapshot(actor?: StaffAuditActor) {
 }
 
 function requiresCrafteryWhatsAppConsent(venueSlug?: string | null): boolean {
-  return venueSlug === CRAFTERY_VENUE_SLUG;
+  return Boolean(venueSlug && CRAFTERY_WAITLIST_VENUE_SLUGS.has(venueSlug));
 }
 
 type QueueLateStateShape = {
@@ -627,6 +629,15 @@ export async function notifyQueueEntry(entryId: string, venueId: string, windowM
 
   if (entry.status !== QueueEntryStatus.WAITING) {
     throw new AppError('Only waiting guests can be notified', 400, 'ENTRY_NOT_WAITING');
+  }
+
+  const nextWaitingEntry = await prisma.queueEntry.findFirst({
+    where: { venueId, status: QueueEntryStatus.WAITING },
+    select: { id: true },
+    orderBy: { position: 'asc' },
+  });
+  if (!nextWaitingEntry || nextWaitingEntry.id !== entry.id) {
+    throw new AppError('Notify the first waiting guest before later guests', 400, 'ENTRY_NOT_NEXT_IN_QUEUE');
   }
 
   const notifiedAt = new Date();
@@ -1489,11 +1500,19 @@ export async function leaveQueueEntry(entryId: string, venueId: string, guestPho
 
 // ── Complete (checkout) ───────────────────────────────────────────
 
-export async function completeQueueEntry(entryId: string, actor?: StaffAuditActor): Promise<void> {
-  const entry = await prisma.queueEntry.findUnique({ where: { id: entryId } });
+export async function completeQueueEntry(entryId: string, actor?: StaffAuditActor, venueId?: string): Promise<void> {
+  const entry = await prisma.queueEntry.findFirst({
+    where: {
+      id: entryId,
+      ...(venueId ? { venueId } : {}),
+    },
+  });
   if (!entry) throw new AppError('Queue entry not found', 404);
   // Idempotency guard — if already completed, skip silently
   if (entry.status === QueueEntryStatus.COMPLETED) return;
+  if (entry.status === QueueEntryStatus.CANCELLED || entry.status === QueueEntryStatus.NO_SHOW) {
+    throw new AppError('Queue entry is already closed', 400, 'ENTRY_ALREADY_CLOSED');
+  }
 
   const venue = await prisma.venue.findUnique({
     where: { id: entry.venueId },
