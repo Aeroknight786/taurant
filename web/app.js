@@ -2531,10 +2531,10 @@ async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
         <div class="card">
           <div class="card-title">Send code</div>
           <div class="card-sub">Enter your staff phone number to continue.</div>
-          <form id="staff-send-form">
+          <form id="staff-send-form" autocomplete="on">
             <div class="form-group">
               <label class="form-label" for="staff-phone">Phone</label>
-              <input class="form-input" id="staff-phone" required placeholder="9876543210" value="${escapeHtml(pendingPhone)}">
+              <input class="form-input" id="staff-phone" name="tel" required type="tel" placeholder="9876543210" inputmode="tel" autocomplete="tel" enterkeyhint="next" value="${escapeHtml(pendingPhone)}">
             </div>
             <button class="btn btn-primary btn-full" type="submit">Send code</button>
           </form>
@@ -2542,10 +2542,10 @@ async function renderStaffLogin(slug = resolveActiveVenueSlug()) {
         <div class="card">
           <div class="card-title">Enter code</div>
           <div class="card-sub">If demo OTP is enabled for this venue, it will appear here automatically.</div>
-          <form id="staff-verify-form">
+          <form id="staff-verify-form" autocomplete="on">
             <div class="form-group">
               <label class="form-label" for="staff-code">OTP code</label>
-              <input class="form-input" id="staff-code" required maxlength="6" placeholder="123456">
+              <input class="form-input" id="staff-code" required maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code">
             </div>
             <button class="btn btn-secondary btn-full" type="submit">Verify &amp; enter</button>
           </form>
@@ -2648,10 +2648,10 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
         <div class="card">
           <div class="card-title">Send code</div>
           <div class="card-sub">Enter a manager or owner phone number to continue.</div>
-          <form id="admin-send-form">
+          <form id="admin-send-form" autocomplete="on">
             <div class="form-group">
               <label class="form-label" for="admin-phone">Phone</label>
-              <input class="form-input" id="admin-phone" required placeholder="9876543210" value="${escapeHtml(pendingPhone)}">
+              <input class="form-input" id="admin-phone" name="tel" required type="tel" placeholder="9876543210" inputmode="tel" autocomplete="tel" enterkeyhint="next" value="${escapeHtml(pendingPhone)}">
             </div>
             <button class="btn btn-primary btn-full" type="submit">Send code</button>
           </form>
@@ -2659,10 +2659,10 @@ async function renderAdminLogin(slug = resolveActiveVenueSlug()) {
         <div class="card">
           <div class="card-title">Enter code</div>
           <div class="card-sub">If demo OTP is enabled for this venue, it will appear here automatically. Only manager and owner roles can continue.</div>
-          <form id="admin-verify-form">
+          <form id="admin-verify-form" autocomplete="on">
             <div class="form-group">
               <label class="form-label" for="admin-code">OTP code</label>
-              <input class="form-input" id="admin-code" required maxlength="6" placeholder="123456">
+              <input class="form-input" id="admin-code" required maxlength="6" placeholder="123456" inputmode="numeric" autocomplete="one-time-code">
             </div>
             <button class="btn btn-secondary btn-full" type="submit">Verify &amp; enter</button>
           </form>
