@@ -215,7 +215,6 @@ const uiState = {
   staffHistory: [],
   staffHistoryLoadedAt: 0,
   staffDashboardRefreshToken: 0,
-  staffLateNoResponseExpanded: false,
   staffActivityExpandedByEntry: {},
   staffActivityEventsByEntry: {},
   staffActivityLoadingByEntry: {},
@@ -319,14 +318,6 @@ document.addEventListener('click', (event) => {
       }),
       successMessage: `Guest moved ${String(reorderButton.getAttribute('data-reorder-direction') || '').toLowerCase()}.`,
     });
-    return;
-  }
-
-  const toggleLateNoResponseButton = event.target.closest('[data-toggle-late-no-response]');
-  if (toggleLateNoResponseButton) {
-    event.preventDefault();
-    uiState.staffLateNoResponseExpanded = !uiState.staffLateNoResponseExpanded;
-    renderStaffDashboard(resolveActiveVenueSlug()).catch(handleFatalError);
     return;
   }
 
@@ -3717,60 +3708,11 @@ function renderEntryActivityPanel(entry) {
   `;
 }
 
-function renderLateNoResponseSection(lateEntries, tables, venue, renderWaitlistRowActions) {
-  if (!lateEntries.length) {
-    return '';
-  }
-
-  const expanded = lateEntries.length <= 3 || uiState.staffLateNoResponseExpanded;
-  const summary = `
-    <div class="late-queue-summary">
-      <div>
-        <div class="late-queue-title">Called, no response</div>
-        <div class="late-queue-sub">${lateEntries.length} ${lateEntries.length === 1 ? 'guest still needs a staff decision.' : 'guests still need a staff decision.'}</div>
-      </div>
-      ${lateEntries.length > 3 ? `<button class="btn btn-secondary btn-sm" type="button" data-toggle-late-no-response>${expanded ? 'Hide' : 'Show all'}</button>` : ''}
-    </div>
-  `;
-
-  const rows = lateEntries.map((entry) => {
-    return `
-      <div class="q-row q-row-late" data-staff-live-anchor="${entry.id}">
-        <div class="q-row-num">${entry.position || '-'}</div>
-        <div class="q-row-info">
-          <div class="q-row-name">
-            ${escapeHtml(entry.guestName)}
-            ${renderStatusBadge(entry.status)}
-            <span class="badge badge-neutral">Called, no response</span>
-          </div>
-          <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
-          <div class="q-row-meta">Preference: ${escapeHtml(formatQueueSeatingPreference(entry.seatingPreference))}</div>
-          ${getQueueEntryGuestNotes(entry) ? `<div class="q-row-note">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-          <div class="q-row-countdown q-row-countdown-late">Awaiting staff action</div>
-        </div>
-      <div class="q-row-actions">
-        ${renderWaitlistRowActions(entry)}
-      </div>
-    </div>
-    ${renderEntryActivityPanel(entry)}
-    `;
-  }).join('');
-
-  return `
-    <section class="late-queue-group">
-      ${summary}
-      ${expanded ? `<div class="late-queue-list">${rows}</div>` : ''}
-    </section>
-  `;
-}
-
 function renderQueueTab(waiting, tables, venue) {
   const { showFlowLog: flowLogEnabled, showBillingSignals, showNotifyAction, manualDispatchMode, waitlistOnlyVenue } = getVenueStaffSurfaceFlags(venue);
   const defaultNotifyWindowMin = 3;
   const waitingOnly = waiting.filter((entry) => entry.status === 'WAITING');
   const waitingIndexById = new Map(waitingOnly.map((entry, index) => [entry.id, index]));
-  const lateNoResponseEntries = waiting.filter((entry) => isLateNoResponseEntry(entry));
-  const activeEntries = waiting.filter((entry) => !isLateNoResponseEntry(entry));
   const renderWaitlistRowActions = (entry) => {
     if (entry.status === 'WAITING') {
       return `
@@ -3843,8 +3785,10 @@ function renderQueueTab(waiting, tables, venue) {
     return '<div class="empty-state">No waiting or notified guests right now.</div>';
   }
 
-  const activeRows = activeEntries.map((entry) => `
-    <div class="q-row ${entry.status === 'NOTIFIED' ? 'highlight' : ''} ${entry.status === 'NOTIFIED' ? 'ready' : ''}" data-staff-live-anchor="${entry.id}">
+  return waiting.map((entry) => {
+    const lateNoResponse = isLateNoResponseEntry(entry);
+    return `
+    <div class="q-row ${entry.status === 'NOTIFIED' && !lateNoResponse ? 'highlight' : ''} ${entry.status === 'NOTIFIED' && !lateNoResponse ? 'ready' : ''} ${lateNoResponse ? 'q-row-late' : ''}" data-staff-live-anchor="${entry.id}">
       <div class="q-row-num">${entry.position || '-'}</div>
       <div class="q-row-info">
         <div class="q-row-name">
@@ -3852,14 +3796,15 @@ function renderQueueTab(waiting, tables, venue) {
           ${renderStatusBadge(entry.status)}
           ${showBillingSignals && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           ${showBillingSignals && entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
-          ${entry.status === 'NOTIFIED' ? `<span class="badge badge-ready">${waitlistOnlyVenue ? 'Called' : 'Ready'}</span>` : ''}
-          ${entry.status === 'NOTIFIED' && getQueueEntryReadyWindowState(entry).urgent ? '<span class="badge badge-danger">Expiring</span>' : ''}
+          ${entry.status === 'NOTIFIED' && !waitlistOnlyVenue && !lateNoResponse ? '<span class="badge badge-ready">Ready</span>' : ''}
+          ${lateNoResponse ? '<span class="badge badge-neutral">Called, no response</span>' : ''}
+          ${entry.status === 'NOTIFIED' && !lateNoResponse && getQueueEntryReadyWindowState(entry).urgent ? '<span class="badge badge-danger">Expiring</span>' : ''}
         </div>
         <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
         <div class="q-row-meta">${manualDispatchMode ? `Preference: ${escapeHtml(formatQueueSeatingPreference(entry.seatingPreference))}` : `Seating preference: ${escapeHtml(formatQueueSeatingPreference(entry.seatingPreference))}`}</div>
         ${getQueueEntryGuestNotes(entry) ? `<div class="q-row-note">Notes: ${escapeHtml(getQueueEntryGuestNotes(entry))}</div>` : ''}
-        <div class="q-row-countdown ${entry.status === 'NOTIFIED' && getQueueEntryReadyWindowState(entry).urgent ? 'urgent' : ''}">
-          ${entry.status === 'NOTIFIED' ? `${getQueueEntryReadyWindowLabel(entry) || 'Host desk call active'}` : getQueueEntryEtaLabel(entry, venue)}
+        <div class="q-row-countdown ${lateNoResponse ? 'q-row-countdown-late' : ''} ${entry.status === 'NOTIFIED' && !lateNoResponse && getQueueEntryReadyWindowState(entry).urgent ? 'urgent' : ''}">
+          ${lateNoResponse ? 'Awaiting staff action' : (entry.status === 'NOTIFIED' ? `${getQueueEntryReadyWindowLabel(entry) || 'Host desk call active'}` : getQueueEntryEtaLabel(entry, venue))}
           ${!waitlistOnlyVenue && entry.table?.label ? ` · Reserved ${escapeHtml(entry.table.label)}` : ''}
         </div>
         ${showBillingSignals && entry.orders?.length ? `<div class="q-row-orders">Pre-order: ${escapeHtml(renderGuestOrderItems(entry.orders.flatMap((order) => order.items || [])) || 'Locked items on file')}</div>` : ''}
@@ -3887,16 +3832,8 @@ function renderQueueTab(waiting, tables, venue) {
       </div>
     </div>
     ${waitlistOnlyVenue ? renderEntryActivityPanel(entry) : ''}
-  `).join('');
-
-  if (!lateNoResponseEntries.length) {
-    return activeRows;
-  }
-
-  return `
-    ${activeRows}
-    ${renderLateNoResponseSection(lateNoResponseEntries, tables, venue, renderWaitlistRowActions)}
   `;
+  }).join('');
 }
 
 function renderSeatedTab(seated, seatedBills, venue) {

@@ -384,6 +384,66 @@ describe('queue service', () => {
     ]);
   });
 
+  it('keeps late no-response entries in FIFO position order in the live queue snapshot', async () => {
+    const { getVenueQueueSnapshot } = await import('../../src/services/queue.service');
+    const expiredAt = new Date('2026-03-31T10:04:00.000Z');
+
+    prismaMock.venue.findUnique.mockResolvedValue({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: {
+        arrivalCompletionMode: 'QUEUE_COMPLETE',
+        postWindowHandlingMode: 'MANUAL_REMOVE',
+      },
+    });
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      {
+        id: 'entry_late',
+        venueId: 'venue_subko',
+        guestName: 'Late Guest',
+        guestPhone: '9163570629',
+        partySize: 2,
+        position: 1,
+        otp: '123456',
+        status: QueueEntryStatus.NOTIFIED,
+        tableReadyDeadlineAt: null,
+        tableReadyExpiredAt: expiredAt,
+      },
+      {
+        id: 'entry_waiting',
+        venueId: 'venue_subko',
+        guestName: 'Waiting Guest',
+        guestPhone: '9000000000',
+        partySize: 3,
+        position: 2,
+        otp: '654321',
+        status: QueueEntryStatus.WAITING,
+        tableReadyDeadlineAt: null,
+        tableReadyExpiredAt: null,
+      },
+    ]);
+
+    const snapshot = await getVenueQueueSnapshot('venue_subko');
+    const findManyArg = prismaMock.queueEntry.findMany.mock.calls.at(-1)?.[0];
+
+    expect(findManyArg.orderBy).toEqual({ position: 'asc' });
+    expect(snapshot.map((entry) => entry.id)).toEqual(['entry_late', 'entry_waiting']);
+    expect(snapshot[0]).toEqual(expect.objectContaining({
+      id: 'entry_late',
+      position: 1,
+      isLateNoResponse: true,
+    }));
+    expect(snapshot[1]).toEqual(expect.objectContaining({
+      id: 'entry_waiting',
+      position: 2,
+      isLateNoResponse: false,
+    }));
+  });
+
   it('rejects duplicate active phones in the queue', async () => {
     const { joinQueue } = await import('../../src/services/queue.service');
 
