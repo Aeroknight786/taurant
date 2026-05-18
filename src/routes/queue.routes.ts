@@ -18,6 +18,7 @@ router.post('/:entryId/nudge',       requireAuth, requireRole('OWNER','MANAGER',
 router.post('/:entryId/no-show',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.markNoShowEntry);
 router.post('/:entryId/reorder',     requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.reorderEntry);
 router.post('/:entryId/prioritize',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.prioritizeEntry);
+router.post('/clear-active',         requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.clearActiveEntries);
 router.post('/seat',                 requireAuth, requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.seatGuest);
 router.delete('/:entryId',           requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.cancelEntry);
 router.post  ('/:entryId/checkout',  requireAuth, requireRole('OWNER','MANAGER','STAFF'), requireVenueFeature('guestQueue'), operatorWriteLimiter, Queue.checkoutEntry);

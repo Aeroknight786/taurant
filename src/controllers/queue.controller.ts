@@ -207,3 +207,13 @@ export async function clearAllEntries(req: AuthenticatedRequest, res: Response, 
     ok(res, result);
   } catch (e) { next(e); }
 }
+
+export async function clearActiveEntries(req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const result = await QueueService.clearActiveQueueEntries(req.venue!.id, {
+      staffId: req.staff?.id,
+      staffName: req.staff?.name,
+    });
+    ok(res, result);
+  } catch (e) { next(e); }
+}

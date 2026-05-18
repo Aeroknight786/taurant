@@ -1291,6 +1291,84 @@ describe('queue service', () => {
     }));
   });
 
+  it('clears all active queue entries with staff audit metadata', async () => {
+    const { clearActiveQueueEntries } = await import('../../src/services/queue.service');
+
+    prismaMock.queueEntry.findMany.mockResolvedValue([
+      {
+        id: 'entry_1',
+        venueId: 'venue_1',
+        status: QueueEntryStatus.WAITING,
+        position: 1,
+        tableId: null,
+        guestName: 'Asha',
+        displayRef: 'FLK-ONE',
+        notifiedAt: null,
+        tableReadyDeadlineAt: null,
+        tableReadyExpiredAt: null,
+      },
+      {
+        id: 'entry_2',
+        venueId: 'venue_1',
+        status: QueueEntryStatus.NOTIFIED,
+        position: 2,
+        tableId: 'table_1',
+        guestName: 'Ravi',
+        displayRef: 'FLK-TWO',
+        notifiedAt: new Date('2026-05-08T10:00:00.000Z'),
+        tableReadyDeadlineAt: new Date('2026-05-08T10:05:00.000Z'),
+        tableReadyExpiredAt: null,
+      },
+    ]);
+
+    const result = await clearActiveQueueEntries('venue_1', {
+      staffId: 'staff_1',
+      staffName: 'Desk Staff',
+    });
+
+    expect(result).toEqual({ cleared: 2 });
+    expect(prismaMock.queueEntry.updateMany).toHaveBeenCalledWith(expect.objectContaining({
+      where: {
+        id: { in: ['entry_1', 'entry_2'] },
+        venueId: 'venue_1',
+        status: { in: ['WAITING', 'NOTIFIED'] },
+      },
+      data: expect.objectContaining({
+        status: QueueEntryStatus.CANCELLED,
+        tableId: null,
+        cancelledByType: 'STAFF',
+        cancelledByStaffId: 'staff_1',
+        cancelledByStaffName: 'Desk Staff',
+        cancelReason: 'QUEUE_CANCELLED',
+        tableReadyDeadlineAt: null,
+      }),
+    }));
+    expect(prismaMock.table.updateMany).toHaveBeenCalledWith({
+      where: { id: { in: ['table_1'] }, status: TableStatus.RESERVED },
+      data: { status: TableStatus.FREE },
+    });
+    expect(prismaMock.tableEvent.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({
+        tableId: 'table_1',
+        fromStatus: TableStatus.RESERVED,
+        toStatus: TableStatus.FREE,
+        triggeredBy: 'QUEUE_CANCELLED',
+      }),
+    }));
+    expect(logFlowEventMock).toHaveBeenCalledTimes(2);
+    expect(logFlowEventMock).toHaveBeenCalledWith(expect.objectContaining({
+      queueEntryId: 'entry_1',
+      type: 'ENTRY_CANCELLED',
+      snapshot: expect.objectContaining({
+        cancelReason: 'QUEUE_CANCELLED',
+        bulkClear: true,
+        previousStatus: QueueEntryStatus.WAITING,
+        staffId: 'staff_1',
+        staffName: 'Desk Staff',
+      }),
+    }));
+  });
+
   it('lets a guest leave their own waiting queue entry and reuses cancellation semantics', async () => {
     const { leaveQueueEntry } = await import('../../src/services/queue.service');
 

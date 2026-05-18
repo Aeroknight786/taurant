@@ -1655,6 +1655,100 @@ export async function completeQueueEntry(entryId: string, actor?: StaffAuditActo
 
 // ── Bulk clear ───────────────────────────────────────────────────
 
+export async function clearActiveQueueEntries(venueId: string, actor?: StaffAuditActor): Promise<{ cleared: number }> {
+  const active = await prisma.queueEntry.findMany({
+    where: { venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+    select: {
+      id: true,
+      tableId: true,
+      status: true,
+      position: true,
+      guestName: true,
+      displayRef: true,
+      notifiedAt: true,
+      tableReadyDeadlineAt: true,
+      tableReadyExpiredAt: true,
+    },
+    orderBy: [
+      { position: 'asc' },
+      { joinedAt: 'asc' },
+    ],
+  });
+
+  if (!active.length) return { cleared: 0 };
+
+  const cancelledAt = new Date();
+  const entryIds = active.map((entry) => entry.id);
+  const tableIds = active.filter((entry) => entry.tableId).map((entry) => entry.tableId!);
+
+  await prisma.$transaction(async (tx) => {
+    await tx.queueEntry.updateMany({
+      where: { id: { in: entryIds }, venueId, status: { in: ['WAITING', 'NOTIFIED'] } },
+      data: {
+        status: QueueEntryStatus.CANCELLED,
+        tableId: null,
+        cancelledAt,
+        cancelledByType: 'STAFF',
+        cancelledByStaffId: actor?.staffId ?? null,
+        cancelledByStaffName: actor?.staffName ?? null,
+        cancelReason: 'QUEUE_CANCELLED',
+        tableReadyDeadlineAt: null,
+      },
+    });
+
+    if (tableIds.length) {
+      await tx.table.updateMany({
+        where: { id: { in: tableIds }, status: TableStatus.RESERVED },
+        data: { status: TableStatus.FREE },
+      });
+
+      for (const tableId of tableIds) {
+        await tx.tableEvent.create({
+          data: {
+            tableId,
+            fromStatus: TableStatus.RESERVED,
+            toStatus: TableStatus.FREE,
+            triggeredBy: 'QUEUE_CANCELLED',
+          },
+        });
+      }
+    }
+  });
+
+  await Promise.all(entryIds.map((entryId) => safeRedisExec(() => redis.del(RedisKeys.queueEntry(entryId)))));
+  await safeRedisExec(() =>
+    redis.publish(PubSubChannels.queueUpdate(venueId), JSON.stringify({
+      type: 'QUEUE_CLEARED',
+      cleared: active.length,
+      entryIds,
+    }))
+  );
+  publishQueueChange(venueId, 'QUEUE_CLEARED');
+
+  await Promise.all(active.map((entry) =>
+    logFlowEvent({
+      queueEntryId: entry.id,
+      venueId,
+      type: OrderFlowEventType.ENTRY_CANCELLED,
+      snapshot: {
+        cancelReason: 'QUEUE_CANCELLED',
+        cancelledByType: 'STAFF',
+        cancelledAt: cancelledAt.toISOString(),
+        previousStatus: entry.status,
+        previousPosition: entry.position,
+        displayRef: entry.displayRef,
+        bulkClear: true,
+        notifiedAt: entry.notifiedAt?.toISOString() ?? null,
+        tableReadyDeadlineAt: entry.tableReadyDeadlineAt?.toISOString() ?? null,
+        tableReadyExpiredAt: entry.tableReadyExpiredAt?.toISOString() ?? null,
+        ...staffAuditSnapshot(actor),
+      },
+    })
+  ));
+
+  return { cleared: active.length };
+}
+
 export async function clearAllQueueEntries(venueId: string): Promise<{ cleared: number }> {
   const venue = await prisma.venue.findUnique({
     where: { id: venueId },

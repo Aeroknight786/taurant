@@ -273,6 +273,15 @@ document.addEventListener('click', (event) => {
     return;
   }
 
+  const clearQueueButton = event.target.closest('[data-open-clear-queue]');
+  if (clearQueueButton) {
+    event.preventDefault();
+    openClearQueueConfirm({
+      count: Number(clearQueueButton.getAttribute('data-clear-queue-count') || 0),
+    });
+    return;
+  }
+
   const notifyButton = event.target.closest('[data-open-notify-sheet]');
   if (notifyButton) {
     event.preventDefault();
@@ -988,6 +997,52 @@ function handleStaffQueueMutation({ key, request, successMessage, nextTab = null
 
 function closeNotifyWindowSheet() {
   document.getElementById('notify-sheet-backdrop')?.remove();
+}
+
+function closeClearQueueConfirm() {
+  document.getElementById('clear-queue-backdrop')?.remove();
+}
+
+function openClearQueueConfirm({ count = 0 } = {}) {
+  closeClearQueueConfirm();
+  const backdrop = document.createElement('div');
+  backdrop.id = 'clear-queue-backdrop';
+  backdrop.className = 'share-sheet-backdrop queue-clear-backdrop';
+  backdrop.innerHTML = `
+    <div class="share-sheet-panel queue-clear-dialog" role="dialog" aria-modal="true" aria-labelledby="clear-queue-title">
+      <div class="share-sheet-handle"></div>
+      <div class="queue-clear-title" id="clear-queue-title">Clear full queue?</div>
+      <div class="queue-clear-copy">This will cancel all users currently in queue. Are you sure?</div>
+      <div class="queue-clear-actions">
+        <button class="btn btn-secondary btn-full" type="button" data-close-clear-queue>Keep queue</button>
+        <button class="btn btn-danger btn-full" type="button" data-confirm-clear-queue>Clear queue</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  backdrop.querySelector('[data-close-clear-queue]')?.addEventListener('click', () => closeClearQueueConfirm());
+  backdrop.addEventListener('click', (event) => {
+    if (event.target === backdrop) {
+      closeClearQueueConfirm();
+    }
+  });
+
+  backdrop.querySelector('[data-confirm-clear-queue]')?.addEventListener('click', guardedAction('clear-active-queue', async () => {
+    closeClearQueueConfirm();
+    try {
+      clearTimer();
+      uiState.staffDashboardRefreshToken += 1;
+      const result = await apiRequest('/queue/clear-active', { method: 'POST', auth: true });
+      uiState.staffHistory = [];
+      uiState.staffHistoryLoadedAt = 0;
+      setFlash('green', result.cleared ? `Cancelled ${result.cleared} queue guests.` : 'Queue was already clear.');
+      await renderStaffDashboard();
+    } catch (error) {
+      setFlash('red', error.message);
+      await renderStaffDashboard();
+    }
+  }));
 }
 
 function openNotifyWindowSheet({ entryId, guestName, defaultWindowMin = 5 }) {
@@ -3556,6 +3611,17 @@ function renderEntryActivityButton(entry) {
   return `<button class="btn btn-secondary btn-sm" type="button" data-toggle-entry-activity="${entry.id}">${expanded ? 'Hide audit' : 'Audit'}</button>`;
 }
 
+function getPhoneCallHref(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  if (!digits) return 'tel:';
+  return `tel:${digits.length === 10 ? `+91${digits}` : `+${digits}`}`;
+}
+
+function renderPhoneCallButton(entry) {
+  const href = getPhoneCallHref(entry.guestPhone);
+  return `<a class="btn btn-secondary btn-sm" href="${escapeHtml(href)}">Call</a>`;
+}
+
 function getActivityActor(snapshot) {
   if (!snapshot) return '';
   if (snapshot.staffName) return String(snapshot.staffName);
@@ -3717,6 +3783,7 @@ function renderQueueTab(waiting, tables, venue) {
     if (entry.status === 'WAITING') {
       const waitingIndex = waitingIndexById.get(entry.id) ?? 0;
       return `
+        ${renderPhoneCallButton(entry)}
         ${showNotifyAction && waitingIndex === 0 ? `<button class="btn btn-primary btn-sm" data-open-notify-sheet="${entry.id}" data-notify-default-window="${defaultNotifyWindowMin}">Notify</button>` : ''}
         ${manualDispatchMode && waitingIndex > 0 ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="UP">Move up</button>` : ''}
         ${manualDispatchMode && waitingIndex < (waitingOnly.length - 1) ? `<button class="btn btn-secondary btn-sm" data-reorder-entry="${entry.id}" data-reorder-direction="DOWN">Move down</button>` : ''}
@@ -3728,6 +3795,7 @@ function renderQueueTab(waiting, tables, venue) {
     if (entry.status === 'NOTIFIED') {
       if (isLateNoResponseEntry(entry)) {
         return `
+          ${renderPhoneCallButton(entry)}
           ${waitlistOnlyVenue ? `
             <button
               class="btn btn-primary btn-sm"
@@ -3746,6 +3814,7 @@ function renderQueueTab(waiting, tables, venue) {
       }
 
       return `
+        ${renderPhoneCallButton(entry)}
         ${showNotifyAction ? `<button class="btn btn-secondary btn-sm" data-nudge-entry="${entry.id}">Re-nudge</button>` : ''}
         ${waitlistOnlyVenue ? `
           <button
@@ -3777,6 +3846,7 @@ function renderQueueTab(waiting, tables, venue) {
     }
 
     return `
+      ${renderPhoneCallButton(entry)}
       <button class="btn btn-danger btn-sm" data-cancel-entry="${entry.id}">Cancel</button>
       ${renderEntryActivityButton(entry)}
     `;
@@ -3786,7 +3856,15 @@ function renderQueueTab(waiting, tables, venue) {
     return '<div class="empty-state">No waiting or notified guests right now.</div>';
   }
 
-  return waiting.map((entry) => {
+  const clearQueueAction = waitlistOnlyVenue ? `
+    <div class="queue-clear-actionbar">
+      <button class="btn btn-danger btn-sm" type="button" data-open-clear-queue data-clear-queue-count="${waiting.length}">
+        Clear full queue
+      </button>
+    </div>
+  ` : '';
+
+  const rows = waiting.map((entry) => {
     const lateNoResponse = isLateNoResponseEntry(entry);
     return `
     <div class="q-row ${entry.status === 'NOTIFIED' && !lateNoResponse ? 'highlight' : ''} ${entry.status === 'NOTIFIED' && !lateNoResponse ? 'ready' : ''} ${lateNoResponse ? 'q-row-late' : ''}" data-staff-live-anchor="${entry.id}">
@@ -3794,11 +3872,10 @@ function renderQueueTab(waiting, tables, venue) {
       <div class="q-row-info">
         <div class="q-row-name">
           ${escapeHtml(entry.guestName)}
-          ${renderStatusBadge(entry.status)}
+          ${lateNoResponse ? '<span class="badge badge-neutral">Called, no response</span>' : renderStatusBadge(entry.status)}
           ${showBillingSignals && entry.depositPaid > 0 ? '<span class="badge badge-neutral">Deposit</span>' : ''}
           ${showBillingSignals && entry.preOrderTotal > 0 ? '<span class="badge badge-neutral">Pre-order</span>' : ''}
           ${entry.status === 'NOTIFIED' && !waitlistOnlyVenue && !lateNoResponse ? '<span class="badge badge-ready">Ready</span>' : ''}
-          ${lateNoResponse ? '<span class="badge badge-neutral">Called, no response</span>' : ''}
           ${entry.status === 'NOTIFIED' && !lateNoResponse && getQueueEntryReadyWindowState(entry).urgent ? '<span class="badge badge-danger">Expiring</span>' : ''}
         </div>
         <div class="q-row-meta">${escapeHtml(entry.guestPhone)} · ${entry.partySize} pax · OTP <span class="mono">${escapeHtml(entry.otp)}</span>${entry.displayRef ? ` · <span class="mono">${escapeHtml(entry.displayRef)}</span>` : ''}</div>
@@ -3835,6 +3912,8 @@ function renderQueueTab(waiting, tables, venue) {
     ${waitlistOnlyVenue ? renderEntryActivityPanel(entry) : ''}
   `;
   }).join('');
+
+  return `${clearQueueAction}${rows}`;
 }
 
 function renderSeatedTab(seated, seatedBills, venue) {

@@ -477,6 +477,7 @@ button, input, select {
   cursor: pointer;
   border: none;
   transition: all 0.15s;
+  text-decoration: none;
 }
 
 .btn:disabled {
@@ -1201,6 +1202,38 @@ textarea.form-input {
   max-width: 440px;
 }
 
+.queue-clear-backdrop {
+  align-items: center;
+}
+
+.queue-clear-dialog {
+  width: min(100%, 360px);
+  max-height: none;
+  padding: 18px;
+  text-align: center;
+}
+
+.queue-clear-title {
+  font-family: "Fraunces", serif;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--cream);
+}
+
+.queue-clear-copy {
+  margin-top: 8px;
+  color: var(--cream-dim);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.queue-clear-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: 16px;
+}
+
 .notify-sheet-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1647,6 +1680,12 @@ textarea.form-input {
   display: flex;
   align-items: center;
   gap: 16px;
+}
+
+.queue-clear-actionbar {
+  display: flex;
+  justify-content: flex-end;
+  margin: -4px 0 12px;
 }
 
 .q-row.highlight {
@@ -2194,6 +2233,18 @@ textarea.form-input {
   .q-row {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .queue-clear-actionbar {
+    justify-content: stretch;
+  }
+
+  .queue-clear-actionbar .btn {
+    width: 100%;
+  }
+
+  .queue-clear-actions {
+    grid-template-columns: 1fr;
   }
 
   .entry-activity-panel {

@@ -23,6 +23,7 @@ const {
     cancelQueueEntry: vi.fn(),
     completeQueueEntry: vi.fn(),
     getRecentCompletedEntries: vi.fn(),
+    clearActiveQueueEntries: vi.fn(),
   },
   orderFlowEventServiceMock: {
     getFlowEvents: vi.fn(),
@@ -343,6 +344,24 @@ describe('queue and party-session routes', () => {
       staffName: 'Desk Staff',
     }));
 
+  });
+
+  it('clears the active queue through the queue-only staff route', async () => {
+    queueServiceMock.clearActiveQueueEntries.mockResolvedValue({ cleared: 2 });
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue/clear-active',
+      headers: { authorization: 'Bearer staff-token-priority' },
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ cleared: 2 });
+    expect(queueServiceMock.clearActiveQueueEntries).toHaveBeenCalledWith('venue_1', expect.objectContaining({
+      staffId: 'staff_priority',
+      staffName: 'Priority Staff',
+    }));
   });
 
   it('rejects guest leave attempts for mismatched queue entries', async () => {
