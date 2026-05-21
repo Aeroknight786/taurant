@@ -129,8 +129,10 @@ describe('venue config service', () => {
     expect(resolved.featureConfig.guestAccess).toBe(false);
   });
 
-  it('pauses Craftery guest access by default and allows an explicit override', async () => {
+  it('pauses Craftery guest access by default and enables only with the server toggle', async () => {
     const { resolveVenueConfig } = await import('../../src/services/venueConfig.service');
+    const originalToggle = process.env.CRAFTERY_GUEST_ACCESS_ENABLED;
+    delete process.env.CRAFTERY_GUEST_ACCESS_ENABLED;
 
     const defaultCraftery = resolveVenueConfig({
       id: 'venue_subko',
@@ -141,7 +143,7 @@ describe('venue config service', () => {
       uiConfig: null,
       opsConfig: null,
     });
-    const enabledCraftery = resolveVenueConfig({
+    const storedOverrideCraftery = resolveVenueConfig({
       id: 'venue_subko',
       name: 'The Craftery by Subko',
       slug: 'the-craftery-koramangala',
@@ -150,9 +152,25 @@ describe('venue config service', () => {
       uiConfig: null,
       opsConfig: null,
     });
+    process.env.CRAFTERY_GUEST_ACCESS_ENABLED = 'true';
+    const enabledCraftery = resolveVenueConfig({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: null,
+    });
+    if (originalToggle === undefined) {
+      delete process.env.CRAFTERY_GUEST_ACCESS_ENABLED;
+    } else {
+      process.env.CRAFTERY_GUEST_ACCESS_ENABLED = originalToggle;
+    }
 
     expect(defaultCraftery.featureConfig.guestQueue).toBe(true);
     expect(defaultCraftery.featureConfig.guestAccess).toBe(false);
+    expect(storedOverrideCraftery.featureConfig.guestAccess).toBe(false);
     expect(enabledCraftery.featureConfig.guestAccess).toBe(true);
   });
 

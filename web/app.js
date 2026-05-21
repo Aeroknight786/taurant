@@ -3195,9 +3195,6 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
         body: {
           maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
           tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
-          featureConfig: {
-            guestAccess: document.getElementById('waitlist-guest-access-enabled')?.checked ?? true,
-          },
           opsConfig: {
             queueDispatchMode: 'MANUAL_NOTIFY',
             tableSourceMode: 'DISABLED',
@@ -3415,9 +3412,6 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
             body: {
               maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
               tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
-              featureConfig: {
-                guestAccess: document.getElementById('waitlist-guest-access-enabled')?.checked ?? true,
-              },
               opsConfig: {
                 queueDispatchMode: 'MANUAL_NOTIFY',
                 tableSourceMode: 'DISABLED',
@@ -4197,7 +4191,6 @@ function renderSeatTab(tables, venue) {
 
 function renderWaitlistOnlySettingsForm(venue) {
   const opsConfig = resolveVenueOpsConfig(venue);
-  const guestAccessEnabled = isVenueGuestAccessEnabled(venue);
   return `
     <div class="row" style="margin-bottom:16px;">
       <span class="badge ${venue.isQueueOpen ? 'badge-ready' : 'badge-neutral'}">${venue.isQueueOpen ? 'Queue open' : 'Queue closed'}</span>
@@ -4210,11 +4203,6 @@ function renderWaitlistOnlySettingsForm(venue) {
           <input class="form-input" id="waitlist-max-queue-size" type="number" min="10" max="500" value="${venue.maxQueueSize}">
         </div>
       </div>
-      <label class="checkbox-row" style="margin: 0 0 16px;">
-        <input type="checkbox" id="waitlist-guest-access-enabled" ${guestAccessEnabled ? 'checked' : ''}>
-        <span>Guest flow enabled</span>
-      </label>
-      <div class="card-sub" style="margin-bottom:16px;">Turn this off to grey out and block guest joins, magic links, and guest status access.</div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="waitlist-eta-base">Base wait</label>

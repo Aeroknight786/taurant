@@ -219,9 +219,6 @@ const CRAFTERY_VENUE_UI_DEFAULTS = {
   showQueuePosition: true,
   supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
 };
-const CRAFTERY_VENUE_FEATURE_DEFAULTS: Partial<ResolvedVenueFeatureConfig> = {
-  guestAccess: false,
-};
 const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   queueDispatchMode: 'MANUAL_NOTIFY',
   tableSourceMode: 'DISABLED',
@@ -241,6 +238,10 @@ function normalizeResolvedOpsConfig(opsConfig: ResolvedVenueOpsConfig): Resolved
     ...opsConfig,
     waitEstimateMaxMin: Math.max(opsConfig.waitEstimateBaseMin, opsConfig.waitEstimateMaxMin),
   };
+}
+
+function resolveCrafteryGuestAccessEnabled() {
+  return process.env.CRAFTERY_GUEST_ACCESS_ENABLED === 'true';
 }
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
@@ -293,8 +294,8 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
     },
     featureConfig: {
       ...DEFAULT_VENUE_FEATURE_CONFIG,
-      ...(isCraftery ? CRAFTERY_VENUE_FEATURE_DEFAULTS : {}),
       ...rawFeatureConfig,
+      ...(isCraftery ? { guestAccess: resolveCrafteryGuestAccessEnabled() } : {}),
     },
     uiConfig: {
       ...DEFAULT_VENUE_UI_CONFIG,
