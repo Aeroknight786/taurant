@@ -116,6 +116,11 @@ export function isVenueFeatureEnabled(venue, featureKey) {
   return Boolean(readVenueSection(venue, 'featureConfig')?.[featureKey]);
 }
 
+export function isVenueGuestAccessEnabled(venue) {
+  const featureConfig = readVenueSection(venue, 'featureConfig') || {};
+  return featureConfig.guestAccess !== false;
+}
+
 export function isQueueOnlyGuestExperience(venue) {
   return isVenueFeatureEnabled(venue, 'guestQueue')
     && !isVenueFeatureEnabled(venue, 'preOrder')

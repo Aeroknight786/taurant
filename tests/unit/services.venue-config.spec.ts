@@ -33,6 +33,7 @@ describe('venue config service', () => {
       },
       featureConfig: {
         guestQueue: true,
+        guestAccess: true,
         preOrder: true,
         partyShare: true,
         adminConsole: true,
@@ -125,6 +126,34 @@ describe('venue config service', () => {
       waitEstimateMaxMin: 58,
       queueDispatchMode: 'MANUAL_NOTIFY',
     });
+    expect(resolved.featureConfig.guestAccess).toBe(false);
+  });
+
+  it('pauses Craftery guest access by default and allows an explicit override', async () => {
+    const { resolveVenueConfig } = await import('../../src/services/venueConfig.service');
+
+    const defaultCraftery = resolveVenueConfig({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: null,
+      uiConfig: null,
+      opsConfig: null,
+    });
+    const enabledCraftery = resolveVenueConfig({
+      id: 'venue_subko',
+      name: 'The Craftery by Subko',
+      slug: 'the-craftery-koramangala',
+      brandConfig: null,
+      featureConfig: { guestAccess: true },
+      uiConfig: null,
+      opsConfig: null,
+    });
+
+    expect(defaultCraftery.featureConfig.guestQueue).toBe(true);
+    expect(defaultCraftery.featureConfig.guestAccess).toBe(false);
+    expect(enabledCraftery.featureConfig.guestAccess).toBe(true);
   });
 
   it('resolves Craftery queue-only config without re-enabling hidden modules', async () => {

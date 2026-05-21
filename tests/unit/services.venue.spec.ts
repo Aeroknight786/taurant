@@ -150,6 +150,7 @@ describe('venue service', () => {
         brandConfig: expect.objectContaining({ themeKey: 'craftery' }),
         featureConfig: expect.objectContaining({
           guestQueue: true,
+          guestAccess: false,
           preOrder: false,
           adminConsole: true,
         }),
@@ -166,6 +167,7 @@ describe('venue service', () => {
     const venue = await getVenueBySlug('the-craftery-koramangala');
     expect(venue.config.brandConfig.themeKey).toBe('craftery');
     expect(venue.config.featureConfig.preOrder).toBe(false);
+    expect(venue.config.featureConfig.guestAccess).toBe(false);
     expect(venue.config.featureConfig.flowLog).toBe(false);
     expect(venue.config.featureConfig.bulkClear).toBe(false);
     expect(venue.config.featureConfig.adminConsole).toBe(true);

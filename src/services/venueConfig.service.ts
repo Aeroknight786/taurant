@@ -50,6 +50,7 @@ export const VenueBrandConfigSchema = z.object({
 
 export const VenueFeatureConfigSchema = z.object({
   guestQueue: z.boolean().optional(),
+  guestAccess: z.boolean().optional(),
   preOrder: z.boolean().optional(),
   partyShare: z.boolean().optional(),
   seatedOrdering: z.boolean().optional(),
@@ -168,6 +169,7 @@ const THEME_PRESET_DEFAULTS: Record<z.infer<typeof VenueThemeKeySchema>, { theme
 
 const DEFAULT_VENUE_FEATURE_CONFIG: ResolvedVenueFeatureConfig = {
   guestQueue: true,
+  guestAccess: true,
   preOrder: true,
   partyShare: true,
   seatedOrdering: true,
@@ -217,6 +219,9 @@ const CRAFTERY_VENUE_UI_DEFAULTS = {
   showQueuePosition: true,
   supportCopy: 'Join the waitlist, keep your phone nearby, and wait for the host call when your turn comes up.',
 };
+const CRAFTERY_VENUE_FEATURE_DEFAULTS: Partial<ResolvedVenueFeatureConfig> = {
+  guestAccess: false,
+};
 const CRAFTERY_VENUE_OPS_DEFAULTS: Partial<ResolvedVenueOpsConfig> = {
   queueDispatchMode: 'MANUAL_NOTIFY',
   tableSourceMode: 'DISABLED',
@@ -240,6 +245,7 @@ function normalizeResolvedOpsConfig(opsConfig: ResolvedVenueOpsConfig): Resolved
 
 const FEATURE_DISABLED_MESSAGES: Record<VenueFeatureKey, string> = {
   guestQueue: 'Guest queue is disabled for this venue.',
+  guestAccess: 'Guest access is paused for this venue.',
   preOrder: 'Pre-orders are disabled for this venue.',
   partyShare: 'Shared party sessions are disabled for this venue.',
   seatedOrdering: 'At-table ordering is disabled for this venue.',
@@ -287,6 +293,7 @@ export function resolveVenueConfig(source: VenueConfigSource): ResolvedVenueConf
     },
     featureConfig: {
       ...DEFAULT_VENUE_FEATURE_CONFIG,
+      ...(isCraftery ? CRAFTERY_VENUE_FEATURE_DEFAULTS : {}),
       ...rawFeatureConfig,
     },
     uiConfig: {
@@ -376,6 +383,7 @@ export function mapVenueToPublicSummary(source: VenueConfigSource) {
     },
     featureConfig: {
       guestQueue: config.featureConfig.guestQueue,
+      guestAccess: config.featureConfig.guestAccess,
       preOrder: config.featureConfig.preOrder,
       staffConsole: config.featureConfig.staffConsole,
       adminConsole: config.featureConfig.adminConsole,

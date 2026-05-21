@@ -176,6 +176,18 @@ button, input, select {
   background: var(--surface2);
 }
 
+.role-card-guest-paused {
+  opacity: 0.62;
+  filter: grayscale(0.75);
+  border-style: dashed;
+}
+
+.role-card-guest-paused:hover {
+  border-color: var(--border);
+  transform: none;
+  background: var(--surface);
+}
+
 .role-card-icon {
   font-size: 26px;
   margin-bottom: 18px;

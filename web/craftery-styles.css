@@ -182,6 +182,20 @@ button, input, select { font: inherit; }
   box-shadow: var(--shadow-md);
 }
 
+.role-card-guest-paused {
+  opacity: 0.62;
+  filter: grayscale(0.75);
+  border-style: dashed;
+  border-top-color: var(--border);
+}
+
+.role-card-guest-paused:hover {
+  border-color: var(--border);
+  border-top-color: var(--border);
+  transform: none;
+  box-shadow: var(--shadow);
+}
+
 .role-card-icon  { font-size: 22px; margin-bottom: 14px; display: block; }
 .role-card-title {
   font-family: "Playfair Display", serif;

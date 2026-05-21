@@ -364,6 +364,26 @@ describe('queue and party-session routes', () => {
     }));
   });
 
+  it('blocks guest queue entry points when guest access is paused', async () => {
+    venueFeatureState.disabledFeatures.add('guestAccess');
+    const app = (await import('../../src/app')).default;
+
+    const response = await invokeApp(app, {
+      method: 'POST',
+      url: '/api/v1/queue',
+      body: {
+        venueId: 'venue_1',
+        guestName: 'Neha',
+        guestPhone: '9876543210',
+        partySize: 2,
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body.code).toBe('VENUE_FEATURE_DISABLED');
+    expect(queueServiceMock.joinQueue).not.toHaveBeenCalled();
+  });
+
   it('rejects guest leave attempts for mismatched queue entries', async () => {
     const app = (await import('../../src/app')).default;
 

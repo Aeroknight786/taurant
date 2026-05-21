@@ -73,6 +73,7 @@ import {
   getVenueStaffSurfaceFlags,
   isManualDispatchVenue,
   isQueueOnlyGuestExperience,
+  isVenueGuestAccessEnabled,
   isWaitlistOnlyVenue,
   getVenueSlugFromStaffAuth,
   isVenueFeatureEnabled,
@@ -1336,11 +1337,58 @@ function redirectLegacyOperatorRoute(kind, view) {
   navigate(view === 'dashboard' ? buildAdminDashboardPath(slug) : buildAdminLoginPath(slug), { replace: true });
 }
 
+function renderGuestAccessPausedPage(venue, slug) {
+  const venueName = resolveVenueDisplayName(venue);
+  const supportCopy = 'The guest waitlist flow is temporarily disabled. Staff and admin tools remain available.';
+  const staffAction = isVenueFeatureEnabled(venue, 'staffConsole')
+    ? `<a class="btn btn-secondary" data-nav href="${buildStaffLoginPath(slug)}">Staff</a>`
+    : '';
+  const adminAction = isVenueFeatureEnabled(venue, 'adminConsole')
+    ? `<a class="btn btn-secondary" data-nav href="${buildAdminLoginPath(slug)}">Admin</a>`
+    : '';
+
+  renderPage(`
+    <main id="landing">
+      <div class="brand">
+        <div class="brand-name">fl<em>o</em>ck</div>
+        <div class="brand-tag">${escapeHtml(venue.config?.brandConfig?.tagline || 'Waitlist · live updates · host desk')}</div>
+        <div class="brand-actions">
+          <a class="landing-about-link" href="/about" target="_blank" rel="noopener noreferrer">About</a>
+        </div>
+      </div>
+      <div class="role-cards">
+        <div class="role-card" style="cursor:default">
+          <span class="role-card-icon">Venue</span>
+          <div class="role-card-title">${escapeHtml(venueName)}</div>
+          <div class="role-card-desc">${escapeHtml(resolveVenueLandingSummary(venue))}</div>
+        </div>
+        <div class="role-card role-card-guest-paused" style="cursor:default; max-width:360px; min-width:300px;">
+          <span class="role-card-icon">Guest flow</span>
+          <div class="role-card-title">Guest flow paused</div>
+          <div class="role-card-desc" style="margin-bottom:16px;">${escapeHtml(supportCopy)}</div>
+          <div class="alert alert-blue">
+            <div>Guest joining and guest status links are temporarily unavailable.</div>
+          </div>
+          <div class="row" style="margin-top:14px; flex-wrap:wrap;">
+            <a class="btn btn-secondary" data-nav href="/">Back</a>
+            ${staffAction}
+            ${adminAction}
+          </div>
+        </div>
+      </div>
+    </main>
+  `, `Flock | ${venueName}`);
+}
+
 function renderVenueSelectorCard(venue) {
   const actions = [];
+  const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
+  const guestAccessEnabled = isVenueGuestAccessEnabled(venue);
 
-  if (isVenueFeatureEnabled(venue, 'guestQueue')) {
+  if (guestQueueEnabled && guestAccessEnabled) {
     actions.push(`<a class="btn btn-primary btn-sm" data-nav href="${buildVenuePath(venue.slug)}">Guest flow</a>`);
+  } else if (guestQueueEnabled) {
+    actions.push('<button class="btn btn-secondary btn-sm btn-disabled" type="button" disabled>Guest flow paused</button>');
   }
 
   if (isVenueFeatureEnabled(venue, 'staffConsole')) {
@@ -1352,11 +1400,11 @@ function renderVenueSelectorCard(venue) {
   }
 
   return `
-    <div class="role-card" style="cursor:default">
+    <div class="role-card ${guestQueueEnabled && !guestAccessEnabled ? 'role-card-guest-paused' : ''}" style="cursor:default">
       <span class="role-card-icon">${escapeHtml(venue.city || 'Venue')}</span>
       <div class="role-card-title">${escapeHtml(venue.brandConfig.displayName || venue.name)}</div>
       <div class="role-card-desc">${escapeHtml(venue.brandConfig.tagline || 'Venue experience')}</div>
-      <div class="muted" style="margin-bottom:14px;">${escapeHtml(venue.name)}${venue.isQueueOpen ? ' · Queue open' : ' · Queue closed'}</div>
+      <div class="muted" style="margin-bottom:14px;">${escapeHtml(venue.name)}${guestQueueEnabled && !guestAccessEnabled ? ' · Guest flow paused' : venue.isQueueOpen ? ' · Queue open' : ' · Queue closed'}</div>
       <div class="row" style="margin-top:auto; flex-wrap:wrap;">${actions.length ? actions.join('') : '<span class="muted">No public modules enabled.</span>'}</div>
     </div>
   `;
@@ -1396,6 +1444,7 @@ async function renderVenueLanding(slug) {
   const activeGuestSession = activeEntryId ? getGuestSession(activeEntryId) : null;
   const flash = consumeFlash();
   const guestQueueEnabled = isVenueFeatureEnabled(venue, 'guestQueue');
+  const guestAccessEnabled = isVenueGuestAccessEnabled(venue);
   const queueOnlyGuestExperience = isQueueOnlyGuestExperience(venue);
   const waitlistOnlyVenue = isWaitlistOnlyVenue(venue);
   const manualDispatchEnabled = isManualDispatchVenue(venue);
@@ -1408,6 +1457,11 @@ async function renderVenueLanding(slug) {
   const guestJoinAction = queueOnlyGuestExperience || waitlistOnlyVenue ? 'Join waitlist' : 'Join queue';
   const showWhatsAppConsent = shouldPromptForWhatsAppConsent(venue);
   const whatsappConsentTextVersion = 'craftery_waitlist_whatsapp_v1';
+
+  if (guestQueueEnabled && !guestAccessEnabled) {
+    renderGuestAccessPausedPage(venue, slug);
+    return;
+  }
 
   if (canContinueEntry && activeGuestSession?.guestToken) {
     try {
@@ -1563,6 +1617,10 @@ async function renderGuestEntry(slug, entryId) {
   let guestSession = getGuestSession(entryId);
   const venue = await loadVenueForGuestEntry(slug);
   applyVenueThemeForVenue(venue);
+  if (!isVenueGuestAccessEnabled(venue)) {
+    renderGuestAccessPausedPage(venue, slug);
+    return;
+  }
   const venueName = resolveVenueDisplayName(venue);
   const accessToken = getGuestAccessTokenFromUrl();
   let accessRedeemed = false;
@@ -2061,6 +2119,10 @@ async function refreshGuestLiveView(slug, entryId) {
 async function renderGuestSessionJoin(slug, joinToken) {
   const venue = await apiRequest(`/venues/${slug}`);
   applyVenueThemeForVenue(venue);
+  if (!isVenueGuestAccessEnabled(venue)) {
+    renderGuestAccessPausedPage(venue, slug);
+    return;
+  }
   const venueName = resolveVenueDisplayName(venue);
   const flash = consumeFlash();
 
@@ -3133,6 +3195,9 @@ async function renderStaffDashboard(routeSlug = resolveActiveVenueSlug()) {
         body: {
           maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
           tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
+          featureConfig: {
+            guestAccess: document.getElementById('waitlist-guest-access-enabled')?.checked ?? true,
+          },
           opsConfig: {
             queueDispatchMode: 'MANUAL_NOTIFY',
             tableSourceMode: 'DISABLED',
@@ -3350,6 +3415,9 @@ async function renderAdminDashboard(routeSlug = resolveActiveVenueSlug()) {
             body: {
               maxQueueSize: Number(document.getElementById('waitlist-max-queue-size').value),
               tableReadyWindowMin: Number(document.getElementById('waitlist-response-window').value),
+              featureConfig: {
+                guestAccess: document.getElementById('waitlist-guest-access-enabled')?.checked ?? true,
+              },
               opsConfig: {
                 queueDispatchMode: 'MANUAL_NOTIFY',
                 tableSourceMode: 'DISABLED',
@@ -4129,6 +4197,7 @@ function renderSeatTab(tables, venue) {
 
 function renderWaitlistOnlySettingsForm(venue) {
   const opsConfig = resolveVenueOpsConfig(venue);
+  const guestAccessEnabled = isVenueGuestAccessEnabled(venue);
   return `
     <div class="row" style="margin-bottom:16px;">
       <span class="badge ${venue.isQueueOpen ? 'badge-ready' : 'badge-neutral'}">${venue.isQueueOpen ? 'Queue open' : 'Queue closed'}</span>
@@ -4141,6 +4210,11 @@ function renderWaitlistOnlySettingsForm(venue) {
           <input class="form-input" id="waitlist-max-queue-size" type="number" min="10" max="500" value="${venue.maxQueueSize}">
         </div>
       </div>
+      <label class="checkbox-row" style="margin: 0 0 16px;">
+        <input type="checkbox" id="waitlist-guest-access-enabled" ${guestAccessEnabled ? 'checked' : ''}>
+        <span>Guest flow enabled</span>
+      </label>
+      <div class="card-sub" style="margin-bottom:16px;">Turn this off to grey out and block guest joins, magic links, and guest status access.</div>
       <div class="form-row">
         <div class="form-group">
           <label class="form-label" for="waitlist-eta-base">Base wait</label>

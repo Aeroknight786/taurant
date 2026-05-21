@@ -19,6 +19,7 @@ import {
   isManualDispatchVenue,
   isQueueOnlyGuestExperience,
   isWaitlistOnlyVenue,
+  isVenueGuestAccessEnabled,
   isVenueFeatureEnabled,
   resolveLegacyVenueSlug,
   resolveVenueOpsConfig,
@@ -85,6 +86,10 @@ describe('frontend venue helpers', () => {
 
     expect(resolveVenueThemeKey(publicVenueSummary)).toBe('craftery');
     expect(isVenueFeatureEnabled(publicVenueSummary, 'guestQueue')).toBe(true);
+    expect(isVenueGuestAccessEnabled(publicVenueSummary)).toBe(true);
+    expect(isVenueGuestAccessEnabled({
+      featureConfig: { guestQueue: true, guestAccess: false },
+    })).toBe(false);
   });
 
   it('identifies queue-only venues and hides commerce surfaces for them', () => {
